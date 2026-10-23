@@ -13,7 +13,7 @@ You need a Mac with [Homebrew](https://brew.sh), a GitHub account, and access to
    ```
 
    ```bash
-   npm install -g @anthropic-ai/claude-code
+   brew install --cask claude-code
    ```
 
 2. Log in to GitHub:
