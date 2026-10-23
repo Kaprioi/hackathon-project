@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>SightLine Build Guide</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -33,6 +34,7 @@
   --ok: #6CC27A; color-scheme: dark; }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: var(--step-0); line-height: 1.6; }
 h1, h2, h3 { font-family: var(--font-display); line-height: 1.15; text-wrap: balance; margin: 0; }
 h1 { font-size: var(--step-3); font-weight: 800; letter-spacing: -0.02em; }
@@ -642,7 +644,6 @@ function build3D() {
     paint();
   }
   onModeChange = applyMode;
-  applyMode(buildMode);
 
   let xray = false;
   function paint() {
@@ -744,6 +745,8 @@ function build3D() {
     }
     pan.rotation.z = yaw;
   }
+
+  applyMode(buildMode);  // after everything paint() needs exists
 
   // ---------- render loop ----------
   function resize() {
