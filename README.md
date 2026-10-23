@@ -79,7 +79,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    `.env.local` is ignored by git, so real keys never get committed. On Vercel, add the same two variables under Project Settings -> Environment Variables.
 
-   For the login page's "forgot password" and sign-up emails to link back correctly, add your site addresses (for example `http://localhost:5173/**` and your Vercel address) in the Supabase dashboard under Authentication -> URL Configuration -> Redirect URLs.
+   For the login page's "forgot password" and sign-up emails to link back correctly, add `http://localhost:5173/**` in the Supabase dashboard under Authentication -> URL Configuration -> Redirect URLs. When the site is deployed somewhere, add its address there too.
 
 3. Start the app on your computer:
 
