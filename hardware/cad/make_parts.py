@@ -1,7 +1,7 @@
 """Generates the SightLine 3D-printable parts as STL files.
 
     pip install manifold3d trimesh numpy
-    python make_parts.py            # writes stl/base_box.stl, stl/base_lid.stl, stl/radar_head.stl
+    python make_parts.py            # writes stl/base_box.stl, base_lid.stl, radar_head.stl, radar_phone_head.stl
 
 All sizes are millimetres. Print in PLA, 0.2 mm layers, 20% infill, no supports.
 """
@@ -128,6 +128,35 @@ def radar_head():
     return plate
 
 
+# ---------- radar head with an iPhone backplate ----------
+# The phone (iPhone 14 in a case, ~150 x 76 x 11 mm, ~200 g) is glued by its
+# case to a backplate that holds it in landscape just above the radars, screen
+# facing forward. Its weight sits over the tilt joint, so the servo isn't
+# levered. The backplate stays 70 mm wide so it misses the rear camera bump
+# whichever way the phone is turned.
+BACK_W, BACK_T, BACK_TOP = 70, 4, 90
+PHONE_FRONT_Y, PHONE_DEPTH, PHONE_Z0 = -5.5, 13, 28   # case face line, shelf depth, phone bottom
+SHELF_W = 44                                          # stays clear of the radar slots
+
+
+def radar_phone_head():
+    y_back = PHONE_FRONT_Y - BACK_T
+    head = radar_head()
+    head = head + box(BACK_W, BACK_T, BACK_TOP - PLATE[2], (-BACK_W / 2, y_back, PLATE[2] - 0.01))
+    # shelf the case rests on while the glue cures, with a 45° wedge under it so it prints without supports
+    shelf = box(SHELF_W, BACK_T + PHONE_DEPTH, 3, (-SHELF_W / 2, y_back, PHONE_Z0 - 3))
+    wedge_foot = box(SHELF_W, BACK_T, 1, (-SHELF_W / 2, y_back, PHONE_Z0 - 3 - PHONE_DEPTH))
+    lip = box(SHELF_W, 1.6, 3, (-SHELF_W / 2, PHONE_FRONT_Y + PHONE_DEPTH - 1.6, PHONE_Z0 - 0.01))
+    head = head + Manifold.batch_hull([shelf, wedge_foot]) + lip
+    # two gussets behind the backplate stiffen it against wobble
+    for x in (-28, 28):
+        head = head + Manifold.batch_hull([
+            box(3, y_back - (-PLATE[1] / 2), 3, (x - 1.5, -PLATE[1] / 2, PLATE[2] - 0.01)),
+            box(3, 0.5, 40, (x - 1.5, y_back - 0.5, PLATE[2] - 0.01)),
+        ])
+    return head
+
+
 def save(m, path):
     mesh = m.to_mesh()
     verts = np.asarray(mesh.vert_properties)[:, :3]
@@ -144,3 +173,4 @@ if __name__ == "__main__":
     save(base_box(), out / "base_box.stl")
     save(base_lid(), out / "base_lid.stl")
     save(radar_head(), out / "radar_head.stl")
+    save(radar_phone_head(), out / "radar_phone_head.stl")

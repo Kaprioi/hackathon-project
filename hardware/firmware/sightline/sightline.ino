@@ -11,6 +11,9 @@
 #include <ESP32Servo.h>
 #include <ld2410.h>
 #include "secrets.h"
+#ifndef FACETIME_TO   // older secrets.h files don't have this setting
+#define FACETIME_TO ""
+#endif
 
 // ---------- Pins (see the wiring table in the build guide) ----------
 const int RADAR_L_RX = 7;   // Feather "RX" pin  <- left radar TX
@@ -78,7 +81,10 @@ void sendAlert(const char *type, const char *message) {
   if (strlen(NTFY_TOPIC) > 0) {
     http.begin(client, String("https://ntfy.sh/") + NTFY_TOPIC);
     http.addHeader("Title", "SightLine");
-    http.addHeader("Priority", strcmp(type, "out_of_sight") == 0 ? "urgent" : "default");
+    bool outOfSight = strcmp(type, "out_of_sight") == 0;
+    http.addHeader("Priority", outOfSight ? "urgent" : "default");
+    // Tapping the alert starts a FaceTime video call to the turret's iPhone.
+    if (outOfSight && strlen(FACETIME_TO) > 0) http.addHeader("Click", String("facetime://") + FACETIME_TO);
     int code = http.POST(message);
     Serial.printf("  ntfy -> %d\n", code);
     http.end();
