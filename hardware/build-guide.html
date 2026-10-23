@@ -70,6 +70,9 @@ code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
 .slider { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; color: var(--muted); }
 .slider input { accent-color: var(--accent); width: 130px; }
 
+.mode { display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.mode button { font: inherit; font-size: 0.9rem; font-weight: 700; padding: 6px 13px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); cursor: pointer; }
+.mode button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { font: inherit; font-size: 0.82rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .chip i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
@@ -139,6 +142,7 @@ dl.trouble dd { margin: 2px 0 0; color: var(--muted); }
         <span class="stage-note" id="note">Drag to rotate · scroll or pinch to zoom · person and radar fans not to scale</span>
       </div>
       <div class="controls">
+        <div class="mode" role="group" aria-label="Build version"><button data-set="print" aria-pressed="true">3D printed</button><button data-set="card" aria-pressed="false">No printer</button></div>
         <button class="btn" id="simBtn" aria-pressed="false">▶ Simulate tracking</button>
         <button class="btn" id="fanBtn" aria-pressed="true">Radar view</button>
         <button class="btn" id="xrayBtn" aria-pressed="false">See inside</button>
@@ -192,10 +196,11 @@ dl.trouble dd { margin: 2px 0 0; color: var(--muted); }
 
       <section aria-labelledby="build">
         <h2 id="build">Build it, step by step</h2>
-        <p class="lede" style="font-size:1rem">About 3 hours of hands-on work plus printing. Tick each step off as you go; your progress saves in this browser. Use <b>Show in 3D</b> to highlight the parts each step uses.</p>
+        <p class="lede" style="font-size:1rem">About 3 hours of hands-on work. Pick your version below; the steps and the 3D model change to match. Tick each step off as you go; your progress saves in this browser. Use <b>Show in 3D</b> to highlight the parts each step uses.</p>
+        <div class="mode" role="group" aria-label="Build version"><button data-set="print" aria-pressed="true">I have a 3D printer</button><button data-set="card" aria-pressed="false">No printer (cardboard)</button></div>
         <ol class="steps" id="steps">
 
-          <li class="step" data-parts="box,lid,head">
+          <li class="step" data-mode="print" data-parts="box,lid,head">
             <header><h3>Print the three parts</h3><span class="time">~5 h printing, start first</span></header>
             <p>The files are in your team repo under <code>hardware/cad/stl/</code>. Print in PLA, 0.2 mm layers, 20% infill, no supports. Put each part flat side down.</p>
             <ul>
@@ -203,7 +208,20 @@ dl.trouble dd { margin: 2px 0 0; color: var(--muted); }
               <li><b>base_lid.stl</b>: the lid; the pan servo drops into its cutout (about 1 h)</li>
               <li><b>radar_head.stl</b>: holds both radars angled outward (about 40 min)</li>
             </ul>
-            <p><b>No printer?</b> Use a shoebox. Cut a 41 × 20 mm hole in the lid for the servo, and tape the two radars to a folded card so they point about 25° apart.</p>
+            <div class="step-foot"><button class="btn show3d">Show in 3D</button><label class="done-toggle"><input type="checkbox"> Done</label></div>
+          </li>
+
+          <li class="step" data-mode="card" data-parts="shoebox,shoeboxLid,cardHead">
+            <header><h3>Make the cardboard box and radar mount</h3><span class="time">30 min</span></header>
+            <p><b>You need:</b> a sturdy shoebox (at least 7 cm tall), a cereal box or other stiff card, a craft knife, a ruler, a hot glue gun or double-sided tape, and something heavy (a power bank or a handful of coins).</p>
+            <ol>
+              <li><b>Servo hole.</b> In the middle of the shoebox lid, draw a <b>41 × 20 mm</b> rectangle and cut it out. Cut it slightly small, then shave it until the servo body just slides in.</li>
+              <li><b>Wire hole.</b> Next to the servo hole, cut a hole about the size of a coin for the radar and servo wires.</li>
+              <li><b>Cable holes.</b> In one end of the box, poke a hole for the power plug and a hole for the USB-C cable, both about 3 cm up from the bottom.</li>
+              <li><b>Radar mount.</b> Cut a card rectangle <b>60 mm wide × 50 mm tall</b>. Fold a 15 mm tab along the bottom edge. Then fold it in half down the middle, so you get two 30 mm-wide sides. Stand it up like an open book with the spine facing <b>forward</b>, opened to about 130°. Each side now faces about 25° outward, and the radars go on the outside faces.</li>
+              <li><b>Stiffen it.</b> Run a line of hot glue along the inside of the fold. A wobbly mount makes the tracking jittery.</li>
+            </ol>
+            <p><b>Want it sturdier?</b> Use a small wooden board (about 15 × 10 cm) instead of the shoebox lid. Cut the same servo hole, then push 4 carriage bolts up through holes in the corners and add nuts so it stands on legs. The breadboard sits on the table underneath.</p>
             <div class="step-foot"><button class="btn show3d">Show in 3D</button><label class="done-toggle"><input type="checkbox"> Done</label></div>
           </li>
 
@@ -221,13 +239,15 @@ arduino-cli monitor -p /dev/cu.usbserial-110 -c baudrate=115200</pre><button cla
             <div class="step-foot"><button class="btn show3d">Show in 3D</button><label class="done-toggle"><input type="checkbox"> Done</label></div>
           </li>
 
-          <li class="step" data-parts="box,breadboard,feather,jack">
+          <li class="step" data-parts="box,breadboard,feather,jack" data-parts-card="shoebox,breadboard,feather,jack">
             <header><h3>Set up power on the breadboard</h3><span class="time">20 min</span></header>
             <ol>
-              <li>Drop one <b>1/4"-20 nut</b> into the hex pocket in the box floor. The breadboard will hold it in.</li>
+              <li data-mode="print">Drop one <b>1/4"-20 nut</b> into the hex pocket in the box floor. The breadboard will hold it in.</li>
               <li>Peel the breadboard's backing and stick it in the box floor.</li>
-              <li>Push the Feather into the breadboard so it straddles the middle gap, with its USB-C end facing the slot in the box wall.</li>
-              <li>Screw two wires into a <b>female barrel adapter</b>: red into <b>+</b>, black into <b>−</b>. Push it into the round hole in the box wall (hot glue it if loose).</li>
+              <li data-mode="print">Push the Feather into the breadboard so it straddles the middle gap, with its USB-C end facing the slot in the box wall.</li>
+              <li data-mode="card">Push the Feather into the breadboard so it straddles the middle gap, with its USB-C end toward the cable hole you poked.</li>
+              <li data-mode="print">Screw two wires into a <b>female barrel adapter</b>: red into <b>+</b>, black into <b>−</b>. Push it into the round hole in the box wall (hot glue it if loose).</li>
+              <li data-mode="card">Screw two wires into a <b>female barrel adapter</b>: red into <b>+</b>, black into <b>−</b>. Hot glue it inside the box, right behind the power hole, so the plug can push in from outside.</li>
               <li>Red wire → the breadboard's <b>red (+) rail</b>. Black wire → the <b>blue (−) rail</b>.</li>
               <li>Jumper from the Feather's <b>GND</b> pin → the blue (−) rail. Every part must share this ground.</li>
             </ol>
@@ -247,12 +267,13 @@ arduino-cli monitor -p /dev/cu.usbserial-110 -c baudrate=115200</pre><button cla
             <div class="step-foot"><button class="btn show3d">Show in 3D</button><label class="done-toggle"><input type="checkbox"> Done</label></div>
           </li>
 
-          <li class="step" data-parts="panServo,panBracket,tiltServo,tiltBracket,lid">
+          <li class="step" data-parts="panServo,panBracket,tiltServo,tiltBracket,lid" data-parts-card="panServo,panBracket,tiltServo,tiltBracket,shoeboxLid">
             <header><h3>Center the servos, then build the pan-tilt neck</h3><span class="time">40 min</span></header>
             <ol>
               <li>Plug in the Feather's USB-C and the 5V supply. The servos wiggle, then stop at <b>center</b>. Unplug both.</li>
               <li>Now assemble the Lynxmotion kit by its <a href="https://www.robotshop.com/products/lynxmotion-pan-and-tilt-kit-aluminium2" target="_blank" rel="noopener">instructions</a>. Because the servos are centered, attach the horns and brackets so the top bracket faces <b>straight forward and level</b>.</li>
-              <li>Drop the pan servo into the lid's rectangular cutout and screw its four tabs to the lid with the kit's servo screws.</li>
+              <li data-mode="print">Drop the pan servo into the lid's rectangular cutout and screw its four tabs to the lid with the kit's servo screws.</li>
+              <li data-mode="card">Drop the pan servo into the hole in the shoebox lid so its tabs rest on top. Screw the tabs into the cardboard with the kit's servo screws. If they spin loose, put a bead of hot glue under each tab instead.</li>
             </ol>
             <div class="check"><b>Check:</b> power both again. The head looks left, then right, nods down, and returns to facing forward.</div>
             <div class="step-foot"><button class="btn show3d">Show in 3D</button><label class="done-toggle"><input type="checkbox"> Done</label></div>
@@ -276,7 +297,19 @@ arduino-cli monitor -p /dev/cu.usbserial-110 -c baudrate=115200</pre><button cla
             <div class="step-foot"><button class="btn show3d">Show in 3D</button><label class="done-toggle"><input type="checkbox"> Done</label></div>
           </li>
 
-          <li class="step" data-parts="head,radarL,radarR,tiltBracket,lid">
+          <li class="step" data-mode="card" data-parts="cardHead,radarL,radarR,tiltBracket,shoeboxLid">
+            <header><h3>Mount the radars and close up</h3><span class="time">15 min</span></header>
+            <ol>
+              <li>Stick one radar on the front of each side of the card mount with double-sided tape or a dab of hot glue on the back corners. The side with the printed antenna pattern faces <b>out</b>; keep glue off it.</li>
+              <li>Glue or tape the mount's bottom tabs onto the top bracket of the pan-tilt kit, with the fold pointing forward. The left radar should face forward-left and the right radar forward-right.</li>
+              <li>Feed the radar and tilt-servo wires down through the wire hole, then put the lid on the box.</li>
+              <li>Put the weight inside the box, in the corner farthest from the servo, so the box doesn't tip when the head turns. Tape the lid down at the corners.</li>
+            </ol>
+            <div class="warn"><b>Keep metal away from the radar fronts.</b> Cardboard, plastic and tape are fine because radar sees through them. Foil, a metal bracket or a phone in front of a radar blinds it.</div>
+            <div class="step-foot"><button class="btn show3d">Show in 3D</button><label class="done-toggle"><input type="checkbox"> Done</label></div>
+          </li>
+
+          <li class="step" data-mode="print" data-parts="head,radarL,radarR,tiltBracket,lid">
             <header><h3>Mount the radar head and close up</h3><span class="time">15 min</span></header>
             <ol>
               <li>Slide each radar down into its holder from the top. The side with the printed antenna pattern faces <b>out</b>, through the window; the chip and pins face back.</li>
@@ -392,6 +425,19 @@ document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", ()
     .catch(() => { const r = document.createRange(); r.selectNodeContents(b.previousElementSibling); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
 }));
 
+// Build version: "print" (3D printed parts) or "card" (shoebox + folded card)
+let buildMode = store.get("sightline-mode", "print");
+let onModeChange = () => {};
+function setMode(m) {
+  buildMode = m;
+  store.set("sightline-mode", m);
+  document.querySelectorAll("[data-mode]").forEach((el) => (el.hidden = el.dataset.mode !== m));
+  document.querySelectorAll(".mode button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.set === m)));
+  onModeChange(m);
+}
+document.querySelectorAll(".mode button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.set)));
+setMode(buildMode);
+
 // Step progress
 const doneState = store.get("sightline-done", {});
 document.querySelectorAll(".step").forEach((step, i) => {
@@ -446,8 +492,8 @@ function build3D() {
     const g = loader.parse(buf.buffer); g.computeVertexNormals(); return g;
   };
 
-  const parts = {};   // id -> { name, color, objects: [mesh], group }
-  function part(id, name, color) { parts[id] = { id, name, color, meshes: [] }; return parts[id]; }
+  const parts = {};   // id -> { name, color, meshes, only: "print" | "card" | undefined }
+  function part(id, name, color, only) { parts[id] = { id, name, color, only, meshes: [] }; return parts[id]; }
   function mesh(p, geo, mat, parent, pos = [0, 0, 0], rot = [0, 0, 0]) {
     const material = new THREE.MeshStandardMaterial(Object.assign({ color: p.color, roughness: 0.6, metalness: 0.05 }, mat));
     material.userData.base = { opacity: material.opacity, transparent: material.transparent };
@@ -460,14 +506,29 @@ function build3D() {
   const C = (r, h, s = 32) => new THREE.CylinderGeometry(r, r, h, s).rotateX(Math.PI / 2); // axis along Z
 
   // Printed parts (real STL geometry)
-  const pBox = part("box", "Base box (3D print)", 0xC9D3CE);
+  const pBox = part("box", "Base box (3D print)", 0xC9D3CE, "print");
   const boxGroup = new THREE.Group(); model.add(boxGroup);
   mesh(pBox, stlGeo(STL.box), {}, boxGroup);
 
-  const pLid = part("lid", "Lid (3D print)", 0xB7C4BE);
+  const pLid = part("lid", "Lid (3D print)", 0xB7C4BE, "print");
   const lidGroup = new THREE.Group(); model.add(lidGroup);
   const lidMesh = mesh(pLid, stlGeo(STL.lid), {}, lidGroup);
   lidMesh.rotation.x = Math.PI; lidMesh.position.set(0, 74.8, 68);
+
+  // No-printer version: a 150 x 100 x 65 mm shoebox, lid with a servo hole.
+  const card = { roughness: 0.95 };
+  const pShoe = part("shoebox", "Shoebox (cardboard)", 0xC49A6C, "card");
+  const sx0 = -22.6, sx1 = 127.4, sy0 = -12.6, sy1 = 87.4, sh = 65, t = 3;
+  mesh(pShoe, B(150, 100, t), card, boxGroup, [52.4, 37.4, t / 2]);
+  for (const y of [sy0 + t / 2, sy1 - t / 2]) mesh(pShoe, B(150, t, sh), card, boxGroup, [52.4, y, sh / 2]);
+  for (const x of [sx0 + t / 2, sx1 - t / 2]) mesh(pShoe, B(t, 100 - 2 * t, sh), card, boxGroup, [x, 37.4, sh / 2]);
+  const pShoeLid = part("shoeboxLid", "Shoebox lid with servo hole", 0xB0855A, "card");
+  const lx0 = sx0 - 2, lx1 = sx1 + 2, ly0 = sy0 - 2, ly1 = sy1 + 2, lz = 65 + t / 2;
+  const hx0 = 62.4 - 20.5, hx1 = 62.4 + 20.5, hy0 = 37.4 - 10.2, hy1 = 37.4 + 10.2;
+  const slab = (x0, x1, y0, y1) => mesh(pShoeLid, B(x1 - x0, y1 - y0, t), card, lidGroup, [(x0 + x1) / 2, (y0 + y1) / 2, lz]);
+  slab(lx0, hx0, ly0, ly1); slab(hx1, lx1, ly0, ly1); slab(hx0, hx1, ly0, hy0); slab(hx0, hx1, hy1, ly1);
+  for (const y of [ly0 + 1, ly1 - 1]) mesh(pShoeLid, B(lx1 - lx0, 2, 15), card, lidGroup, [52.4, y, 60.5]);
+  for (const x of [lx0 + 1, lx1 - 1]) mesh(pShoeLid, B(2, ly1 - ly0, 15), card, lidGroup, [x, 37.4, 60.5]);
 
   // Electronics inside the box
   const inner = new THREE.Group(); model.add(inner);
@@ -479,8 +540,9 @@ function build3D() {
   mesh(pFeather, B(9, 7.5, 3.2), { color: 0xB9BEC4, metalness: 0.7, roughness: 0.3 }, featherGroup, [29, 13.5, 24.2]);
   mesh(pFeather, B(18, 25, 2.2), { color: 0x3A3F45 }, featherGroup, [29, 45, 23.6]);
   const pJack = part("jack", "Barrel jack adapter", 0x2B2B2B);
-  mesh(pJack, C(5.5, 14).rotateY(Math.PI / 2), {}, inner, [9, 37.4, 21]);
-  mesh(pJack, B(8, 10, 9), { color: 0x2E9B57 }, inner, [19, 37.4, 21]);
+  const jackGroup = new THREE.Group(); inner.add(jackGroup);
+  mesh(pJack, C(5.5, 14).rotateY(Math.PI / 2), {}, jackGroup, [9, 37.4, 21]);
+  mesh(pJack, B(8, 10, 9), { color: 0x2E9B57 }, jackGroup, [19, 37.4, 21]);
 
   // Pan servo sits in the lid: tabs on top of the lid, body hangs inside.
   const pPanServo = part("panServo", "Pan servo (HS-422)", 0x24272B);
@@ -505,8 +567,9 @@ function build3D() {
   mesh(pTiltB, B(55, 24, 2.5), alu, tilt, [0, 0, 31.25]);
 
   const headGroup = new THREE.Group(); headGroup.position.set(0, 0, 32.5); tilt.add(headGroup);
-  const pHead = part("head", "Radar head (3D print)", 0x2E8C80);
+  const pHead = part("head", "Radar head (3D print)", 0x2E8C80, "print");
   mesh(pHead, stlGeo(STL.head), { roughness: 0.55 }, headGroup);
+  const pCardHead = part("cardHead", "Folded-card radar mount", 0xD9C4A0, "card");
 
   const fans = [];
   for (const side of [-1, 1]) {
@@ -516,6 +579,9 @@ function build3D() {
     holder.position.set(side * 17, 17, 3);
     holder.rotation.z = -side * THREE.MathUtils.degToRad(25);
     headGroup.add(holder);
+    // card version: one side of the folded card, plus its glued-down tab
+    mesh(pCardHead, B(30, 1.5, 35), card, holder, [0, -5.4, 14.5]);
+    mesh(pCardHead, B(30, 15, 1.5), card, holder, [0, -13.4, -2.25]);
     mesh(p, B(22, 1.2, 16), {}, holder, [0, -3.9, 11]);
     for (const dx of [-5, 5]) mesh(p, B(6, 0.4, 8), { color: 0xD9A441, metalness: 0.8, roughness: 0.3 }, holder, [dx, -3.2, 11]);
     // detection fan: ±60°, drawn short so it fits on screen
@@ -562,11 +628,27 @@ function build3D() {
     legend.appendChild(b);
   });
 
+  function applyMode(m) {
+    for (const p of Object.values(parts)) {
+      const show = !p.only || p.only === m;
+      p.meshes.forEach((x) => (x.visible = show));
+      const chip = legend.querySelector(`[data-id="${p.id}"]`);
+      if (chip) chip.hidden = !show;
+    }
+    // cardboard floor is thinner, and the jack sits behind the shoebox wall
+    inner.position.z = m === "card" ? -6 : 0;
+    jackGroup.position.x = m === "card" ? -28 : 0;
+    if (focus) focus = focus.filter((id) => !parts[id].only || parts[id].only === m);
+    paint();
+  }
+  onModeChange = applyMode;
+  applyMode(buildMode);
+
   let xray = false;
   function paint() {
     for (const p of Object.values(parts)) {
       const on = !focus || focus.includes(p.id);
-      const glass = xray && (p.id === "box" || p.id === "lid");
+      const glass = xray && ["box", "lid", "shoebox", "shoeboxLid"].includes(p.id);
       for (const m of p.meshes) {
         const mat = m.material;
         mat.transparent = !on || glass || mat.userData.base.transparent;
@@ -581,7 +663,8 @@ function build3D() {
   function highlight(ids) { focus = ids && ids.length ? ids : null; paint(); }
 
   document.querySelectorAll(".step .show3d").forEach((b) => b.addEventListener("click", () => {
-    const ids = b.closest(".step").dataset.parts.split(",").filter(Boolean);
+    const d = b.closest(".step").dataset;
+    const ids = (buildMode === "card" && d.partsCard !== undefined ? d.partsCard : d.parts).split(",").filter(Boolean);
     const inside = ids.some((i) => ["breadboard", "feather", "jack", "panServo"].includes(i));
     xray = inside; $("#xrayBtn").setAttribute("aria-pressed", String(xray));
     highlight(ids);
@@ -611,7 +694,7 @@ function build3D() {
     const r = renderer.domElement.getBoundingClientRect();
     ptr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ptr, camera);
-    const hit = ray.intersectObjects(Object.values(parts).flatMap((p) => p.meshes).filter((m) => m.material.opacity > 0.15), false)[0];
+    const hit = ray.intersectObjects(Object.values(parts).flatMap((p) => p.meshes).filter((m) => m.visible && m.material.opacity > 0.15), false)[0];
     if (hit) { tip.hidden = false; tip.textContent = parts[hit.object.userData.part].name; tip.style.left = ev.clientX - r.left + "px"; tip.style.top = ev.clientY - r.top + "px"; }
     else tip.hidden = true;
   });
