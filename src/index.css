@@ -1,0 +1,51 @@
+@import "tailwindcss";
+@import "@fontsource-variable/nunito";
+
+/* Colours and font for the whole app. Every text colour here passes WCAG AA
+   contrast on the light backgrounds it is used on. */
+@theme {
+  --font-sans: "Nunito Variable", ui-rounded, "Segoe UI", system-ui, sans-serif;
+
+  --color-ink: #1f2a37; /* main text */
+  --color-muted: #46505f; /* secondary text */
+  --color-brand: #5b3cc4; /* purple buttons and links */
+  --color-brand-dark: #3d2790;
+  --color-leaf: #17795a; /* green "all okay" */
+  --color-cream: #f4fbf8; /* page background */
+  --color-mint: #c9f0df;
+  --color-lilac: #e7defd;
+  --color-peach: #ffe1cc;
+  --color-sun: #fff1b8;
+  --color-coral: #ff9f7a;
+}
+
+/* Older readers: 18px base text (Tailwind's rem sizes all scale from this). */
+html {
+  font-size: 112.5%;
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+}
+
+/* A thick, always-visible focus ring for keyboard users. */
+:focus-visible {
+  outline: 4px solid var(--color-ink);
+  outline-offset: 4px;
+  border-radius: 14px;
+}
+
+/* On dark or purple backgrounds, switch the focus ring to white. */
+.on-dark :focus-visible {
+  outline-color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

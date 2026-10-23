@@ -56,4 +56,43 @@ Each worker gets its own branch, opens a pull request when done, and the first m
 
 ## Run the app
 
-_(Filled in once the app is set up.)_
+The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tailwind CSS. It is set up to deploy on Vercel, import into Lovable, and use Supabase for data.
+
+1. Install the packages (once, and again whenever `package.json` changes):
+
+   ```bash
+   npm install
+   ```
+
+2. Set up Supabase keys (optional for now; the homepage works without them):
+
+   ```bash
+   cp .env.example .env.local
+   ```
+
+   Then open `.env.local` and fill in the two values from your Supabase project (Supabase dashboard -> Project Settings -> API):
+
+   | Variable | What it is |
+   | --- | --- |
+   | `VITE_SUPABASE_URL` | Your project URL, like `https://abcd1234.supabase.co` |
+   | `VITE_SUPABASE_ANON_KEY` | The public "anon" key |
+
+   `.env.local` is ignored by git, so real keys never get committed. On Vercel, add the same two variables under Project Settings -> Environment Variables.
+
+3. Start the app on your computer:
+
+   ```bash
+   npm run dev
+   ```
+
+   Then open the address it prints (usually http://localhost:5173).
+
+4. Check that it builds for production (Vercel runs this too):
+
+   ```bash
+   npm run build
+   ```
+
+   `npm run preview` serves that production build locally.
+
+Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, and colours and fonts in `src/index.css`. `vercel.json` makes links like `/login` work when the site is deployed.
