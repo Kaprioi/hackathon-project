@@ -29,6 +29,14 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   line-height: 1.6;
+  /* Keep content clear of the notch and rounded corners on phones. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  /* Never let anything push the page sideways on small screens. */
+  overflow-x: clip;
+  /* Stop phones from auto-enlarging text when turned sideways. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* A thick, always-visible focus ring for keyboard users. */

@@ -66,7 +66,7 @@ const features = [
 
 function Logo() {
   return (
-    <Link to="/" className="flex min-h-12 items-center gap-3 text-2xl font-black text-ink no-underline">
+    <Link to="/" className="flex min-h-12 items-center gap-2 text-2xl font-black text-ink no-underline sm:gap-3">
       <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
         <circle cx="22" cy="22" r="22" fill="#c9f0df" />
         <path d="M22 33s-11-6.5-11-14a6 6 0 0 1 11-3.4A6 6 0 0 1 33 19c0 7.5-11 14-11 14z" fill="#5b3cc4" />
@@ -81,12 +81,12 @@ export default function HomePage() {
     <>
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:rounded-xl focus:bg-white focus:px-5 focus:py-3 focus:font-bold"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:flex focus:min-h-12 focus:items-center focus:rounded-xl focus:bg-white focus:px-5 focus:font-bold"
       >
         Skip to main content
       </a>
 
-      <header className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
+      <header className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5">
         <Logo />
         <nav aria-label="Account">
           <ButtonLink to={LOG_IN} variant="outline">
@@ -97,10 +97,10 @@ export default function HomePage() {
 
       <main id="main">
         {/* Hero */}
-        <section className="px-6 pb-20 pt-8" aria-labelledby="hero-title">
+        <section className="px-4 pb-14 pt-4 sm:px-6 sm:pt-8 md:pb-20" aria-labelledby="hero-title">
           <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
             <div>
-              <h1 id="hero-title" className="text-4xl font-extrabold leading-tight md:text-5xl">
+              <h1 id="hero-title" className="text-[2.1rem] font-extrabold leading-tight sm:text-4xl md:text-5xl">
                 Stay close to the people you love,{" "}
                 <mark className="bg-transparent bg-[linear-gradient(transparent_55%,var(--color-sun)_55%)] px-1 text-inherit">
                   even from far away
@@ -111,7 +111,7 @@ export default function HomePage() {
                 A phone on the table quietly keeps an eye on the room. If Grandma has a fall or a very quiet day, you'll
                 know straight away — and she stays independent at home.
               </p>
-              <div className="mt-8 flex flex-wrap gap-4">
+              <div className="mt-8 grid gap-4 sm:flex sm:flex-wrap">
                 <ButtonLink to={GET_STARTED}>Get started</ButtonLink>
                 <ButtonLink to={LOG_IN} variant="outline">
                   Log in
@@ -131,12 +131,12 @@ export default function HomePage() {
         </section>
 
         {/* How it works */}
-        <section className="px-6 py-20" aria-labelledby="how-title">
+        <section className="px-4 py-14 sm:px-6 md:py-20" aria-labelledby="how-title">
           <div className="mx-auto max-w-6xl">
-            <h2 id="how-title" className="text-center text-4xl font-extrabold">
+            <h2 id="how-title" className="text-center text-3xl font-extrabold sm:text-4xl">
               How it works
             </h2>
-            <p className="mx-auto mb-12 mt-3 max-w-[40ch] text-center text-xl text-muted">
+            <p className="mx-auto mb-10 mt-3 max-w-[40ch] text-center text-xl text-muted sm:mb-12">
               From a phone on the table to a message on your phone.
             </p>
             <div className="relative">
@@ -166,9 +166,9 @@ export default function HomePage() {
         </section>
 
         {/* Features */}
-        <section className="mx-4 rounded-[48px] bg-white px-6 py-20" aria-labelledby="features-title">
+        <section className="mx-3 rounded-[32px] bg-white px-4 py-14 sm:mx-4 sm:rounded-[48px] sm:px-6 md:py-20" aria-labelledby="features-title">
           <div className="mx-auto max-w-6xl">
-            <h2 id="features-title" className="text-center text-4xl font-extrabold">
+            <h2 id="features-title" className="text-center text-3xl font-extrabold sm:text-4xl">
               Little helpers, big comfort
             </h2>
             <p className="mx-auto mb-10 mt-3 max-w-[40ch] text-center text-xl text-muted">
@@ -176,7 +176,7 @@ export default function HomePage() {
             </p>
             <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {features.map((feature) => (
-                <li key={feature.title} className={`${feature.bg} rounded-[32px] p-7`}>
+                <li key={feature.title} className={`${feature.bg} rounded-[28px] p-6 sm:rounded-[32px] sm:p-7`}>
                   {feature.icon}
                   <h3 className="mt-4 text-2xl font-extrabold">{feature.title}</h3>
                   <p className="mt-2">{feature.text}</p>
@@ -187,30 +187,32 @@ export default function HomePage() {
         </section>
 
         {/* Family */}
-        <section className="px-6 py-20" aria-labelledby="family-title">
+        <section className="px-4 py-14 sm:px-6 md:py-20" aria-labelledby="family-title">
           <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
             <FamilyIllustration />
             <div>
-              <h2 id="family-title" className="text-4xl font-extrabold">
+              <h2 id="family-title" className="text-3xl font-extrabold sm:text-4xl">
                 Everyone in the loop
               </h2>
               <p className="mb-8 mt-4 text-xl text-muted">
                 Invite children, grandchildren, neighbours or a carer. Everyone sees the same simple update, so nobody
                 has to ring round to check.
               </p>
-              <ButtonLink to={GET_STARTED}>Get started</ButtonLink>
+              <div className="grid sm:block">
+                <ButtonLink to={GET_STARTED}>Get started</ButtonLink>
+              </div>
             </div>
           </div>
         </section>
 
         {/* Final call to action */}
-        <section className="px-6 pb-20" aria-labelledby="cta-title">
-          <div className="on-dark mx-auto max-w-6xl rounded-[40px] bg-brand px-8 py-14 text-center text-white">
-            <h2 id="cta-title" className="text-4xl font-extrabold">
+        <section className="px-4 pb-14 sm:px-6 md:pb-20" aria-labelledby="cta-title">
+          <div className="on-dark mx-auto max-w-6xl rounded-[32px] bg-brand px-5 py-12 text-center text-white sm:rounded-[40px] sm:px-8 sm:py-14">
+            <h2 id="cta-title" className="text-3xl font-extrabold sm:text-4xl">
               Ready to feel closer?
             </h2>
             <p className="mt-3 text-xl">Set up in about 10 minutes. We'll guide you every step.</p>
-            <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <div className="mt-8 grid gap-4 sm:flex sm:flex-wrap sm:justify-center">
               <ButtonLink to={GET_STARTED} variant="inverse">
                 Get started
               </ButtonLink>
@@ -222,7 +224,7 @@ export default function HomePage() {
         </section>
       </main>
 
-      <footer className="mx-auto flex max-w-6xl flex-wrap justify-between gap-4 px-6 pb-10 text-muted">
+      <footer className="mx-auto flex max-w-6xl flex-wrap justify-between gap-4 px-4 pb-10 text-muted sm:px-6">
         <span>© {new Date().getFullYear()} CareNest</span>
         <span>Only the people you invite can see anything.</span>
       </footer>
