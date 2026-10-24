@@ -114,6 +114,12 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    `npm run preview` serves that production build locally.
 
+6. Run the tests (no camera or Supabase needed):
+
+   ```bash
+   npm test
+   ```
+
 Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, and colours and fonts in `src/index.css`. `vercel.json` makes links like `/login` work when the site is deployed.
 
 ## Phone Tracker page (`/tracker`)
@@ -126,3 +132,13 @@ It also still drives the optional Phone Tracker stand: it follows the person you
 - On an iPhone: open the deployed `https://…/tracker` link in the free **Bluefy** browser. It has to be https; Safari can't use Bluetooth from a website.
 - Test the tracking and event logic without a camera: `npm run test:tracker`.
 - The camera needs https on a phone: use the deployed Vercel link (or `npm run dev -- --host` plus an https tunnel).
+
+## Family page (`/dashboard`)
+
+Where family members see how things are. After signing in, the Sign in page brings you here. It shows:
+
+- **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns peach with a "please call or visit" note if the phone thinks someone may have fallen, and warns you if the phone has not checked in for over 3 minutes (it normally sends a heartbeat every minute).
+- **Recent news**: the last 10 events with their times.
+- **Add a family member** (only for the circle's owner): type the email of someone who already has a CareNest account, and they will see the same page.
+
+It updates by itself through Supabase Realtime, so there is no need to reload. To try the whole flow: sign in on a phone, open `/tracker` and press **Start watching**; sign in with the same account on a computer and open `/dashboard`. The plain-words logic is in `src/family/status.ts` and is tested by `npm test`.
