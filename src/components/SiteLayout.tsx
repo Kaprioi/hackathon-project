@@ -92,7 +92,7 @@ export function SiteHeader() {
                   <NavLink
                     to={link.to}
                     end
-                    className="relative inline-flex min-h-12 items-center rounded-2xl px-3 text-lg lg:px-4 font-extrabold text-brand no-underline transition-colors hover:bg-lilac aria-[current=page]:bg-lilac aria-[current=page]:text-ink"
+                    className="relative inline-flex min-h-12 items-center whitespace-nowrap rounded-2xl px-3 text-lg font-extrabold text-brand no-underline transition-colors hover:bg-lilac aria-[current=page]:bg-lilac aria-[current=page]:text-ink"
                   >
                     {t(link.label)}
                   </NavLink>
