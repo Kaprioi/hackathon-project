@@ -8,7 +8,7 @@
 --     it gives the same answer for every email.
 --
 -- Run it after 20261024000000_carenest_schema.sql (Supabase SQL editor, or
--- `supabase db push`). See README.md -> "Database setup".
+-- `supabase db push`). See README.md -> "Run the app", step 3.
 
 drop function public.add_family_member(uuid, text);
 
