@@ -14,7 +14,7 @@ export function friendlyError(message: string): string {
   if (m.includes("rate limit") || m.includes("too many") || m.includes("security purposes"))
     return "We've had a lot of tries just now. Please wait a few minutes, then try again.";
   if (m.includes("not authorized") || m.includes("sending") || m.includes("smtp"))
-    return "Sorry, we couldn't send an email just now. Please try again a little later.";
+    return "Sorry, we can't send emails from CareNest yet. Please contact the CareNest team for help.";
   if (m.includes("invalid email") || m.includes("unable to validate email"))
     return "That doesn't look like an email address. It should look like name@example.com.";
   if (m.includes("email address") && m.includes("invalid"))
