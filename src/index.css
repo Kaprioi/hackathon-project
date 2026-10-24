@@ -265,9 +265,9 @@ html[data-text-size="extra"] {
   font-size: 150%; /* 24px */
 }
 /* The header's row of links only fits on one line when there is room for it. Where it
-   doesn't, the phone-style menu button is used instead: with bigger text on a laptop,
-   and always in Spanish, whose longer words never fit in the header's width.
-   (Measured with all six links, the language picker and the Display button.) */
+   doesn't, the phone-style menu button is used instead: with bigger text on a laptop.
+   (Spanish uses short menu words, so it fits like English. Measured with all six
+   links, the language picker and the Display button.) */
 @media (max-width: 1535px) {
   html[data-text-size="large"] .site-nav {
     display: none;
@@ -289,15 +289,6 @@ html[data-text-size="extra"] {
   html[data-text-size="extra"] .site-mobile-menu {
     display: block;
   }
-}
-html[lang="es"] .site-nav {
-  display: none;
-}
-html[lang="es"] .site-menu-button {
-  display: grid;
-}
-html[lang="es"] .site-mobile-menu {
-  display: block;
 }
 
 /* On a narrow phone with bigger text, the header shows just the heart (the name is

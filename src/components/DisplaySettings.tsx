@@ -19,7 +19,7 @@ export function DisplayButton({ open, onToggle, buttonRef }: {
   onToggle: () => void;
   buttonRef: React.RefObject<HTMLButtonElement | null>;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   return (
     <button
       ref={buttonRef}
@@ -32,7 +32,8 @@ export function DisplayButton({ open, onToggle, buttonRef }: {
       <span aria-hidden="true" className="text-xl font-black leading-none">
         Aa
       </span>
-      <span className="sr-only lg:not-sr-only">{t("Display")}</span>
+      {/* The word is only read out in Spanish ("Pantalla"), to leave room for its longer menu words. */}
+      <span className={lang === "es" ? "sr-only" : "sr-only lg:not-sr-only"}>{t("Display")}</span>
       <span className="sr-only">{t("settings")}</span>
     </button>
   );

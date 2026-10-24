@@ -73,7 +73,9 @@ export function SiteHeader() {
     setDisplayOpen(false);
     displayButton.current?.focus();
   }, []);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  // Spanish menu words are longer, so its links use slightly smaller text to fit in one row.
+  const navText = lang === "es" ? "px-2.5 text-base" : "px-3 text-lg";
 
   useEffect(() => {
     const onScroll = () => {
@@ -121,7 +123,7 @@ export function SiteHeader() {
                     <NavLink
                       to={link.to}
                       end
-                      className={`relative inline-flex min-h-12 items-center whitespace-nowrap rounded-2xl px-3 text-lg font-extrabold no-underline transition-colors aria-[current=page]:bg-lilac aria-[current=page]:text-ink ${
+                      className={`relative inline-flex min-h-12 items-center whitespace-nowrap rounded-2xl ${navText} font-extrabold no-underline transition-colors aria-[current=page]:bg-lilac aria-[current=page]:text-ink ${
                         spotlight ? "animate-glow bg-brand text-on-brand hover:bg-brand-dark" : "text-brand hover:bg-lilac"
                       }`}
                     >

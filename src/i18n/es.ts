@@ -5,12 +5,13 @@
 
 const es: Record<string, string> = {
   // ----- Shared: header, footer, menus -----
-  "About Us": "Quiénes somos",
+  "About Us": "Sobre nosotros",
   "Sign in": "Iniciar sesión",
   "Phone camera": "Cámara del teléfono",
   Family: "Familia",
   "Care profile": "Perfil de cuidado",
   // The header menu writes its links with Every Word Capitalised.
+  // The header menu (Title Case in English), with the same words as the rest of the site.
   "Sign In": "Iniciar sesión",
   "Phone Camera": "Cámara del teléfono",
   "Care Profile": "Perfil de cuidado",
