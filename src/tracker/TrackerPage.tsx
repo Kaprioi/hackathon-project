@@ -239,6 +239,15 @@ export default function TrackerPage() {
     portrait: false,
   });
 
+  // Name the browser tab, like the other pages do.
+  useEffect(() => {
+    const previous = document.title;
+    document.title = "Phone camera — CareNest";
+    return () => {
+      document.title = previous;
+    };
+  }, []);
+
   // Keep the screen showing the stand's state when Bluetooth or the radar changes.
   useEffect(() => {
     const stand = standRef.current;
