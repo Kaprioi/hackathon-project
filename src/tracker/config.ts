@@ -86,6 +86,11 @@ export interface Settings {
    * contact". Their number is a server setting (api/emergency-call.ts), not saved here.
    */
   contactName: string;
+  /**
+   * Family can press "Watch live" on the family page to see and hear this camera and talk
+   * back (src/lib/live.ts). Nothing is recorded. Off = the phone turns every request down.
+   */
+  liveVideo: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -102,6 +107,7 @@ export const DEFAULT_SETTINGS: Settings = {
   emergency: true,
   cameraOnStand: "yes",
   contactName: "",
+  liveVideo: true,
 };
 
 /** True if the camera turns with the stand (the phone on it), false for a computer's webcam beside it. */
