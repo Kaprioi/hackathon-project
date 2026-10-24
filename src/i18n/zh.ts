@@ -463,6 +463,81 @@ const zh: Record<string, string> = {
     "这个网站的数据库还没设置好，所以您可以试用摄像头，但家人看不到任何内容。",
   "Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this page in the Bluefy app.":
     "有电动支架吗？这个浏览器不能使用蓝牙，所以无法转动支架。在 iPhone 上，请用 Bluefy 应用打开这个页面。",
+
+  // ----- Help page -----
+  "Help and how-to": "帮助和使用说明",
+  "Help and *how‑to*": "帮助和*使用说明*",
+  "Getting started takes about five minutes. Here's how.": "开始使用大约只需五分钟。方法如下。",
+  "Getting started": "开始使用",
+  "Set up the phone on a table": "把手机放在桌上",
+  "Use a spare phone. Stand it up on a table or shelf where it can see most of the room, and keep it plugged in to charge.":
+    "用一部闲置的手机。把它立在桌子或架子上，让它能看到房间的大部分地方，并一直插着电源充电。",
+  "On that phone, sign in and open": "在那部手机上登录，然后打开",
+  ". ": "。",
+  "Press \"Start watching\". A green \"Camera on\" sign stays on the screen while it works.":
+    "按“开始看护”。它工作时，屏幕上会一直显示绿色的“摄像头已开启”标志。",
+  "Add your family": "添加您的家人",
+  "Each person makes their own CareNest account first. Then, on the": "每个人先注册自己的 CareNest 账户。然后在",
+  ", type their email under \"Add a family member\". They will see the same news.": "的“添加家人”下面输入他们的邮箱。他们就能看到同样的消息。",
+  "What the news means": "消息是什么意思",
+  "Green means all is well, like \"Moving around\". Red means the phone thinks someone may have fallen: please call or visit. A white box means the phone hasn't checked in for a few minutes — check it is on and charging.":
+    "绿色表示一切都好，比如“正在走动”。红色表示手机认为可能有人摔倒了：请打电话或去看看。白色的框表示手机已经几分钟没有消息了，请检查它是否开着、正在充电。",
+  "Your privacy": "您的隐私",
+  "Video and pictures never leave the phone. Family only get short notes in words, like \"Sitting still - left side\". Only the people you add can see them.":
+    "视频和照片绝不会离开手机。家人只会收到简短的文字，比如“坐着没动 - 左边”。只有您添加的人才能看到。",
+  "Common questions": "常见问题",
+  "Does CareNest record video?": "CareNest 会录像吗？",
+  "No. The phone looks at the room itself and only sends short words, like \"Moving around\". No video or pictures are sent or saved anywhere.":
+    "不会。手机自己查看房间，只发送简短的文字，比如“正在走动”。不会发送或保存任何视频或照片。",
+  "Which phone can I use?": "我可以用哪种手机？",
+  "Most smartphones from the last few years work. It needs a working camera, Wi-Fi or mobile data, and a charger.":
+    "近几年的大多数智能手机都可以。它需要能用的摄像头、Wi-Fi 或手机流量，还有充电器。",
+  "What happens if the phone thinks someone has fallen?": "如果手机认为有人摔倒了，会怎样？",
+  "The \"Right now\" box on the Family page turns red and asks you to call or visit. CareNest does not call emergency services, so if you can't reach them, call someone nearby or the emergency number.":
+    "家人页面上的“现在”框会变成红色，并请您打电话或去看看。CareNest 不会拨打急救电话，所以如果您联系不上对方，请打给附近的人或拨打急救电话。",
+  "The Family page says the phone hasn't checked in. What do I do?": "家人页面说手机没有消息了。我该怎么办？",
+  "Check the phone is switched on, plugged in, connected to the internet, and still showing the green \"Camera on\" sign. If not, open Phone camera again and press \"Start watching\".":
+    "请检查手机是否开着、插着电源、连着网络，并且还显示绿色的“摄像头已开启”标志。如果没有，请重新打开手机摄像头，再按“开始看护”。",
+  "I forgot my password.": "我忘记密码了。",
+  "Use the": "请使用",
+  "reset your password": "重设密码",
+  "form and we'll email you a link. Once you're signed in, you can change your password any time on":
+    "表格，我们会给您发一封带链接的邮件。登录以后，您随时可以在这里修改密码：",
+  ".": "。",
+  "Is CareNest a medical device?": "CareNest 是医疗设备吗？",
+  "No. It is a gentle helper so family can feel closer. It can miss things, so keep calling and visiting as usual.":
+    "不是。它是一个贴心的小帮手，让家人感觉更近一些。它可能会漏掉一些情况，所以请像平时一样继续打电话和探望。",
+  "Still stuck?": "还是不会用？",
+  "Ask the family member who set up CareNest, or contact the CareNest team. We're happy to help.":
+    "请问问帮您设置 CareNest 的家人，或者联系 CareNest 团队。我们很乐意帮忙。",
+  "Go to the Family page": "去家人页面",
+
+  // ----- Your account page -----
+  "Your *account*": "您的*账户*",
+  "On a shared computer, log out when you are done.": "如果是和别人共用的电脑，用完后请退出登录。",
+  "Need help? Read how CareNest works": "需要帮助？看看 CareNest 怎么用",
+  "Your name": "您的名字",
+  "The name your family will see.": "家人会看到的名字。",
+  "We couldn't load your name. Please check your internet and reload.": "没能读取您的名字。请检查网络，然后刷新页面。",
+  "Your name is saved.": "您的名字已保存。",
+  "Saving…": "正在保存…",
+  "Save name": "保存名字",
+  "Please type a name, like Sam or Grandma Rose.": "请输入一个名字，比如“小明”或“王奶奶”。",
+  "Please keep your name under {n} letters.": "名字请不要超过 {n} 个字。",
+  "Change your password": "修改密码",
+  "Current password": "当前密码",
+  "New password again": "再输一次新密码",
+  "Please type your current password.": "请输入您当前的密码。",
+  "The two new passwords don't match. Please type it again.": "两次输入的新密码不一样。请再输一次。",
+  "That isn't your current password. Please try again.": "这不是您当前的密码。请再试一次。",
+  "Forgot your current password?": "忘记当前密码了？",
+  "Your family circles": "您的家庭圈",
+  "We couldn't load your family circles. Please check your internet and reload.": "没能读取您的家庭圈。请检查网络，然后刷新页面。",
+  "Care circle": "照护圈",
+  "Your home": "您的家",
+  "Family member": "家人",
+  "Leaving a family circle isn't possible from this page yet. If you need to, please contact the CareNest team.":
+    "目前还不能在这个页面退出家庭圈。如有需要，请联系 CareNest 团队。",
 };
 
 export default zh;

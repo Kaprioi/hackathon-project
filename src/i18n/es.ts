@@ -491,6 +491,88 @@ const es: Record<string, string> = {
     "La base de datos de esta web todavía no está preparada: puede probar la cámara, pero su familia no verá nada.",
   "Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this page in the Bluefy app.":
     "¿Tiene un soporte con motor? Este navegador no puede usar Bluetooth, así que no puede mover el soporte. En iPhone, abra esta página en la aplicación Bluefy.",
+
+  // ----- Help page -----
+  "Help and how-to": "Ayuda y guía",
+  "Help and *how‑to*": "Ayuda y *guía*",
+  "Getting started takes about five minutes. Here's how.": "Empezar lleva unos cinco minutos. Así se hace.",
+  "Getting started": "Para empezar",
+  "Set up the phone on a table": "Ponga el teléfono sobre una mesa",
+  "Use a spare phone. Stand it up on a table or shelf where it can see most of the room, and keep it plugged in to charge.":
+    "Use un teléfono que no necesite. Póngalo de pie sobre una mesa o estantería desde donde vea casi toda la habitación, y déjelo enchufado para que se cargue.",
+  "On that phone, sign in and open": "En ese teléfono, inicie sesión y abra",
+  ". ": ". ",
+  "Press \"Start watching\". A green \"Camera on\" sign stays on the screen while it works.":
+    "Pulse «Empezar a vigilar». Mientras funciona, verá en la pantalla el aviso verde «Cámara encendida».",
+  "Add your family": "Añada a su familia",
+  "Each person makes their own CareNest account first. Then, on the":
+    "Primero, cada persona crea su propia cuenta de CareNest. Después, en la",
+  ", type their email under \"Add a family member\". They will see the same news.":
+    ", escriba su correo en «Añadir a un familiar». Verán las mismas noticias.",
+  "What the news means": "Qué significan las noticias",
+  "Green means all is well, like \"Moving around\". Red means the phone thinks someone may have fallen: please call or visit. A white box means the phone hasn't checked in for a few minutes — check it is on and charging.":
+    "Verde quiere decir que todo va bien, por ejemplo «Moviéndose». Rojo quiere decir que el teléfono cree que alguien puede haberse caído: llame o vaya a verle, por favor. Un recuadro blanco quiere decir que el teléfono no ha dado noticias desde hace unos minutos: compruebe que está encendido y cargando.",
+  "Your privacy": "Su privacidad",
+  "Video and pictures never leave the phone. Family only get short notes in words, like \"Sitting still - left side\". Only the people you add can see them.":
+    "El vídeo y las fotos nunca salen del teléfono. La familia solo recibe notas cortas con palabras, como «Sentado, sin moverse - lado izquierdo». Solo las personas que usted añada pueden verlas.",
+  "Common questions": "Preguntas frecuentes",
+  "Does CareNest record video?": "¿CareNest graba vídeo?",
+  "No. The phone looks at the room itself and only sends short words, like \"Moving around\". No video or pictures are sent or saved anywhere.":
+    "No. El propio teléfono mira la habitación y solo envía unas pocas palabras, como «Moviéndose». No se envía ni se guarda ningún vídeo ni ninguna foto.",
+  "Which phone can I use?": "¿Qué teléfono puedo usar?",
+  "Most smartphones from the last few years work. It needs a working camera, Wi-Fi or mobile data, and a charger.":
+    "Sirven la mayoría de los teléfonos inteligentes de los últimos años. Necesita una cámara que funcione, wifi o datos móviles, y un cargador.",
+  "What happens if the phone thinks someone has fallen?": "¿Qué pasa si el teléfono cree que alguien se ha caído?",
+  "The \"Right now\" box on the Family page turns red and asks you to call or visit. CareNest does not call emergency services, so if you can't reach them, call someone nearby or the emergency number.":
+    "El recuadro «Ahora mismo» de la Página familiar se pone rojo y le pide que llame o vaya a verle. CareNest no llama a los servicios de emergencia, así que si no consigue hablar con la persona, llame a alguien que esté cerca o al número de emergencias.",
+  "The Family page says the phone hasn't checked in. What do I do?":
+    "La Página familiar dice que el teléfono no ha dado noticias. ¿Qué hago?",
+  "Check the phone is switched on, plugged in, connected to the internet, and still showing the green \"Camera on\" sign. If not, open Phone camera again and press \"Start watching\".":
+    "Compruebe que el teléfono está encendido, enchufado, conectado a internet y que sigue mostrando el aviso verde «Cámara encendida». Si no, vuelva a abrir Cámara del teléfono y pulse «Empezar a vigilar».",
+  "I forgot my password.": "He olvidado mi contraseña.",
+  "Use the": "Use el formulario para",
+  "reset your password": "restablecer su contraseña",
+  "form and we'll email you a link. Once you're signed in, you can change your password any time on":
+    "y le enviaremos un enlace por correo. Cuando haya iniciado sesión, puede cambiar su contraseña cuando quiera en",
+  ".": ".",
+  "Is CareNest a medical device?": "¿CareNest es un aparato médico?",
+  "No. It is a gentle helper so family can feel closer. It can miss things, so keep calling and visiting as usual.":
+    "No. Es un ayudante discreto para que la familia se sienta más cerca. Puede que no note algunas cosas, así que siga llamando y visitando como siempre.",
+  "Still stuck?": "¿Sigue teniendo problemas?",
+  "Ask the family member who set up CareNest, or contact the CareNest team. We're happy to help.":
+    "Pregunte al familiar que preparó CareNest o póngase en contacto con el equipo de CareNest. Le ayudaremos con mucho gusto.",
+  "Go to the Family page": "Ir a la Página familiar",
+
+  // ----- Your account page -----
+  "Your *account*": "Su *cuenta*",
+  "On a shared computer, log out when you are done.": "Si usa un ordenador compartido, cierre la sesión al terminar.",
+  "Need help? Read how CareNest works": "¿Necesita ayuda? Lea cómo funciona CareNest",
+  "Your name": "Su nombre",
+  "The name your family will see.": "El nombre que verá su familia.",
+  "We couldn't load your name. Please check your internet and reload.":
+    "No pudimos cargar su nombre. Revise su conexión a internet y vuelva a cargar la página.",
+  "Your name is saved.": "Su nombre se ha guardado.",
+  "Saving…": "Guardando…",
+  "Save name": "Guardar el nombre",
+  "Please type a name, like Sam or Grandma Rose.": "Escriba un nombre, por ejemplo Sam o Abuela Rosa, por favor.",
+  "Please keep your name under {n} letters.": "Su nombre debe tener menos de {n} letras, por favor.",
+  "Change your password": "Cambiar su contraseña",
+  "Current password": "Contraseña actual",
+  "New password again": "Repita la contraseña nueva",
+  "Please type your current password.": "Escriba su contraseña actual, por favor.",
+  "The two new passwords don't match. Please type it again.":
+    "Las dos contraseñas nuevas no coinciden. Vuelva a escribirla, por favor.",
+  "That isn't your current password. Please try again.":
+    "Esa no es su contraseña actual. Vuelva a intentarlo, por favor.",
+  "Forgot your current password?": "¿Ha olvidado su contraseña actual?",
+  "Your family circles": "Sus círculos familiares",
+  "We couldn't load your family circles. Please check your internet and reload.":
+    "No pudimos cargar sus círculos familiares. Revise su conexión a internet y vuelva a cargar la página.",
+  "Care circle": "Círculo de cuidado",
+  "Your home": "Su casa",
+  "Family member": "Familiar",
+  "Leaving a family circle isn't possible from this page yet. If you need to, please contact the CareNest team.":
+    "Todavía no se puede salir de un círculo familiar desde esta página. Si lo necesita, póngase en contacto con el equipo de CareNest.",
 };
 
 export default es;
