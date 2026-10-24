@@ -104,12 +104,13 @@ export const TUNING = {
   lumpMinScore: 0.55,
 };
 
-/** Width of the small copy of each frame used for colours and the cover tracker. */
+/** Long side of the small copy of each frame used for colours and the cover tracker. */
 export const ANALYSIS_WIDTH = 320;
 
 /**
- * Width of the copy the person detector sees. Smaller is faster: on a laptop's
- * built-in graphics, 640 took about 70 ms a frame against 90 ms for the full 1280.
+ * Long side of the copy the person detector sees (its width with the phone sideways).
+ * Smaller is faster: on a laptop's built-in graphics, 640 took about 70 ms a frame
+ * against 90 ms for the full 1280.
  */
 export const DETECT_WIDTH = 640;
 

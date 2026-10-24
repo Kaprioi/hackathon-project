@@ -27,7 +27,7 @@ A motorized stand that holds an iPhone, keeps one chosen person in view and poin
 ## Decisions (locked)
 
 1. **The software is a website**, the `/tracker` page of the team web app (code in `../src/tracker/`). The iPhone runs the AI in the page and talks to the ESP32 over Bluetooth. No laptop in the loop. On the iPhone it runs in the free **Bluefy** browser, because Safari can't use Bluetooth from a website. On a PC it runs in Chrome or Edge. Chosen Oct 23 because Apple builds on Windows. The Swift app in `app/` is a backup only.
-2. Which phone camera faces the person is a setting on the page. The default is the **front** camera, because SightLine mounts the phone screen-forward (it was the rear camera in the first plan).
+2. Which phone camera faces the person is a setting on the page (start screen, Settings, or the **Flip** button). The default is the **front** camera, because SightLine mounts the phone screen-forward (it was the rear camera in the first plan). The front camera is shown mirrored, like a selfie; the tracking brain always works on the unmirrored picture.
 3. Lynxmotion Pan and Tilt Kit (BPT-KT) with its two Hitec HS-422 servos, as sold.
 4. **Hardware: Kris's SightLine head** (branch `hardware-build-guide`, `hardware/` in the repo): two LD2410C radars angled 25° left and right, the iPhone on a backplate above them, WiFi alerts. Chosen Oct 23. Merging it with this project's Bluetooth link is proposed in a pull request for Kris to review. The single-radar Phone Tracker stand (`firmware/PhoneTracker_ESP32`) still works with the website as a fallback.
 5. Print the phone holder and base box instead of buying a clamp and a board.
@@ -118,10 +118,11 @@ Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on
 - `docs/HANDOFF_2026-10-24.md`: **the latest handoff. Read it first.** PRs, uncommitted work, phone testing (Cloudflare tunnel), gotchas, next steps.
 - `docs/HANDOFF.md`: the original handoff from claude.ai, kept for reference.
 
-## Status (as of Oct 23, 2026)
+## Status (as of Oct 24, 2026)
 
 - Plan: website + SightLine head + mist that follows you. Plain version first.
-- Website: works end to end in Chrome on Apple's PC with a still photo fed in as the camera. It locks on from behind, follows off the edge, sweeps, re-finds by clothes, and holds HIDDEN. 12 automated tests pass. Not yet tried with a live webcam, on the iPhone in Bluefy, or with the real stand.
+- Website: works end to end in Chrome on Apple's PC with a still photo fed in as the camera. It locks on from behind, follows off the edge, sweeps, re-finds by clothes, and holds HIDDEN. 13 automated tests pass. Not yet tried on a real phone (Samsung in Chrome, iPhone in Bluefy) or with the real stand.
+- Oct 24: the page was reworked for phones (bottom control bar, front/back **Flip**, mirrored selfie view, taps that ignore a resting thumb, either way up, safe areas, camera recovery after switching apps). Checked at phone sizes in Chrome with a fake camera; not on a real phone yet. The wall fix is pushed to PR #6.
 - Firmware: the single-radar `.ino` got the mist switch; never compiled or run on hardware. The SightLine merge is written as a proposal PR for Kris; not compiled.
 - 3D mockup of SightLine + mist, with a hole-by-hole breadboard layout: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD. Fallback without mist: https://claude.ai/artifact/S6Zg89U4N5bQv58RC92Qv3 (both made in a separate session).
 - Apple's first live webcam test (Oct 23): after hiding behind a wall, the box got stuck on something nearby and never followed again. Fixed: the target's look is now kept from the moment of the tap, a "sort of" match is only trusted for 1.5 s, a clearly better match anywhere wins, and the colour fingerprint was made finer (it used to score red, orange and brown as identical). Each box now shows its match number.
@@ -139,7 +140,7 @@ Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on
 
 ## Next steps
 
-1. Run the Bluefy camera test on the iPhone (open question 2).
+1. Test the phone-friendly page through the Cloudflare tunnel (`docs/HANDOFF_2026-10-24.md`): the Samsung in Chrome, the iPhone in Bluefy (also answers open question 2). Check tapping, Flip, both ways up, and the fps chip.
 2. Ask the repo owner to merge PR #4 and PR #6 (website), then open the deployed `/tracker` on the iPhone in Bluefy. Check the frame rate.
 3. Try `/tracker` with the PC webcam: walk out of view, hide behind a chair, come back.
 4. Kris reviews the firmware merge, PR #7 (into `hardware-build-guide`); upload it and test with the website (`docs/BUILD_STEPS.md`).

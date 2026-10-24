@@ -85,15 +85,22 @@ The mist maker and its fan sit in a closed tank **beside** the base box, never i
 On the PC (testing):
 
 17. In the repo folder, run `npm install` once, then `npm run dev`. Open **http://localhost:5173/tracker** in **Chrome or Edge**. Safari and Firefox can't do Bluetooth.
-18. Click **Start camera** and allow the camera. The first start downloads the AI model (a few MB). Boxes appear around people. Tap one: TRACKING.
+18. Click **Start camera** and allow the camera. The first start downloads the AI model (a few MB). Boxes appear around people. Tap one: TRACKING. The front camera (and a PC webcam) is shown mirrored, like a selfie.
 19. Without the stand, the camera doesn't move, but the dial in the corner shows where the stand would point. Walk out of view and watch it go FOLLOWING, then SEARCHING, then LOST. Walk back in and it re-finds you.
+
+On a phone, held in your hand (a quick test before the stand):
+
+- Either way up works. Pick **Front** or **Back** on the start screen; while it runs, **Flip** in the bottom bar switches cameras (and lets go of the person, since the picture changes).
+- Tap a person with a quick tap. A thumb resting on the screen or a drag is ignored. Android phones buzz briefly when it locks on.
+- **Release** sits next to the state at the top left. **Show log** there lists the last decisions.
+- **Full screen** (Android and PCs) hides the browser bars. iPhones don't allow it from a web page.
 20. To check the tracking logic without a camera: `npm run test:tracker`.
 
 On the iPhone (the demo):
 
 21. The page must be on **https**, so it has to be deployed (Vercel; open question 3 in `CLAUDE.md`). Open `https://<the site>/tracker` in **Bluefy**, not Safari.
-22. Turn **off** rotation lock and hold the phone sideways. The page warns you if the picture is upright.
-23. **Connect stand** → pick **PhoneTracker**. Then **Start camera**. In Settings, pick the camera that faces the person: **Front** for SightLine, where the screen faces forward.
+22. Turn **off** rotation lock and put the phone in the stand sideways. Once the stand is connected, the page warns you if the picture is upright.
+23. On the start screen pick the camera that faces the person (**Front** for SightLine, where the screen faces forward), then **Start camera**. Then **Connect stand** in the bottom bar → pick **PhoneTracker**.
 
 ## Part E: tuning
 
@@ -122,6 +129,8 @@ Only if the website can't be used on the iPhone. It has no mist control and no F
 | "This browser can't use Bluetooth" | Safari or Firefox | iPhone: Bluefy. PC: Chrome or Edge |
 | "Can't open the camera" | Page not on https | Use the deployed https link, or `localhost` on the PC |
 | Camera never starts in Bluefy | Bluefy camera permission | iPhone Settings → Bluefy → Camera on; reload |
+| "The camera is blocked for this page" | Camera permission was refused once | Chrome: tap the icon left of the address → Permissions → Camera → Allow; reload. Bluefy: as above |
+| "The camera stopped" | Another app took the camera (FaceTime, the Camera app) | Close that app, then **Restart camera** |
 | "Turn the phone sideways" banner | Rotation lock on | Turn it off in Control Center |
 | Very low fps | Slow graphics, or the phone is hot | Close other apps; check the fps chip |
 | Motors twitch or buzz | ESP32 GND not on the – rail | Add the GND wire |

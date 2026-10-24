@@ -2,6 +2,21 @@
 
 Newest entry at the top. Add one entry at the end of every session.
 
+## 2026-10-24 — Wall fix pushed, phone-friendly page
+
+- **Pushed** the wall-hiding fix to PR #6 with Apple's OK (commit `be55d86`).
+- **Built (Apple's request):** a phone-friendly `/tracker` page before the phone test.
+  - Controls in one bottom bar: Mist (Off / On / Follow me), **Flip** (front/back camera, shown when the device has two), Connect stand, Settings, Full screen (Android and PCs only). Release sits next to the state at the top left; the log folds away behind **Show log**.
+  - Camera choice on the start screen (phones). Flipping lets go of the target, because the picture changes completely.
+  - The front camera (and a PC webcam) is shown mirrored, like a selfie. Boxes, taps, the FOLLOWING arrow and the Left/Right motor-test buttons follow the mirroring. The tracking brain still sees the unmirrored picture.
+  - Taps: only a quick, still touch counts, so a thumb resting on the edge or a drag doesn't pick someone. A ring shows where you tapped; Android buzzes on lock-on.
+  - Works either way up. Upright, the page swaps the camera's width and height angles for the brain, and shrinks the AI's copy by its long side (an upright frame used to be almost twice the pixels).
+  - Notch and home-bar safe areas, no double-tap zoom, the screen stays on after switching apps, the camera wakes up again after the phone pauses it, plain-words camera errors ("blocked", "busy", "not found"), and a "camera stopped" banner with Restart.
+  - The "turn the phone sideways" banner now shows only when a stand is connected (handheld upright is fine).
+- **Tested:** type check, 13/13 tests, and the page in Chrome at 390×844 and 844×390 with a fake two-camera feed (a street photo): locking on through the mirrored picture, Flip, camera choice in Settings, drags ignored, Settings sheet, log, the blocked-camera message. Chrome throttled its own window to about 1 fps during the test (it does the same with the page hidden), so speed wasn't measured.
+- **Not tested:** a real phone, Full screen, haptics, safe areas on a notched iPhone.
+- Next: the phone test through the tunnel (Samsung in Chrome, iPhone in Bluefy), then Apple's PC webcam retest of the wall fix.
+
 ## 2026-10-23 (evening) — Website, mist that follows you, SightLine merge
 
 - **Decided:** the software is a website (`/tracker` in the team app, code in `src/tracker/`), opened in Bluefy on the iPhone, because Apple builds on Windows. The Swift app stays as a backup.
