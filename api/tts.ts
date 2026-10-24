@@ -1,6 +1,6 @@
-// The "Read aloud" voice. The family page sends the words and the site language
-// here, and this asks ElevenLabs to say them in our chosen voice for that
-// language, then sends the sound straight back.
+// The voice for "Read aloud" and spoken alerts. The family page sends the
+// words and the site language here, and this asks ElevenLabs to say them in our
+// chosen voice for that language, then sends the sound straight back.
 //
 // The ElevenLabs key stays on the server (a Vercel environment variable) and is
 // never sent to the browser or written to the logs.
