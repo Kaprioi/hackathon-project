@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test:tracker": "node --test src/tracker/brain.test.mjs"
+    "test:tracker": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/nunito": "^5.3.0",

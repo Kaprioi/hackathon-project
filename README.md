@@ -118,8 +118,11 @@ Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx
 
 ## Phone Tracker page (`/tracker`)
 
-The page that drives the Phone Tracker stand: it finds people with the camera, follows the one you tap, and aims the stand and its humidifier mist at them. The code is in `src/tracker/` (see `src/tracker/README.md`); the hardware, firmware and build guide are in `phone-tracker/`.
+The phone camera page. Stand a phone on a table, sign in, open `/tracker` and press **Start watching**. A green "Camera on - video stays on this phone" sign stays on screen while it watches. The phone finds people with its camera (all on the phone) and sends only short text notes to the `movement_events` table: what happened (moving, still, nobody, possible fall), which side of the room (left/middle/right), posture (standing/sitting/lying) and the time, plus a "still watching" heartbeat every minute. No video or pictures ever leave the phone. If nobody is signed in it asks you to sign in first; without Supabase keys you can still try the camera, but nothing is sent.
+
+It also still drives the optional Phone Tracker stand: it follows the person you tap and aims the stand and its humidifier mist at them. The code is in `src/tracker/` (see `src/tracker/README.md`); the hardware, firmware and build guide are in `phone-tracker/`.
 
 - On a PC: `npm run dev`, then open http://localhost:5173/tracker in **Chrome or Edge**. Safari and Firefox can't use Bluetooth.
 - On an iPhone: open the deployed `https://…/tracker` link in the free **Bluefy** browser. It has to be https; Safari can't use Bluetooth from a website.
-- Test the tracking logic without a camera: `npm run test:tracker`.
+- Test the tracking and event logic without a camera: `npm run test:tracker`.
+- The camera needs https on a phone: use the deployed Vercel link (or `npm run dev -- --host` plus an https tunnel).
