@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink } from "react-router";
+import { useLanguage } from "../i18n/useLanguage";
 import { useOnline } from "../lib/useOnline";
 import { Arrow } from "./ButtonLink";
 import { DisplayButton, DisplayPanel } from "./DisplaySettings";
 import { motionIsReduced } from "../lib/displaySettings";
+import LanguagePicker from "./LanguagePicker";
 
 // The header, footer and page frame shared by every page except the phone camera.
 // Copied from the Lovable design: a sticky header that turns frosted when you
@@ -44,6 +46,7 @@ export function SiteHeader() {
     setDisplayOpen(false);
     displayButton.current?.focus();
   }, []);
+  const { t } = useLanguage();
 
   useEffect(() => {
     const onScroll = () => {
@@ -91,13 +94,17 @@ export function SiteHeader() {
                     end
                     className="relative inline-flex min-h-12 items-center rounded-2xl px-3 text-lg lg:px-4 font-extrabold text-brand no-underline transition-colors hover:bg-lilac aria-[current=page]:bg-lilac aria-[current=page]:text-ink"
                   >
-                    {link.label}
+                    {t(link.label)}
                   </NavLink>
                 </li>
               ))}
             </ul>
           </nav>
           <div className="flex items-center gap-2">
+            {/* Short names on wide screens (next to the links), full names on tablets
+                (next to the menu button), and inside the menu on phones. */}
+            <LanguagePicker compact className="hidden lg:flex" />
+            <LanguagePicker className="hidden md:flex lg:hidden" />
             <DisplayButton
               open={displayOpen}
               buttonRef={displayButton}
@@ -112,7 +119,7 @@ export function SiteHeader() {
               className="site-menu-button grid h-12 w-12 place-items-center rounded-2xl bg-lilac text-brand lg:hidden"
               aria-expanded={menuOpen}
               aria-controls="mobile-menu"
-              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              aria-label={menuOpen ? t("Close menu") : t("Open menu")}
               onClick={() => {
                 setMenuOpen((open) => !open);
                 setDisplayOpen(false);
@@ -137,6 +144,7 @@ export function SiteHeader() {
 
         {menuOpen && (
           <nav id="mobile-menu" aria-label="Mobile" className="site-mobile-menu animate-slide-in border-t-2 border-lilac px-6 pb-6 pt-3 lg:hidden">
+            <LanguagePicker className="mb-3 md:hidden" />
             <ul className="flex flex-col gap-2">
               {navLinks.map((link, i) => (
                 <li key={link.to} className="animate-slide-in" style={{ animationDelay: `${i * 60}ms` }}>
@@ -146,7 +154,7 @@ export function SiteHeader() {
                     onClick={() => setMenuOpen(false)}
                     className="group flex min-h-14 items-center justify-between rounded-2xl bg-surface px-5 text-xl font-extrabold text-brand no-underline aria-[current=page]:bg-lilac aria-[current=page]:text-ink"
                   >
-                    {link.label}
+                    {t(link.label)}
                     <Arrow />
                   </NavLink>
                 </li>
@@ -165,7 +173,7 @@ export function SiteHeader() {
 
       <button
         type="button"
-        aria-label="Back to top"
+        aria-label={t("Back to top")}
         onClick={() => window.scrollTo({ top: 0, behavior: motionIsReduced() ? "auto" : "smooth" })}
         className={`fixed bottom-6 right-6 z-50 grid h-14 w-14 place-items-center rounded-full bg-brand text-on-brand shadow-lift transition-all duration-300 hover:bg-brand-dark ${progress > 0.12 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-6 opacity-0"}`}
       >
@@ -185,18 +193,19 @@ export function SiteHeader() {
 }
 
 export function SiteFooter() {
+  const { t } = useLanguage();
   return (
     <footer className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 pb-10 text-muted">
       <span className="group flex items-center gap-2 font-bold">
         <LogoMark size={28} /> © 2026 CareNest
       </span>
-      <span>Only the people you invite can see anything.</span>
+      <span>{t("Only the people you invite can see anything.")}</span>
       <nav aria-label="Footer" className="flex flex-wrap gap-x-5">
         <Link to="/help" className="inline-flex min-h-12 items-center font-bold text-brand underline underline-offset-4">
-          Need help?
+          {t("Need help?")}
         </Link>
         <Link to="/account" className="inline-flex min-h-12 items-center font-bold text-brand underline underline-offset-4">
-          Your account
+          {t("Your account")}
         </Link>
       </nav>
     </footer>
@@ -204,14 +213,15 @@ export function SiteFooter() {
 }
 
 /** A small green "Live" sign with a pulsing dot. */
-export function LivePill({ children = "Live" }: { children?: React.ReactNode }) {
+export function LivePill({ children }: { children?: React.ReactNode }) {
+  const { t } = useLanguage();
   return (
     <span className="flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 text-sm font-bold text-leaf">
       <span className="relative flex h-2 w-2">
         <span className="absolute inset-0 animate-pulse-ring rounded-full bg-leaf" />
         <span className="relative h-2 w-2 rounded-full bg-leaf" />
       </span>
-      {children}
+      {children ?? t("Live")}
     </span>
   );
 }
@@ -233,15 +243,17 @@ export function Blobs({ fixed = false }: { fixed?: boolean }) {
 /** Skip link, header, the page itself, and the footer. Names the browser tab too. */
 export default function SiteLayout({ title, children }: { title?: string; children: React.ReactNode }) {
   const online = useOnline();
-
+  const { t } = useLanguage();
+  // Pages pass the English title; it is translated here.
+  const tabTitle = title && t(title);
   useEffect(() => {
-    if (!title) return;
+    if (!tabTitle) return;
     const previous = document.title;
-    document.title = `${title} — CareNest`;
+    document.title = `${tabTitle} — CareNest`;
     return () => {
       document.title = previous;
     };
-  }, [title]);
+  }, [tabTitle]);
 
   return (
     // The footer stays at the bottom of the screen, so it doesn't jump while a page loads.
@@ -250,12 +262,12 @@ export default function SiteLayout({ title, children }: { title?: string; childr
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-surface focus:px-5 focus:py-3 focus:font-bold"
       >
-        Skip to main content
+        {t("Skip to main content")}
       </a>
       <SiteHeader />
       {!online && (
         <p role="status" className="mx-4 mt-2 rounded-2xl bg-sun px-5 py-3 text-center text-lg font-bold text-ink">
-          You're offline. Check your Wi-Fi or mobile data; the page will catch up when you're back online.
+          {t("You're offline. Check your Wi-Fi or mobile data; the page will catch up when you're back online.")}
         </p>
       )}
       <main id="main" className="flex-1">

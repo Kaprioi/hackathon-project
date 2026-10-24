@@ -3,6 +3,10 @@
 // Loosely based on common fall-risk signs (age, past falls, walking aids, living
 // alone, getting up at night, lots of medicines). A rough guide, not medical advice.
 // No React here, so it can be tested with `npm test`.
+// The words here are English; the page translates them (likelihood and
+// prettyTime take an optional `t` for the words they build).
+
+import { english, type Translate } from "../i18n/translate.ts";
 
 export interface Choice {
   value: string;
@@ -168,15 +172,16 @@ export interface Likelihood {
 }
 
 /** "07:30" -> "7:30 am". */
-export function prettyTime(hhmm: string | undefined): string {
+export function prettyTime(hhmm: string | undefined, t: Translate = english): string {
   if (!hhmm || !TIME.test(hhmm)) return "";
   const [h, m] = hhmm.split(":").map(Number);
-  const suffix = h < 12 ? "am" : "pm";
   const hour = h % 12 === 0 ? 12 : h % 12;
-  return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
+  // h24 lets a language use the 24-hour clock instead (Chinese does).
+  const time = { h: hour, m: String(m).padStart(2, "0"), h24: h };
+  return h < 12 ? t("{h}:{m} am", time) : t("{h}:{m} pm", time);
 }
 
-export function likelihood(answers: Answers): Likelihood {
+export function likelihood(answers: Answers, t: Translate = english): Likelihood {
   let score = 0;
   const reasons: string[] = [];
   for (const q of QUESTIONS) {
@@ -184,26 +189,28 @@ export function likelihood(answers: Answers): Likelihood {
     const picked = q.choices.find((c) => c.value === answers[q.id]);
     if (picked?.points) {
       score += picked.points;
-      if (picked.reason) reasons.push(picked.reason);
+      if (picked.reason) reasons.push(t(picked.reason));
     }
   }
 
   const level: Level = score >= 8 ? "higher" : score >= 4 ? "medium" : "lower";
 
   const watchTimes: string[] = [];
-  const wake = prettyTime(answers.wake as string | undefined);
-  const bed = prettyTime(answers.bed as string | undefined);
+  const wake = prettyTime(answers.wake as string | undefined, t);
+  const bed = prettyTime(answers.bed as string | undefined, t);
   const alone = (answers.alone as string[] | undefined) ?? [];
   if (answers.nights === "once" || answers.nights === "often")
-    watchTimes.push(bed && wake ? `Overnight (${bed} to ${wake}), when they get up` : "Overnight, when they get up");
-  if (wake) watchTimes.push(`The first hour after waking up (around ${wake})`);
-  if (bed) watchTimes.push(`Getting ready for bed (around ${bed})`);
+    watchTimes.push(
+      bed && wake ? t("Overnight ({bed} to {wake}), when they get up", { bed, wake }) : t("Overnight, when they get up"),
+    );
+  if (wake) watchTimes.push(t("The first hour after waking up (around {wake})", { wake }));
+  if (bed) watchTimes.push(t("Getting ready for bed (around {bed})", { bed }));
   const aloneWords: Record<string, string> = {
     morning: "Mornings, when they are on their own",
     afternoon: "Afternoons, when they are on their own",
     evening: "Evenings, when they are on their own",
   };
-  for (const part of alone) if (aloneWords[part]) watchTimes.push(aloneWords[part]);
+  for (const part of alone) if (aloneWords[part]) watchTimes.push(t(aloneWords[part]));
 
   return { level, score, reasons, watchTimes };
 }

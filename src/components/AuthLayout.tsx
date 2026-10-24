@@ -1,5 +1,7 @@
 import { Link } from "react-router";
+import { useLanguage } from "../i18n/useLanguage";
 import { buttonVariants } from "./ButtonLink";
+import LanguagePicker from "./LanguagePicker";
 import SiteLayout, { Blobs } from "./SiteLayout";
 
 export const linkButton =
@@ -21,6 +23,8 @@ export default function AuthLayout({ title, children }: { title: string; childre
       <section className="relative isolate min-h-screen px-4 pb-24 pt-6">
         <Blobs fixed />
         <div className="mx-auto max-w-xl animate-slide-in rounded-[40px] bg-surface p-7 shadow-lift sm:p-10">
+          {/* Easy to find before logging in, on phones too (where the header hides it in the menu). */}
+          <LanguagePicker className="mb-5 justify-end" />
           {children}
         </div>
       </section>
@@ -46,18 +50,19 @@ export function Message({ kind, children }: { kind: "error" | "success"; childre
 
 // Shown instead of a form when the Supabase keys haven't been added yet.
 export function NotConfigured() {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-4xl font-extrabold">Logging in isn't ready yet</h1>
+      <h1 className="text-4xl font-extrabold">{t("Logging in isn't ready yet")}</h1>
       <p className="text-xl text-muted">
-        We're still setting this part up. Please try again a little later — sorry for the wait!
+        {t("We're still setting this part up. Please try again a little later — sorry for the wait!")}
       </p>
       <p className="rounded-2xl bg-sun p-4 text-lg">
         <strong>For the team:</strong> add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to{" "}
         <code>.env.local</code> (or to Vercel's environment variables), then restart the app.
       </p>
       <Link to="/" className={primaryButton}>
-        Back to the homepage
+        {t("Back to the homepage")}
       </Link>
     </div>
   );

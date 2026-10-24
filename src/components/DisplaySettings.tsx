@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { useLanguage } from "../i18n/useLanguage";
 import { systemPrefersLessMotion, useDisplaySettings, type TextSize, type Theme } from "../lib/displaySettings";
 
 // The "Display" button in the header and the small panel it opens: text size
@@ -23,6 +24,7 @@ export function DisplayButton({ open, onToggle, buttonRef }: {
   onToggle: () => void;
   buttonRef: React.RefObject<HTMLButtonElement | null>;
 }) {
+  const { t } = useLanguage();
   return (
     <button
       ref={buttonRef}
@@ -35,8 +37,8 @@ export function DisplayButton({ open, onToggle, buttonRef }: {
       <span aria-hidden="true" className="text-xl font-black leading-none">
         Aa
       </span>
-      <span className="sr-only lg:not-sr-only">Display</span>
-      <span className="sr-only">settings</span>
+      <span className="sr-only lg:not-sr-only">{t("Display")}</span>
+      <span className="sr-only">{t("settings")}</span>
     </button>
   );
 }
@@ -48,6 +50,7 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null);
   const [systemLessMotion] = useState(systemPrefersLessMotion);
   const reduceMotion = settings.reduceMotion ?? systemLessMotion;
+  const { t } = useLanguage();
 
   // Escape closes the panel.
   useEffect(() => {
@@ -70,7 +73,7 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
       className="absolute inset-x-4 top-full mt-2 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-[28px] border-[3px] border-lilac bg-surface p-5 text-ink shadow-lift sm:left-auto sm:w-[26rem]"
     >
       <h2 id={`${id}-title`} className="text-2xl font-extrabold">
-        Display settings
+        {t("Display settings")}
       </h2>
 
       <Choices
@@ -106,9 +109,9 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
         onClick={onClose}
         className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-brand px-5 text-lg font-extrabold text-on-brand hover:bg-brand-dark"
       >
-        Done
+        {t("Done")}
       </button>
-      <p className="mt-3 text-base text-muted">Saved in this browser.</p>
+      <p className="mt-3 text-base text-muted">{t("Saved in this browser.")}</p>
     </div>
   );
 }
@@ -127,9 +130,10 @@ function Choices<T extends string>({
   value: T;
   onChange: (value: T) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <fieldset className="mt-4">
-      <legend className="text-xl font-extrabold">{legend}</legend>
+      <legend className="text-xl font-extrabold">{t(legend)}</legend>
       <div className="mt-2 flex flex-col gap-2">
         {options.map((o) => (
           <label
@@ -144,7 +148,7 @@ function Choices<T extends string>({
               onChange={() => onChange(o.value)}
               className="h-6 w-6 shrink-0 accent-brand"
             />
-            <span className={o.className ?? "text-lg"}>{o.label}</span>
+            <span className={o.className ?? "text-lg"}>{t(o.label)}</span>
           </label>
         ))}
       </div>
@@ -164,12 +168,13 @@ function Switch({
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <label className="mt-4 flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-2xl border-[3px] border-lilac px-4 py-2 has-[:checked]:border-leaf">
       <span>
-        <span className="block text-xl font-extrabold">{label}</span>
+        <span className="block text-xl font-extrabold">{t(label)}</span>
         <span className="block text-base text-muted">
-          {hint} <strong className="text-ink">{checked ? "On" : "Off"}</strong>
+          {t(hint)} <strong className="text-ink">{checked ? t("On") : t("Off")}</strong>
         </span>
       </span>
       <input

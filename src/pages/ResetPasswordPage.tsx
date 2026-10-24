@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import AuthLayout, { Message, NotConfigured, linkButton, primaryButton } from "../components/AuthLayout";
 import { PasswordField } from "../components/FormFields";
+import { useLanguage } from "../i18n/useLanguage";
 import { friendlyError } from "../lib/friendlyError";
 import { authLinkError, clearAuthLinkError, supabase } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
@@ -12,6 +13,7 @@ import { AFTER_LOGIN } from "./LoginPage";
 export default function ResetPasswordPage() {
   const session = useSession();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [linkError] = useState(authLinkError);
   const [password, setPassword] = useState("");
   const [fieldError, setFieldError] = useState("");
@@ -49,29 +51,29 @@ export default function ResetPasswordPage() {
       {!supabase ? (
         <NotConfigured />
       ) : session === undefined ? (
-        <p className="text-xl text-muted">Checking your link…</p>
+        <p className="text-xl text-muted">{t("Checking your link…")}</p>
       ) : session === null ? (
         <div className="flex flex-col gap-5">
-          <h1 className="text-4xl font-extrabold">{title}</h1>
+          <h1 className="text-4xl font-extrabold">{t(title)}</h1>
           <p className="text-xl text-muted">
             {linkError
-              ? "The link in your email has run out or was already used. That's okay — you can ask for a new one."
-              : "To choose a new password, please open the link from the email we sent you, or ask for a new one."}
+              ? t("The link in your email has run out or was already used. That's okay — you can ask for a new one.")
+              : t("To choose a new password, please open the link from the email we sent you, or ask for a new one.")}
           </p>
           <Link to="/login?mode=forgot" className={primaryButton}>
-            Send me a new link
+            {t("Send me a new link")}
           </Link>
           <Link to="/login" className={`${linkButton} self-center`}>
-            Back to log in
+            {t("Back to log in")}
           </Link>
         </div>
       ) : (
         <>
-          <h1 className="text-4xl font-extrabold">{title}</h1>
-          <p className="mt-3 text-xl text-muted">Type a new password below. Make it something you will remember.</p>
+          <h1 className="text-4xl font-extrabold">{t(title)}</h1>
+          <p className="mt-3 text-xl text-muted">{t("Type a new password below. Make it something you will remember.")}</p>
 
           <div aria-live="polite" className="mt-6 empty:hidden">
-            {formError && <Message kind="error">{formError}</Message>}
+            {formError && <Message kind="error">{t(formError)}</Message>}
           </div>
 
           <form noValidate onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6">
@@ -90,7 +92,7 @@ export default function ResetPasswordPage() {
               error={fieldError}
             />
             <button type="submit" className={`${primaryButton} mt-2`} disabled={busy}>
-              {busy ? "Please wait…" : "Save new password"}
+              {busy ? t("Please wait…") : t("Save new password")}
             </button>
           </form>
         </>

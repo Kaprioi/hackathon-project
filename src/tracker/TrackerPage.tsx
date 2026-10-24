@@ -9,7 +9,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, PointerEvent, ReactNode } from "react";
 import { Link } from "react-router";
 import { buttonVariants } from "../components/ButtonLink";
+import Highlight from "../components/Highlight";
+import LanguagePicker from "../components/LanguagePicker";
 import { Blobs, LogoMark } from "../components/SiteLayout";
+import { useLanguage } from "../i18n/useLanguage";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
 import { Brain, MODE_LABEL } from "./brain.ts";
@@ -198,6 +201,8 @@ function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { active?: bool
 }
 
 export default function TrackerPage() {
+  // Only the start screen is translated for now; the camera screen stays in English.
+  const { t } = useLanguage();
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const analysisRef = useRef<HTMLCanvasElement | null>(null);
@@ -651,22 +656,25 @@ export default function TrackerPage() {
                 <LogoMark />
                 CareNest
               </Link>
+              <LanguagePicker className="justify-center" />
               <h1 className="text-4xl font-extrabold">
-                Phone <span className="text-gradient-brand">camera</span>
+                <Highlight text={t("Phone *camera*")} />
               </h1>
               <p className="text-xl text-muted">
-                Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a
-                few words, how things are going.
+                {t(
+                  "Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a few words, how things are going.",
+                )}
               </p>
               <p className="rounded-2xl bg-mint px-4 py-3 text-lg font-bold text-ink">
-                Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or
-                pictures ever leave it.
+                {t(
+                  'Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or pictures ever leave it.',
+                )}
               </p>
               {account === "signed-out" ? (
                 <div className="space-y-3">
-                  <p className="text-xl">Please sign in first, so your family can see the updates.</p>
+                  <p className="text-xl">{t("Please sign in first, so your family can see the updates.")}</p>
                   <Link to="/login" className={`${buttonVariants.primary} min-h-16 w-full text-2xl`}>
-                    Sign in
+                    {t("Sign in")}
                   </Link>
                 </div>
               ) : (
@@ -675,19 +683,21 @@ export default function TrackerPage() {
                   disabled={loading || account === "checking"}
                   className={`${buttonVariants.primary} min-h-16 w-full text-2xl disabled:opacity-60`}
                 >
-                  {loading ? "Starting... (the first time takes a little longer)" : "Start watching"}
+                  {loading ? t("Starting... (the first time takes a little longer)") : t("Start watching")}
                 </button>
               )}
               {account === "no-database" && (
                 <p className="rounded-2xl bg-sun px-4 py-3 text-lg text-ink">
-                  The database isn't set up on this website yet, so you can try the camera but your family won't see
-                  anything.
+                  {t(
+                    "The database isn't set up on this website yet, so you can try the camera but your family won't see anything.",
+                  )}
                 </p>
               )}
               {!Stand.supported() && (
                 <p className="text-base text-muted">
-                  Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this
-                  page in the Bluefy app.
+                  {t(
+                    "Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this page in the Bluefy app.",
+                  )}
                 </p>
               )}
             </div>

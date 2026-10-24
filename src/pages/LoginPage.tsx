@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useSearchParams } from "react-router";
 import AuthLayout, { Message, NotConfigured, linkButton, primaryButton } from "../components/AuthLayout";
 import { PasswordField, TextField } from "../components/FormFields";
+import { useLanguage } from "../i18n/useLanguage";
 import { friendlyError } from "../lib/friendlyError";
 import { authLinkError, clearAuthLinkError, supabase } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
@@ -37,6 +38,7 @@ export const RESET_PASSWORD = "/reset-password";
 export default function LoginPage() {
   const session = useSession();
   const location = useLocation();
+  const { t } = useLanguage();
   const [searchParams] = useSearchParams();
   // Links can open a particular form, like /login?mode=sign-up or /login?mode=forgot.
   const requestedMode = searchParams.get("mode");
@@ -48,8 +50,8 @@ export default function LoginPage() {
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [formError, setFormError] = useState(authLinkError ? friendlyError(authLinkError) : "");
   const [notice, setNotice] = useState(location.state?.loggedOut ? "You've logged out. See you soon!" : "");
-  // What the "check your email" screen says.
-  const [sentMessage, setSentMessage] = useState("");
+  // What the "check your email" screen says (English, with the email filled in when shown).
+  const [sentMessage, setSentMessage] = useState({ text: "", email: "" });
   const [busy, setBusy] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -104,9 +106,10 @@ export default function LoginPage() {
           return setFormError("There is already an account with this email. Try logging in instead.");
         // With email confirmation turned on there is no session until the link is tapped.
         if (!data.session) {
-          setSentMessage(
-            `We've sent an email to ${cleanEmail}. Open it and tap the link inside to finish creating your account.`,
-          );
+          setSentMessage({
+            text: "We've sent an email to {email}. Open it and tap the link inside to finish creating your account.",
+            email: cleanEmail,
+          });
           switchMode("sent");
         }
       } else if (mode === "forgot") {
@@ -114,9 +117,10 @@ export default function LoginPage() {
           redirectTo: `${window.location.origin}${RESET_PASSWORD}`,
         });
         if (error) return setFormError(friendlyError(error.message));
-        setSentMessage(
-          `If there's an account for ${cleanEmail}, we've sent it an email. Open it and tap the link inside to choose a new password.`,
-        );
+        setSentMessage({
+          text: "If there's an account for {email}, we've sent it an email. Open it and tap the link inside to choose a new password.",
+          email: cleanEmail,
+        });
         switchMode("sent");
       }
     } catch (err) {
@@ -134,34 +138,35 @@ export default function LoginPage() {
       {!supabase ? (
         <NotConfigured />
       ) : session === undefined ? (
-        <p className="text-xl text-muted">Loading…</p>
+        <p className="text-xl text-muted">{t("Loading…")}</p>
       ) : mode === "sent" ? (
         <div className="flex flex-col gap-5">
           <div aria-hidden="true" className="grid h-20 w-20 place-items-center rounded-full bg-sun text-4xl">
             ✉️
           </div>
           <h1 ref={headingRef} tabIndex={-1} className="text-4xl font-extrabold outline-none">
-            {titles.sent}
+            {t(titles.sent)}
           </h1>
-          <p className="text-xl">{sentMessage}</p>
+          <p className="text-xl">{t(sentMessage.text, { email: sentMessage.email })}</p>
           <p className="rounded-2xl bg-lilac p-4 text-lg">
-            <strong>Can't find it?</strong> It can take a few minutes to arrive. Look in your spam or junk folder too.
+            <strong>{t("Can't find it?")}</strong>{" "}
+            {t("It can take a few minutes to arrive. Look in your spam or junk folder too.")}
           </p>
           <button type="button" className={`${primaryButton} mt-2`} onClick={() => switchMode("sign-in")}>
-            Back to log in
+            {t("Back to log in")}
           </button>
         </div>
       ) : (
         <>
           <h1 ref={headingRef} tabIndex={-1} className="text-4xl font-extrabold outline-none">
-            {titles[mode]}
+            {t(titles[mode])}
           </h1>
-          <p className="mt-3 text-xl text-muted">{intros[mode]}</p>
+          <p className="mt-3 text-xl text-muted">{t(intros[mode])}</p>
 
           {/* Messages are read out by screen readers as soon as they appear. */}
           <div aria-live="polite" className="mt-6 empty:hidden">
-            {formError && <Message kind="error">{formError}</Message>}
-            {notice && <Message kind="success">{notice}</Message>}
+            {formError && <Message kind="error">{t(formError)}</Message>}
+            {notice && <Message kind="success">{t(notice)}</Message>}
           </div>
 
           <form noValidate onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6">
@@ -198,35 +203,35 @@ export default function LoginPage() {
 
             {mode === "sign-in" && (
               <button type="button" className={`${linkButton} self-start`} onClick={() => switchMode("forgot")}>
-                Forgot your password?
+                {t("Forgot your password?")}
               </button>
             )}
 
             <button type="submit" className={`${primaryButton} mt-2`} disabled={busy}>
-              {busy ? "Please wait…" : submitLabels[mode]}
+              {busy ? t("Please wait…") : t(submitLabels[mode])}
             </button>
           </form>
 
           <div className="mt-8 border-t-2 border-mint pt-6 text-lg">
             {mode === "sign-in" && (
               <p>
-                New to CareNest?{" "}
+                {t("New to CareNest?")}{" "}
                 <button type="button" className={linkButton} onClick={() => switchMode("sign-up")}>
-                  Create an account
+                  {t("Create an account")}
                 </button>
               </p>
             )}
             {mode === "sign-up" && (
               <p>
-                Already have an account?{" "}
+                {t("Already have an account?")}{" "}
                 <button type="button" className={linkButton} onClick={() => switchMode("sign-in")}>
-                  Log in instead
+                  {t("Log in instead")}
                 </button>
               </p>
             )}
             {mode === "forgot" && (
               <button type="button" className={linkButton} onClick={() => switchMode("sign-in")}>
-                Back to log in
+                {t("Back to log in")}
               </button>
             )}
           </div>
