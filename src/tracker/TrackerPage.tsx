@@ -16,6 +16,8 @@ import Highlight from "../components/Highlight";
 import LanguagePicker from "../components/LanguagePicker";
 import { Blobs, LogoMark } from "../components/SiteLayout";
 import { useLanguage } from "../i18n/useLanguage";
+import type { Watcher } from "../lib/live";
+import { LiveHost, fetchIceServers, supabaseSignal } from "../lib/live";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
 import { Brain, MODE_LABEL } from "./brain.ts";
@@ -101,6 +103,13 @@ async function loginToken(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** "Sam is watching live", "Sam and Jo are watching live". */
+function watchingText(watchers: Watcher[]): string {
+  const names = watchers.map((w) => w.name);
+  const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `${list} ${names.length === 1 ? "is" : "are"} watching live`;
 }
 
 /** The emergency contact's name for the screen. */
@@ -707,6 +716,9 @@ export default function TrackerPage() {
   const sendChainRef = useRef<Promise<void>>(Promise.resolve());
   const watchingRef = useRef(false); // true from "Start watching" until it stops (camera flips and wake-ups don't count)
   const tabsRef = useRef<BroadcastChannel | null>(null);
+  const liveRef = useRef<LiveHost | null>(null); // family watching live (src/lib/live.ts)
+  const liveStartingRef = useRef(false);
+  const micRef = useRef<MediaStreamTrack | null>(null); // the room's sound, for live video
 
   const [running, setRunning] = useState(false);
   const [account, setAccount] = useState<Account>(supabase ? "checking" : "no-database");
@@ -727,6 +739,10 @@ export default function TrackerPage() {
   const [log, setLog] = useState<LogLine[]>([]);
   /** Why the camera stopped by itself, shown on the start screen (English; translated when shown). */
   const [stopNote, setStopNote] = useState("");
+  /** Who's watching live right now (shown in red at the top), whether family can, and why not. */
+  const [watchers, setWatchers] = useState<Watcher[]>([]);
+  const [liveReady, setLiveReady] = useState(false);
+  const [liveNote, setLiveNote] = useState("");
   const [snap, setSnap] = useState<Snapshot>({
     mode: "idle",
     note: "Tap a person to lock on.",
@@ -958,6 +974,58 @@ export default function TrackerPage() {
     return () => window.clearTimeout(id);
   }, [ripple]);
 
+  /** Stops live video (the camera stopped, it was switched off, or the account changed). */
+  const stopLive = useCallback(() => {
+    liveRef.current?.stop();
+    liveRef.current = null;
+    micRef.current?.stop();
+    micRef.current = null;
+    setWatchers([]);
+    setLiveReady(false);
+  }, []);
+
+  /**
+   * Lets family watch live: opens the microphone, then waits on this family's private
+   * channel for "Watch live" from the family page. Needs a signed-in account (its care circle).
+   */
+  const startLive = useCallback(async () => {
+    const db = supabase;
+    const cloud = cloudRef.current;
+    if (!db || !cloud || liveRef.current || liveStartingRef.current || !settingsRef.current.liveVideo) return;
+    liveStartingRef.current = true;
+    setLiveNote("");
+    const stillWanted = () => watchingRef.current && cloudRef.current === cloud && settingsRef.current.liveVideo;
+    try {
+      if (!micRef.current) {
+        try {
+          const sound = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          });
+          micRef.current = sound.getAudioTracks()[0] ?? null;
+        } catch {
+          setLiveNote("The microphone is blocked, so family can watch but can't hear the room or talk.");
+        }
+      }
+      const signal = await supabaseSignal(db, cloud.circleId);
+      if (!stillWanted()) {
+        signal.close();
+        return;
+      }
+      const host = new LiveHost({ signal, iceServers: () => loginToken().then(fetchIceServers), onWatchers: setWatchers });
+      host.setTracks(streamRef.current?.getVideoTracks()[0] ?? null, micRef.current);
+      liveRef.current = host;
+      setLiveReady(true);
+    } catch (e) {
+      setLiveNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      liveStartingRef.current = false;
+      if (!stillWanted() && !liveRef.current) {
+        micRef.current?.stop();
+        micRef.current = null;
+      }
+    }
+  }, []);
+
   // Check whether someone is signed in (the family page only works for signed-in people).
   useEffect(() => {
     const db = supabase;
@@ -969,6 +1037,7 @@ export default function TrackerPage() {
       // care circle, and if the camera is on, carry on in the new person's circle.
       if (!cloudRef.current || cloudRef.current.userId === session?.user.id) return;
       cloudRef.current = null;
+      setTimeout(stopLive, 0); // live video belongs to the old family (later: not inside this callback)
       if (!session || !watchingRef.current) return;
       // Later, not inside this callback: Supabase asks not to call it from here.
       setTimeout(() => {
@@ -977,13 +1046,14 @@ export default function TrackerPage() {
             if (cloudRef.current || !watchingRef.current) return;
             cloudRef.current = cloud;
             report(reporterRef.current.start(performance.now()));
+            void startLive();
           },
           (e: unknown) => setSendError(e instanceof Error ? e.message : String(e)),
         );
       }, 0);
     });
     return () => data.subscription.unsubscribe();
-  }, [report]);
+  }, [report, startLive, stopLive]);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     const next = { ...settingsRef.current, ...patch };
@@ -1034,6 +1104,7 @@ export default function TrackerPage() {
           return;
         }
         streamRef.current = stream;
+        liveRef.current?.setTracks(stream.getVideoTracks()[0] ?? null, micRef.current); // a flip: watchers see the new camera
         const track = stream.getVideoTracks()[0];
         const info = track?.getSettings() ?? {};
         deviceIdRef.current = info.deviceId;
@@ -1106,6 +1177,7 @@ export default function TrackerPage() {
       if (wasWatching && tellFamily) report(reporterRef.current.stop());
       cameraRequestRef.current++; // cancel a camera start that's still under way
       stopCamera();
+      stopLive();
       brainRef.current.release();
       faceWatcher.forget();
       setRunning(false);
@@ -1115,10 +1187,16 @@ export default function TrackerPage() {
       void wakeLockRef.current?.release();
       wakeLockRef.current = null;
     },
-    [stopCamera, report, faceWatcher],
+    [stopCamera, stopLive, report, faceWatcher],
   );
 
   const stopWatching = useCallback(() => finishWatching("", true), [finishWatching]);
+
+  // Family can watch live while the camera is on (and the setting allows it).
+  useEffect(() => {
+    if (running && settings.liveVideo) void startLive();
+    else stopLive();
+  }, [running, settings.liveVideo, startLive, stopLive]);
 
   // Closing the tab (or the browser) doesn't run the clean-up below, so say
   // "stopped" here. The page is going away, so it is sent the keepalive way.
@@ -1128,11 +1206,12 @@ export default function TrackerPage() {
       watchingRef.current = false;
       cloudRef.current?.sendOnClose(reporterRef.current.stop());
       stopCamera();
+      stopLive();
       setRunning(false);
     };
     window.addEventListener("pagehide", onPageHide);
     return () => window.removeEventListener("pagehide", onPageHide);
-  }, [stopCamera]);
+  }, [stopCamera, stopLive]);
 
   // A hidden page (another tab, another app, screen off) is paused by the browser,
   // so it isn't really watching. After a short while, stop and tell the family.
@@ -1212,13 +1291,14 @@ export default function TrackerPage() {
       if (watchingRef.current) report(reporterRef.current.stop());
       watchingRef.current = false;
       stopCamera();
+      stopLive();
       detectorRef.current?.close();
       detectorRef.current = null;
       detectorLoadRef.current = null;
       stand.disconnect();
       void wakeLockRef.current?.release();
     };
-  }, [stopCamera, report]);
+  }, [stopCamera, stopLive, report]);
 
   // The main loop: once per new camera frame.
   useEffect(() => {
@@ -1527,10 +1607,17 @@ export default function TrackerPage() {
       <div className="pointer-events-none absolute inset-x-0 top-0" inert={!running}>
         {running && (
           <div
-            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 bg-leaf px-3 py-1.5 text-center font-extrabold text-on-brand shadow-soft"
+            className={`flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 px-3 py-1.5 text-center font-extrabold text-on-brand shadow-soft ${watchers.length ? "bg-alert" : "bg-leaf"}`}
             style={{ ...SIDES, paddingTop: "max(0.375rem, env(safe-area-inset-top))" }}
           >
-            <span className="text-base">● Camera on - video stays on this phone</span>
+            {/* Whoever is on camera can always see when family are watching or talking */}
+            <span className="text-base" role="status">
+              {watchers.length
+                ? `● LIVE: ${watchingText(watchers)}${watchers.some((w) => w.talking) ? " (talking)" : ""}`
+                : liveReady
+                  ? "● Camera on - family can watch live"
+                  : "● Camera on - video stays on this phone"}
+            </span>
             <span className="text-sm font-bold">
               {sendError
                 ? "Family can't see updates right now"
@@ -1681,6 +1768,7 @@ export default function TrackerPage() {
           mirrored={mirrored}
           fullscreen={canFullscreen ? { on: fullscreen, toggle: toggleFullscreen } : null}
           turnNow={snap.turn}
+          live={{ watchers, ready: liveReady, note: liveNote }}
           testAlarm={() => {
             closeSettings();
             unlockSound();
@@ -1717,7 +1805,7 @@ export default function TrackerPage() {
               </p>
               <p className="rounded-2xl bg-mint px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
                 {t(
-                  'Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or pictures ever leave it.',
+                  'Only short notes like "moving around - left side" are sent. Family can also watch live and talk to you, and the bar at the top turns red while they do. Nothing is recorded.',
                 )}
               </p>
               {stopNote && (
@@ -1808,8 +1896,10 @@ function SettingsPanel(props: {
   turnNow: Turn;
   /** Shows the emergency alert now, for rehearsing the demo. */
   testAlarm: () => void;
+  /** Live video for family: who's watching, whether family can, and why not. */
+  live: { watchers: Watcher[]; ready: boolean; note: string };
 }) {
-  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow, testAlarm } = props;
+  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow, testAlarm, live } = props;
   // Real emergency calls: are they set up on the server? (Checked each time the panel opens.)
   const [setup, setSetup] = useState<CallSetup | null | "checking">("checking");
   const [callTest, setCallTest] = useState<"idle" | "sending" | CallOutcome>("idle");
@@ -1887,6 +1977,33 @@ function SettingsPanel(props: {
             <p className="text-base text-white/90">
               Front for the SightLine stand, where the screen faces the person. The front camera is shown mirrored, like
               a selfie.
+            </p>
+          </fieldset>
+
+          <fieldset className="space-y-2">
+            <legend className="font-semibold">Live video for family</legend>
+            <Choice
+              label="Live video for family"
+              options={[
+                ["on", "On"],
+                ["off", "Off"],
+              ]}
+              value={s.liveVideo ? "on" : "off"}
+              onChange={(v) => update({ liveVideo: v === "on" })}
+            />
+            <p role="status" className="text-base font-semibold">
+              {!s.liveVideo
+                ? "Off: family can't watch live."
+                : live.watchers.length
+                  ? `${watchingText(live.watchers)} now.`
+                  : live.ready
+                    ? 'Ready: family can press "Watch live" on the family page.'
+                    : "Starts when the camera is on and this phone is signed in."}
+            </p>
+            {s.liveVideo && live.note && <p className="text-base font-semibold text-amber-200">{live.note}</p>}
+            <p className="text-base text-white/90">
+              Family see and hear the room live and can talk to you through this phone. It goes straight to them,
+              encrypted, and nothing is recorded. The bar at the top turns red while anyone watches.
             </p>
           </fieldset>
 

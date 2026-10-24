@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation } from "react-router";
 import { Message } from "../components/AuthLayout";
 import { buttonVariants } from "../components/ButtonLink";
 import Highlight from "../components/Highlight";
+import LiveView from "../components/LiveView";
 import SiteLayout, { Blobs, LivePill } from "../components/SiteLayout";
 import { useLanguage } from "../i18n/useLanguage";
 import { supabase } from "../lib/supabase";
@@ -146,6 +147,8 @@ function Family({
   const [todayEvents, setTodayEvents] = useState<EventRow[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [live, setLive] = useState(false);
+  // Goes up by one when the fall alert's "Watch live now" is pressed (starts the live video).
+  const [liveAsk, setLiveAsk] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   // Simple view: only the big status and read aloud, in extra-large text.
   const [simple, setSimpleState] = useState(() => readSaved(SIMPLE_VIEW_KEY, (v) => v === true));
@@ -381,6 +384,15 @@ function Family({
                 {t("The Call buttons are just below.")}
               </p>
             )}
+            {summary.mood === "alert" && circle && (
+              <button
+                type="button"
+                onClick={() => setLiveAsk((n) => n + 1)}
+                className={`${buttonVariants.inverse} mt-4 ${simple ? "text-2xl" : ""}`}
+              >
+                {t("Watch live now")}
+              </button>
+            )}
             {latest && (
               <div className="mt-5">
                 <ReadAloudButton text={spokenStatus(summary, who, spokenClock(lang, clock), t)} big={simple} />
@@ -416,6 +428,11 @@ function Family({
               {live ? t("This page updates by itself.") : t("Connecting for live updates…")}
             </p>
           </section>
+
+          {/* Live video stays in simple view too: seeing them matters most after the news itself. */}
+          {circle && (
+            <LiveView circleId={circle.id} userId={userId} cameraOn={summary.cameraOn} startSignal={liveAsk} big={simple} />
+          )}
 
           <SpokenAlertsSwitch on={spokenOn} needsTap={spoken.needsTap} note={spoken.note} onChange={setSpokenOn} onWake={spoken.turnedOn} />
 

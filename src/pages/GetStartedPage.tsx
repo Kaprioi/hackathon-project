@@ -197,7 +197,7 @@ function Guide({ userId }: { userId: string }) {
             {t("Stand the iPhone up where it can see most of the room, and leave it plugged in.")}
           </p>
           <p className="mt-4 rounded-2xl bg-mint p-4 text-ink">
-            {t('A green "Camera on" sign means it\'s working. Video never leaves the phone.')}
+            {t('A green "Camera on" sign means it\'s working. It turns red while family watch live. Nothing is recorded.')}
           </p>
         </>
       ),

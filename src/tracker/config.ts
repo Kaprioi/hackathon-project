@@ -61,6 +61,11 @@ export interface Settings {
    * contact". Their number is a server setting (api/emergency-call.ts), not saved here.
    */
   contactName: string;
+  /**
+   * Family can press "Watch live" on the family page to see and hear this camera and talk
+   * back (src/lib/live.ts). Nothing is recorded. Off = the phone turns every request down.
+   */
+  liveVideo: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -76,6 +81,7 @@ export const DEFAULT_SETTINGS: Settings = {
   faces: true, // the page starts with false on iPhones (see TrackerPage loadSettings)
   emergency: true,
   contactName: "",
+  liveVideo: true,
 };
 
 /** Timing and behaviour of the tracking brain. */

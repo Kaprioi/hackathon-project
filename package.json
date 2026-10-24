@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/tracker/handheld.test.mjs src/tracker/faces.test.mjs src/tracker/emergency.test.mjs src/tracker/call.test.mjs src/tracker/callServer.test.mjs src/family/status.test.mjs src/family/careProfile.test.mjs src/family/dailySummary.test.mjs src/family/contacts.test.mjs src/lib/account.test.mjs src/family/alerts.test.mjs src/family/readAloud.test.mjs src/family/voice.test.mjs src/i18n/translate.test.mjs src/lib/displaySettings.test.mjs src/lib/guide.test.mjs src/lib/inviteName.test.mjs api/_tts.test.mjs",
-    "test:tracker": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/tracker/handheld.test.mjs src/tracker/faces.test.mjs src/tracker/emergency.test.mjs src/tracker/call.test.mjs src/tracker/callServer.test.mjs"
+    "test": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/tracker/handheld.test.mjs src/tracker/faces.test.mjs src/tracker/emergency.test.mjs src/tracker/call.test.mjs src/tracker/callServer.test.mjs src/lib/live.test.mjs src/family/status.test.mjs src/family/careProfile.test.mjs src/family/dailySummary.test.mjs src/family/contacts.test.mjs src/lib/account.test.mjs src/family/alerts.test.mjs src/family/readAloud.test.mjs src/family/voice.test.mjs src/i18n/translate.test.mjs src/lib/displaySettings.test.mjs src/lib/guide.test.mjs src/lib/inviteName.test.mjs api/_tts.test.mjs api/_ice-servers.test.mjs",
+    "test:tracker": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/tracker/handheld.test.mjs src/tracker/faces.test.mjs src/tracker/emergency.test.mjs src/tracker/call.test.mjs src/tracker/callServer.test.mjs src/lib/live.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/nunito": "^5.3.0",
