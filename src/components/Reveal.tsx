@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 // - `cards`: with `stagger`, the items also grow slightly, gain a soft shadow and lift on hover.
 // - `pop`: for illustrations, which grow into place with a small, gentle overshoot.
 // - `delay`: wait this many milliseconds before arriving (for side-by-side blocks).
+// - `once`: arrive once and then stay put, never easing out (for the top of a page).
 //
 // Content is only ever hidden while it is off screen or at the very bottom edge. People who ask
 // their device for less motion, and browsers without IntersectionObserver, see everything at
@@ -23,12 +24,14 @@ export default function Reveal({
   cards = false,
   pop = false,
   delay = 0,
+  once = false,
 }: {
   children: React.ReactNode;
   stagger?: boolean;
   cards?: boolean;
   pop?: boolean;
   delay?: number;
+  once?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<Phase>("done");
@@ -61,13 +64,13 @@ export default function Reveal({
       rootMargin: "0px 0px -4% 0px",
     });
     enter.observe(el);
-    exit.observe(el);
+    if (!once) exit.observe(el);
     return () => {
       cancelAnimationFrame(frame);
       enter.disconnect();
       exit.disconnect();
     };
-  }, []);
+  }, [once]);
 
   // Once everything has arrived, drop the entrance delays so hover effects respond at once.
   useEffect(() => {

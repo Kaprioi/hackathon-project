@@ -100,7 +100,7 @@ export default function HomePage() {
         {/* Hero */}
         <section className="px-6 pb-20 pt-8" aria-labelledby="hero-title">
           <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
-            <Reveal stagger>
+            <Reveal stagger once>
             <div>
               <h1 id="hero-title" className="text-4xl font-extrabold leading-tight md:text-5xl">
                 Stay close to the people you love,{" "}
@@ -129,7 +129,7 @@ export default function HomePage() {
               </ul>
             </div>
             </Reveal>
-            <Reveal pop delay={350}>
+            <Reveal pop once delay={350}>
             <HeroIllustration />
             </Reveal>
           </div>
