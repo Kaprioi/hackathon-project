@@ -1,17 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 // Gently fades and slides its contents into place: straight away if they are on screen when
-// the page opens, otherwise the first time they scroll into view.
+// the page opens, otherwise as they scroll into view. When they scroll off the screen again
+// they ease back out, ready to arrive again next time they come into view.
 //
 // - `stagger`: wrap a list (or a column of blocks) and each item arrives a moment after the one before.
 // - `cards`: with `stagger`, the items also grow slightly, gain a soft shadow and lift on hover.
 // - `pop`: for illustrations, which grow into place with a small, gentle overshoot.
 // - `delay`: wait this many milliseconds before arriving (for side-by-side blocks).
 //
-// Content is only ever hidden for a moment before it arrives. People who ask their device for
-// less motion, and browsers without IntersectionObserver, see everything at once, with no movement.
-// The styles live in index.css, under "Reveal on scroll".
-type Phase = "waiting" | "entering" | "done";
+// Content is only ever hidden while it is off screen or at the very bottom edge. People who ask
+// their device for less motion, and browsers without IntersectionObserver, see everything at
+// once, with no movement. The styles live in index.css, under "Reveal on scroll".
+type Phase = "waiting" | "entering" | "done" | "leaving";
 
 // Long enough for the slowest staggered item to finish arriving.
 const ENTRANCE_MS = 1600;
@@ -31,7 +32,8 @@ export default function Reveal({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<Phase>("done");
-  const arrive = () => setPhase((p) => (p === "waiting" ? "entering" : p));
+  const arrive = () => setPhase((p) => (p === "waiting" || p === "leaving" ? "entering" : p));
+  const leave = () => setPhase((p) => (p === "entering" || p === "done" ? "leaving" : p));
 
   // A layout effect runs before the browser paints, so content never flashes before hiding.
   useLayoutEffect(() => {
@@ -43,26 +45,28 @@ export default function Reveal({
 
     // Already on screen when the page opens? Arrive straight away. Waiting two frames makes
     // sure the hidden starting point is painted first, so the movement is visible.
+    let frame = 0;
     if (el.getBoundingClientRect().top < window.innerHeight) {
-      let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
         frame = requestAnimationFrame(arrive);
       });
-      return () => cancelAnimationFrame(frame);
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          arrive();
-          observer.disconnect();
-        }
-      },
-      // Start once the top of the block is a little way up the screen. The huge top margin
-      // counts everything above the screen as "in view", so jumping past a block shows it too.
-      { rootMargin: "100000px 0px -10% 0px" },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
+    // Arrive once the block is a little way up the screen, and only leave once it is fully off
+    // the top or nearly off the bottom. The gap between the two lines stops it flickering at the edge.
+    const enter = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && arrive(), {
+      rootMargin: "0px 0px -10% 0px",
+    });
+    const exit = new IntersectionObserver((entries) => entries.every((e) => !e.isIntersecting) && leave(), {
+      rootMargin: "0px 0px -4% 0px",
+    });
+    enter.observe(el);
+    exit.observe(el);
+    return () => {
+      cancelAnimationFrame(frame);
+      enter.disconnect();
+      exit.disconnect();
+    };
   }, []);
 
   // Once everything has arrived, drop the entrance delays so hover effects respond at once.
@@ -77,6 +81,7 @@ export default function Reveal({
     cards && "reveal-cards",
     pop && "reveal-pop",
     phase === "waiting" && "reveal-waiting",
+    phase === "leaving" && "reveal-leaving",
     phase === "done" && "reveal-done",
   ];
 
@@ -84,7 +89,7 @@ export default function Reveal({
     <div
       ref={ref}
       className={classes.filter(Boolean).join(" ")}
-      style={delay && phase !== "done" ? { transitionDelay: `${delay}ms` } : undefined}
+      style={delay && phase === "entering" ? { transitionDelay: `${delay}ms` } : undefined}
       // A keyboard user tabbing into hidden content should see it straight away.
       onFocus={arrive}
     >

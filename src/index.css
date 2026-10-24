@@ -59,13 +59,13 @@ body {
   transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.reveal-waiting.reveal {
+:is(.reveal-waiting, .reveal-leaving).reveal {
   opacity: 0;
   transform: translateY(36px);
 }
 
 /* Items in a list rise from a little further and grow slightly as they arrive. */
-.reveal-waiting.reveal-stagger > * > * {
+:is(.reveal-waiting, .reveal-leaving).reveal-stagger > * > * {
   opacity: 0;
   transform: translateY(44px) scale(0.94);
 }
@@ -89,7 +89,7 @@ body {
   transition-duration: 900ms;
   transition-timing-function: cubic-bezier(0.34, 1.35, 0.64, 1);
 }
-.reveal-waiting.reveal-pop {
+:is(.reveal-waiting, .reveal-leaving).reveal-pop {
   transform: translateY(20px) scale(0.85);
 }
 
@@ -97,7 +97,7 @@ body {
 .reveal-cards > * > * {
   box-shadow: 0 14px 30px rgba(31, 42, 55, 0.1);
 }
-.reveal-waiting.reveal-cards > * > * {
+:is(.reveal-waiting, .reveal-leaving).reveal-cards > * > * {
   box-shadow: 0 0 0 rgba(31, 42, 55, 0);
 }
 
@@ -124,16 +124,24 @@ body {
   transform: none;
 }
 
-/* Hide instantly before arriving; only the arrival itself is animated. */
+/* Hide instantly when the page opens, so the first arrival is always seen... */
 .reveal-waiting.reveal,
 .reveal-waiting.reveal-stagger > * > * {
   transition: none;
 }
 
+/* ...and ease back out, all together, when scrolled off the screen. */
+.reveal-leaving.reveal,
+.reveal-leaving.reveal-stagger > * > * {
+  transition-delay: 0s;
+  transition-duration: 550ms;
+  transition-timing-function: ease-in-out;
+}
+
 /* Never hide or move anything for people who prefer less motion, or on paper. */
 @media (prefers-reduced-motion: reduce), print {
-  .reveal-waiting.reveal,
-  .reveal-waiting.reveal-stagger > * > * {
+  :is(.reveal-waiting, .reveal-leaving).reveal,
+  :is(.reveal-waiting, .reveal-leaving).reveal-stagger > * > * {
     opacity: 1;
     transform: none;
   }
