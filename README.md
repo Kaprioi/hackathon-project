@@ -10,6 +10,7 @@ The site has eight pages:
 | Sign in | `/login` | Sign in or create an account (email and password) |
 | Phone camera | `/tracker` | Open this on the phone on the table and press **Start watching** |
 | Family | `/dashboard` | What is happening right now, recent news, and adding family |
+| This week | `/report` | A weekly report: moving around each day, when in the day they are up and about, night-time trips, possible falls, camera-off time, and how it compares with last week (signed-in only) |
 | Care profile | `/profile` | A few questions about the person being cared for (age, routine, who they live with), then how likely a fall is and the times to keep an eye on |
 | Help | `/help` | Picture steps for getting started, what the Family page means, privacy, and common questions |
 | Your account | `/account` | Your email, the name family see, change your password, your family circles, and log out (signed-in only) |
@@ -168,6 +169,17 @@ Where family members see how things are. After logging in, the login page brings
 - **Add a family member** (only for the circle's owner): type the email of someone who already has a CareNest account, and they will see the same page. For privacy the page gives the same answer whether or not that email has an account. A family member's page shows the circle with the newest news, so they see the phone of the person they were added for.
 
 It updates by itself through Supabase Realtime, so there is no need to reload. To try the whole flow: sign in on a phone, open `/tracker` and press **Start watching**; sign in with the same account on a computer and open `/dashboard`. The plain-words logic is in `src/family/status.ts` and is tested by `npm test`.
+
+## This week report (`/report`)
+
+Linked from the family page ("This week's report") and the footer; like the family page it sends people to `/login` if they aren't logged in. It reads the last 14 days of `movement_events` for your care circle (no database change needed) and shows:
+
+- **How the week went**, in plain words compared with the week before, e.g. "A bit less active than last week." and "2 more night-time trips than last week (4 in all).", with a **Read the week aloud** button.
+- **Numbers**: rough time spent moving around, night-time trips (movement between the bed and wake-up times from the Care profile, or 10 pm to 7 am), possible falls, and how long the camera was off.
+- **Two charts**: a bar for each day, and a strip of 24 hour squares per day that is darker when they were moving around more. Screen readers get the same numbers as tables.
+- **Show example week**: a pretend week, so the report can be shown before a phone has been watching.
+
+The sums are in `src/family/weeklyReport.ts` and are tested by `npm test`.
 
 ## Care profile page (`/profile`)
 
