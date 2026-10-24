@@ -2,7 +2,7 @@
 
 **CareNest**: a phone standing on a table watches the room with its camera (all on the phone), and family see in plain words how their loved one is doing. No video or pictures ever leave the phone.
 
-The site has four pages:
+The site has five pages:
 
 | Page | Address | What it is |
 | --- | --- | --- |
@@ -10,6 +10,7 @@ The site has four pages:
 | Sign in | `/login` | Sign in or create an account (email and password) |
 | Phone camera | `/tracker` | Open this on the phone on the table and press **Start watching** |
 | Family | `/dashboard` | What is happening right now, recent news, and adding family |
+| Care profile | `/profile` | A few questions about the person being cared for (age, routine, who they live with), then how likely a fall is and the times to keep an eye on |
 
 The "forgot password" email also brings people to `/reset-password` to choose a new password.
 
@@ -157,3 +158,13 @@ Where family members see how things are. After logging in, the login page brings
 - **Add a family member** (only for the circle's owner): type the email of someone who already has a CareNest account, and they will see the same page. For privacy the page gives the same answer whether or not that email has an account. A family member's page shows the circle with the newest news, so they see the phone of the person they were added for.
 
 It updates by itself through Supabase Realtime, so there is no need to reload. To try the whole flow: sign in on a phone, open `/tracker` and press **Start watching**; sign in with the same account on a computer and open `/dashboard`. The plain-words logic is in `src/family/status.ts` and is tested by `npm test`.
+
+## Care profile page (`/profile`)
+
+A few simple questions, one at a time, about the person being cared for: their age, who they live with, when they wake up and go to bed, when they're on their own, how often they get up at night, past falls, walking aids and medicines. At the end it shows:
+
+- **Chance of a fall**: Lower, Medium or Higher, with the reasons in plain words.
+- **Times to keep an eye on**: for example overnight, the first hour after waking up, or afternoons when they're alone.
+- **Your answers**, each with a "Change" button, and "Start again".
+
+You have to be signed in to see it; if nobody is signed in it sends you to `/login`. It's a rough guide, not medical advice. For now the answers are only saved in that browser (one set per account), not in Supabase. The questions and scoring are in `src/family/careProfile.ts` and are tested by `npm test`.
