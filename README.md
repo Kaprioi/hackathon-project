@@ -1,6 +1,17 @@
 # hackathon-project
 
-Our hackathon web app. (Replace this line with a one-sentence pitch once we decide.)
+**CareNest**: a phone standing on a table watches the room with its camera (all on the phone), and family see in plain words how their loved one is doing. No video or pictures ever leave the phone.
+
+The site has four pages:
+
+| Page | Address | What it is |
+| --- | --- | --- |
+| About Us | `/` | What CareNest is and how it works |
+| Sign in | `/login` | Sign in or create an account (email and password) |
+| Phone camera | `/tracker` | Open this on the phone on the table and press **Start watching** |
+| Family | `/dashboard` | What is happening right now, recent news, and adding family |
+
+The "forgot password" email also brings people to `/reset-password` to choose a new password.
 
 ## Team setup (do this once, ~5 minutes)
 
@@ -64,7 +75,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
    npm install
    ```
 
-2. Set up Supabase keys (the homepage works without them; the login page needs them):
+2. Set up Supabase keys (the About Us page works without them; the login page at `/login` needs them):
 
    ```bash
    cp .env.example .env.local
@@ -83,7 +94,24 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    Supabase's built-in email service only delivers to members of our Supabase team (and only a few emails an hour), so "forgot password" emails won't reach real families until we set up our own email sender in Supabase under Authentication -> Emails -> SMTP Settings. For now "Confirm email" is turned off (Authentication -> Sign In / Providers -> Email), so creating an account logs people straight in without needing an email. Once SMTP is set up, it can be turned back on.
 
-3. Start the app on your computer:
+3. Set up the database (once per Supabase project). The tables live in `supabase/migrations/`. Either:
+
+   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, then do the same with `supabase/migrations/20261024010000_family_fixes.sql` (it makes adding family members safer: people are found by the email they signed up with, nobody can change the email on their profile, and the answer never reveals whether an email has an account), or
+   - with the [Supabase CLI](https://supabase.com/docs/guides/cli): `supabase link --project-ref <your-ref>` (ours is `egraxwvpbqmjfybdbjsg`) then `supabase db push`.
+
+   What it creates:
+
+   | Table | What it holds |
+   | --- | --- |
+   | `profiles` | One row per account, made automatically when someone signs up |
+   | `care_circles` | One "home" per account (made at sign-up too). The owner can add family with `add_family_member(circle id, their email)` |
+   | `care_circle_members` | Who is in which circle (owner or family) |
+   | `devices` | Each phone used as a camera |
+   | `movement_events` | Small text events from the phone: what happened, left/middle/right, posture, time. Never video or pictures |
+
+   Row Level Security is on for every table, so people only see their own circle's rows. `movement_events` is added to Supabase Realtime so the family page can update live.
+
+4. Start the app on your computer:
 
    ```bash
    npm run dev
@@ -91,7 +119,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    Then open the address it prints (usually http://localhost:5173).
 
-4. Check that it builds for production (Vercel runs this too):
+5. Check that it builds for production (Vercel runs this too):
 
    ```bash
    npm run build
@@ -99,14 +127,33 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    `npm run preview` serves that production build locally.
 
+6. Run the tests (no camera or Supabase needed):
+
+   ```bash
+   npm test
+   ```
+
 Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, and colours and fonts in `src/index.css`. `vercel.json` makes links like `/login`, `/dashboard` and `/reset-password` work when the site is deployed.
 
-Logging in: `/login` has log in, create an account, and "forgot your password". Creating an account logs people straight in and takes them to `/dashboard`. The "forgot password" email brings people back to `/reset-password` to choose a new password (and if "Confirm email" is turned back on, the confirmation email brings them to `/dashboard`). `/dashboard` is a placeholder for now and sends people to `/login` if they aren't logged in.
+Logging in: `/login` has log in, create an account, and "forgot your password". Creating an account logs people straight in and takes them to `/dashboard`. The "forgot password" email brings people back to `/reset-password` to choose a new password (and if "Confirm email" is turned back on, the confirmation email brings them to `/dashboard`). `/dashboard` is the family page (below) and sends people to `/login` if they aren't logged in.
 
 ## Phone Tracker page (`/tracker`)
 
-The page that drives the Phone Tracker stand: it finds people with the camera, follows the one you tap, and aims the stand and its humidifier mist at them. The code is in `src/tracker/` (see `src/tracker/README.md`); the hardware, firmware and build guide are in `phone-tracker/`.
+The phone camera page. Stand a phone on a table, sign in, open `/tracker` and press **Start watching**. A green "Camera on - video stays on this phone" sign stays on screen while it watches. The phone finds people with its camera (all on the phone) and sends only short text notes to the `movement_events` table: what happened (moving, still, nobody, possible fall), which side of the room (left/middle/right), posture (standing/sitting/lying) and the time, plus a "still watching" heartbeat every minute. No video or pictures ever leave the phone. If nobody is signed in it asks you to sign in first; without Supabase keys you can still try the camera, but nothing is sent.
+
+It also still drives the optional Phone Tracker stand: it follows the person you tap and aims the stand and its humidifier mist at them. The code is in `src/tracker/` (see `src/tracker/README.md`); the hardware, firmware and build guide are in `phone-tracker/`.
 
 - On a PC: `npm run dev`, then open http://localhost:5173/tracker in **Chrome or Edge**. Safari and Firefox can't use Bluetooth.
 - On an iPhone: open the deployed `https://…/tracker` link in the free **Bluefy** browser. It has to be https; Safari can't use Bluetooth from a website.
-- Test the tracking logic without a camera: `npm run test:tracker`.
+- Test the tracking and event logic without a camera: `npm run test:tracker`.
+- The camera needs https on a phone: use the deployed Vercel link (or `npm run dev -- --host` plus an https tunnel).
+
+## Family page (`/dashboard`)
+
+Where family members see how things are. After logging in, the login page brings you here; if nobody is logged in it sends you to `/login`. It shows:
+
+- **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns peach with a "please call or visit" note if the phone thinks someone may have fallen, and warns you if the phone has not checked in for over 3 minutes (it normally sends a heartbeat every minute).
+- **Recent news**: the last 10 events with their times.
+- **Add a family member** (only for the circle's owner): type the email of someone who already has a CareNest account, and they will see the same page. For privacy the page gives the same answer whether or not that email has an account. A family member's page shows the circle with the newest news, so they see the phone of the person they were added for.
+
+It updates by itself through Supabase Realtime, so there is no need to reload. To try the whole flow: sign in on a phone, open `/tracker` and press **Start watching**; sign in with the same account on a computer and open `/dashboard`. The plain-words logic is in `src/family/status.ts` and is tested by `npm test`.

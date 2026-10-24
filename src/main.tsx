@@ -15,6 +15,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <Routes>
+        {/* HomePage is the About Us page. */}
         <Route path="/" element={<HomePage />} />
         <Route
           path="/tracker"

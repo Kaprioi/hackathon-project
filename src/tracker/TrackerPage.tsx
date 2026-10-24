@@ -3,9 +3,12 @@
 //
 // How the pieces fit:
 //   camera frame -> detector.ts (find people) -> brain.ts (decide) -> stand.ts (Bluetooth to the ESP32)
+//                                               -> events.ts (small text events) -> cloud.ts (Supabase, for the family page)
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, PointerEvent, ReactNode } from "react";
+import { Link } from "react-router";
+import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
 import { Brain, MODE_LABEL } from "./brain.ts";
 import type { Settings } from "./config.ts";
@@ -20,12 +23,35 @@ import {
 } from "./config.ts";
 import type { PersonDetector } from "./detector.ts";
 import { createPersonDetector } from "./detector.ts";
+import { Cloud } from "./cloud.ts";
+import type { MovementEvent } from "./events.ts";
+import { Reporter } from "./events.ts";
 import type { Angles, Box } from "./geometry.ts";
 import { ServoModel } from "./servoModel.ts";
 import type { StandStatus } from "./stand.ts";
 import { Stand } from "./stand.ts";
 
 type MistMode = "off" | "on" | "follow";
+
+/** Is someone signed in, so updates can go to the family page? */
+type Account = "checking" | "signed-in" | "signed-out" | "no-database";
+
+/** Plain words for the "last update sent" line. */
+const EVENT_WORDS: Record<MovementEvent["kind"], string> = {
+  moving: "Moving around",
+  still: "Staying still",
+  nobody: "Nobody in view",
+  fall: "Possible fall",
+  heartbeat: "Still watching",
+  started: "Started watching",
+  stopped: "Stopped watching",
+};
+
+function describe(e: MovementEvent): string {
+  return [EVENT_WORDS[e.kind], e.zone && `${e.zone} side`, e.posture && e.posture !== "unknown" && e.posture]
+    .filter(Boolean)
+    .join(" - ");
+}
 
 interface Snapshot {
   mode: Mode;
@@ -138,7 +164,7 @@ function PanDial({ aim }: { aim: Angles | null }) {
   const nx = 40 + 30 * Math.cos(angle);
   const ny = 40 - 30 * Math.sin(angle);
   return (
-    <div className="flex items-center gap-2 rounded-2xl bg-black/60 px-3 py-2 text-sm" aria-label={`Stand pointing at ${pan.toFixed(0)} degrees`}>
+    <div className="flex items-center gap-2 rounded-2xl bg-black/60 px-3 py-2 text-base" aria-label={`Stand pointing at ${pan.toFixed(0)} degrees`}>
       <svg width="80" height="46" viewBox="0 0 80 46" aria-hidden="true">
         <path d="M 6 40 A 34 34 0 0 1 74 40" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="4" />
         <line x1="40" y1="40" x2={nx} y2={ny} stroke="#ffd84d" strokeWidth="4" strokeLinecap="round" />
@@ -146,7 +172,7 @@ function PanDial({ aim }: { aim: Angles | null }) {
       </svg>
       <div className="leading-tight">
         <div>Pan {pan.toFixed(0)}°</div>
-        <div className="text-white/70">Tilt {(aim?.tilt ?? LIMITS.center).toFixed(0)}°</div>
+        <div className="text-white/90">Tilt {(aim?.tilt ?? LIMITS.center).toFixed(0)}°</div>
       </div>
     </div>
   );
@@ -154,7 +180,7 @@ function PanDial({ aim }: { aim: Angles | null }) {
 
 function Chip({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "good" | "warn" }) {
   const toneClass = tone === "good" ? "bg-leaf text-white" : tone === "warn" ? "bg-sun text-ink" : "bg-black/60 text-white";
-  return <span className={`rounded-full px-3 py-1 text-sm font-semibold ${toneClass}`}>{children}</span>;
+  return <span className={`rounded-full px-3 py-1 text-base font-semibold ${toneClass}`}>{children}</span>;
 }
 
 function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
@@ -184,6 +210,9 @@ export default function TrackerPage() {
   const mistModeRef = useRef<MistMode>("off");
   const lastAimRef = useRef<Angles | null>(null);
   const testingRef = useRef(false); // true while the motor test buttons are in charge
+  const reporterRef = useRef<Reporter>(new Reporter());
+  const cloudRef = useRef<Cloud | null>(null);
+  const sendChainRef = useRef<Promise<void>>(Promise.resolve());
 
   const [running, setRunning] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -194,6 +223,9 @@ export default function TrackerPage() {
   const [standStatus, setStandStatus] = useState<StandStatus>(standRef.current.status);
   const [radar, setRadar] = useState<boolean | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
+  const [account, setAccount] = useState<Account>(supabase ? "checking" : "no-database");
+  const [lastSent, setLastSent] = useState("");
+  const [sendError, setSendError] = useState("");
   const [snap, setSnap] = useState<Snapshot>({
     mode: "idle",
     note: "Tap a person to lock on.",
@@ -215,6 +247,29 @@ export default function TrackerPage() {
     return () => {
       stand.onChange = () => {};
     };
+  }, []);
+
+  // Check whether someone is signed in (the family page only works for signed-in people).
+  useEffect(() => {
+    if (!supabase) return;
+    void supabase.auth.getSession().then(({ data }) => setAccount(data.session ? "signed-in" : "signed-out"));
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => setAccount(session ? "signed-in" : "signed-out"));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  /** Queue one small text event for the family page. Sent in order; failures are shown, not thrown. */
+  const report = useCallback((event: MovementEvent) => {
+    const cloud = cloudRef.current;
+    if (!cloud) return;
+    sendChainRef.current = sendChainRef.current.then(() =>
+      cloud.send(event).then(
+        () => {
+          setLastSent(describe(event));
+          setSendError("");
+        },
+        (e: unknown) => setSendError(e instanceof Error ? e.message : String(e)),
+      ),
+    );
   }, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
@@ -252,6 +307,16 @@ export default function TrackerPage() {
       video.srcObject = stream;
       await video.play();
       if (!detectorRef.current) detectorRef.current = await createPersonDetector();
+      if (supabase && !cloudRef.current) {
+        try {
+          cloudRef.current = await Cloud.connect(supabase);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setSendError(msg);
+          setError(`Your family won't see updates: ${msg}`);
+        }
+      }
+      report(reporterRef.current.start(performance.now()));
       try {
         wakeLockRef.current = (await navigator.wakeLock?.request("screen")) ?? null;
       } catch {
@@ -263,19 +328,28 @@ export default function TrackerPage() {
     } finally {
       setLoading(false);
     }
-  }, [stopCamera]);
+  }, [stopCamera, report]);
+
+  const stopWatching = useCallback(() => {
+    report(reporterRef.current.stop());
+    stopCamera();
+    setRunning(false);
+    void wakeLockRef.current?.release();
+    wakeLockRef.current = null;
+  }, [stopCamera, report]);
 
   // Clean up when leaving the page.
   useEffect(() => {
     const stand = standRef.current;
     return () => {
+      if (streamRef.current) report(reporterRef.current.stop());
       stopCamera();
       detectorRef.current?.close();
       detectorRef.current = null;
       stand.disconnect();
       void wakeLockRef.current?.release();
     };
-  }, [stopCamera]);
+  }, [stopCamera, report]);
 
   // The main loop: once per new camera frame.
   useEffect(() => {
@@ -349,6 +423,8 @@ export default function TrackerPage() {
         tap,
       });
 
+      for (const event of reporterRef.current.update(t, people, vw / vh)) report(event);
+
       if (out.mode !== "idle") testingRef.current = false; // tracking takes over from the test buttons
       if (out.aim && (CAMERA_STEERS_IN as readonly string[]).includes(out.mode)) {
         lastAimRef.current = out.aim;
@@ -395,7 +471,7 @@ export default function TrackerPage() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [running]);
+  }, [running, report]);
 
   const onTap = (e: PointerEvent<HTMLCanvasElement>) => {
     const video = videoRef.current;
@@ -453,15 +529,29 @@ export default function TrackerPage() {
         aria-label="Camera view. Tap a person to follow them."
       />
 
+      {/* The privacy sign: always on screen while the camera is on */}
+      {running && (
+        <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 bg-leaf px-4 py-2 text-center text-lg font-extrabold text-white">
+          <span>● Camera on - video stays on this phone</span>
+          <span className="text-base font-bold">
+            {sendError
+              ? "Family can't see updates right now"
+              : cloudRef.current
+                ? `Family sees: ${lastSent || "starting..."}`
+                : "Not signed in: family can't see updates"}
+          </span>
+        </div>
+      )}
+
       {/* Top: what it's doing, and the stand's status */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-3">
+      <div className={`pointer-events-none absolute inset-x-0 flex flex-wrap ${running ? "top-20 sm:top-12" : "top-0"} items-start justify-between gap-2 p-3`}>
         <div className="pointer-events-auto max-w-xl rounded-2xl bg-black/60 px-4 py-2" aria-live="polite">
           <span className={`rounded-full px-3 py-1 font-mono text-base font-extrabold ${MODE_STYLE[snap.mode].pill}`}>
             {MODE_LABEL[snap.mode]}
           </span>
           <p className="mt-1 text-base leading-snug">{running ? snap.note : "Start the camera to begin."}</p>
           {snap.match !== null && (snap.mode === "lost" || snap.mode === "searching" || snap.mode === "following") && (
-            <p className="text-sm text-white/75">
+            <p className="text-base text-white/90">
               Closest match {snap.match.toFixed(2)} (locks on below {(settings.matchLimit * (snap.mode === "following" ? TUNING.followLookSlack : 1)).toFixed(2)})
             </p>
           )}
@@ -482,9 +572,9 @@ export default function TrackerPage() {
 
       {/* Bottom: the log on the left, controls on the right */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-3">
-        <ol className="max-w-md space-y-0.5 rounded-2xl bg-black/50 px-3 py-2 text-sm empty:hidden" aria-label="What the tracker decided">
+        <ol className="max-w-md space-y-0.5 rounded-2xl bg-black/70 px-3 py-2 text-base empty:hidden" aria-label="What the tracker decided">
           {log.map((l, i) => (
-            <li key={`${l.time}-${i}`} className={i === 0 ? "" : "text-white/60"}>
+            <li key={`${l.time}-${i}`} className={i === 0 ? "" : "text-white/85"}>
               <span className="font-mono">{l.time}</span> {l.note}
             </li>
           ))}
@@ -492,7 +582,7 @@ export default function TrackerPage() {
         <div className="pointer-events-auto ml-auto flex flex-col items-end gap-2">
           <PanDial aim={snap.aim} />
           <div className="flex flex-wrap justify-end gap-2 rounded-2xl bg-black/60 p-2" role="group" aria-label="Humidifier">
-            <span className="self-center px-1 text-sm font-semibold">Mist</span>
+            <span className="self-center px-1 text-base font-semibold">Mist</span>
             <Button active={mistMode === "off"} onClick={() => chooseMist("off")}>Off</Button>
             <Button active={mistMode === "on"} onClick={() => chooseMist("on")}>On</Button>
             <Button active={mistMode === "follow"} onClick={() => chooseMist("follow")}>Follow me</Button>
@@ -506,6 +596,11 @@ export default function TrackerPage() {
               <Button onClick={() => standRef.current.disconnect()}>Disconnect</Button>
             )}
             {tracking && <Button onClick={() => brainRef.current.release()}>Release</Button>}
+            {running && (
+              <Button onClick={stopWatching} className="min-h-12 text-lg">
+                Stop watching
+              </Button>
+            )}
             <Button
               onClick={() => {
                 testingRef.current = false;
@@ -534,23 +629,48 @@ export default function TrackerPage() {
       )}
 
       {!running && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6">
-          <div className="max-w-lg space-y-4 text-center">
-            <h1 className="text-3xl font-extrabold">Phone Tracker</h1>
-            <p className="text-lg">
-              Keeps a person in view, and the humidifier's mist pointed at them, as they move around the room. Even
-              when they hide under a blanket or walk out of the picture.
+        <div className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-black p-6">
+          <div className="max-w-lg space-y-5 text-center">
+            <h1 className="text-3xl font-extrabold">Phone camera</h1>
+            <p className="text-xl">
+              Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a
+              few words, how things are going.
             </p>
-            <Button onClick={startCamera} disabled={loading} className="text-lg">
-              {loading ? "Starting... (first time downloads the AI model)" : "Start camera"}
-            </Button>
-            {!Stand.supported() && (
-              <p className="text-base text-sun">
-                This browser can't use Bluetooth, so it can't move the stand. You can still test the tracking. On
-                iPhone, open this page in the Bluefy app.
+            <p className="rounded-2xl bg-white px-4 py-3 text-lg font-bold text-ink">
+              Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or
+              pictures ever leave it.
+            </p>
+            {account === "signed-out" ? (
+              <div className="space-y-3">
+                <p className="text-xl">Please sign in first, so your family can see the updates.</p>
+                <Link
+                  to="/login"
+                  className="inline-flex min-h-16 items-center justify-center rounded-2xl bg-white px-8 text-2xl font-extrabold text-brand no-underline"
+                >
+                  Sign in
+                </Link>
+              </div>
+            ) : (
+              <button
+                onClick={startCamera}
+                disabled={loading || account === "checking"}
+                className="min-h-16 w-full rounded-2xl bg-white px-8 text-2xl font-extrabold text-brand disabled:opacity-60"
+              >
+                {loading ? "Starting... (the first time takes a little longer)" : "Start watching"}
+              </button>
+            )}
+            {account === "no-database" && (
+              <p className="text-lg text-sun">
+                The database isn't set up on this website yet, so you can try the camera but your family won't see
+                anything.
               </p>
             )}
-            <p className="text-sm text-white/70">Everything runs on this device. No video is recorded or sent anywhere.</p>
+            {!Stand.supported() && (
+              <p className="text-base text-white/90">
+                Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this
+                page in the Bluefy app.
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -558,7 +678,7 @@ export default function TrackerPage() {
       {error && (
         <div role="alert" className="absolute inset-x-0 bottom-28 mx-auto w-fit max-w-[90%] rounded-2xl bg-red-700 px-4 py-2 font-semibold">
           {error}{" "}
-          <button className="ml-2 underline" onClick={() => setError("")}>
+          <button className="ml-2 min-h-12 px-2 underline" onClick={() => setError("")}>
             Dismiss
           </button>
         </div>
@@ -584,14 +704,14 @@ function SettingsPanel(props: {
       </span>
       <input
         type="range"
-        className="w-full"
+        className="h-12 w-full"
         min={min}
         max={max}
         step={step}
         value={s[key]}
         onChange={(e) => update({ [key]: Number(e.target.value) } as Partial<Settings>)}
       />
-      <span className="text-sm text-white/70">{help}</span>
+      <span className="text-base text-white/90">{help}</span>
     </label>
   );
 
@@ -622,7 +742,7 @@ function SettingsPanel(props: {
 
       <fieldset className="space-y-2">
         <legend className="font-semibold">Motor directions</legend>
-        <p className="text-sm text-white/70">If the stand turns away from you, flip that direction.</p>
+        <p className="text-base text-white/90">If the stand turns away from you, flip that direction.</p>
         <div className="flex gap-2">
           <Button active={s.panSign === -1} onClick={() => update({ panSign: s.panSign === 1 ? -1 : 1 })}>
             Flip left/right
@@ -640,7 +760,7 @@ function SettingsPanel(props: {
 
       <fieldset className="space-y-2">
         <legend className="font-semibold">Test the motors</legend>
-        <p className="text-sm text-white/70">
+        <p className="text-base text-white/90">
           {canTest
             ? "Left should bring what was on the left of the screen toward the middle. If it does the opposite, flip left/right above. Same for Up."
             : "Connect the stand and press Release first."}
