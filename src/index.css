@@ -118,30 +118,60 @@
   }
 }
 
-/* The "Display" settings in the header (see displaySettings.ts) swap the colours
-   above for dark mode and/or high contrast. Tailwind's classes (text-ink, bg-surface...)
-   read these, so every page follows along. Each text colour passes WCAG AA on the
-   backgrounds it is used on in that mode. */
-html[data-theme="dark"] {
-  color-scheme: dark;
-  --color-ink: #eef1f6;
-  --color-muted: #bcc4d0;
-  --color-brand: #b9a6ff; /* light purple: readable as text, and as a button with dark text */
-  --color-brand-dark: #9a82f5;
-  --color-leaf: #6fdcae;
-  --color-cream: #12161d;
-  --color-mint: #173a2f;
-  --color-lilac: #2c2452;
-  --color-peach: #44291b;
-  --color-sun: #4a3f12;
-  --color-coral: #ff9f7a;
-  --color-surface: #1d222b;
-  --color-on-brand: #14102a;
-  --color-alert: #ff8f8f;
-  --color-error: #ff9c9c;
-  --color-error-soft: #3a1717;
-  --shadow-soft: 0 14px 40px -16px rgb(0 0 0 / 0.7);
-  --shadow-lift: 0 30px 60px -24px rgb(0 0 0 / 0.8);
+/* The "Color" setting in the header (see displaySettings.ts) picks one of these
+   themes. Each one swaps the purple for its own colour: buttons and links (brand),
+   pale boxes and borders (lilac), the page background (cream) and the coloured glow
+   under raised cards. Tailwind's classes (bg-brand, bg-lilac...) read these, so every
+   page follows along. Checked for WCAG AA: brand and brand-dark text on white, cream,
+   lilac and mint, and white text on brand buttons, are all 4.5:1 or more.
+   The colour circles in the picker use the same attribute, so they show their own theme. */
+[data-theme="carenest"] {
+  --color-brand: #5b3cc4;
+  --color-brand-dark: #3d2790;
+  --color-lilac: #e7defd;
+  --color-cream: #f4fbf8;
+  --shadow-lift: 0 30px 60px -24px rgb(61 39 144 / 0.42);
+  --color-brand-strong: #3a1a9e; /* the brand colour in High contrast */
+}
+[data-theme="ocean"] {
+  --color-brand: #1a5fb4;
+  --color-brand-dark: #0f3f7a;
+  --color-lilac: #dbeafe;
+  --color-cream: #f3f8fd;
+  --shadow-lift: 0 30px 60px -24px rgb(15 63 122 / 0.42);
+  --color-brand-strong: #0f3f7a; /* the brand colour in High contrast */
+}
+[data-theme="forest"] {
+  --color-brand: #22703f;
+  --color-brand-dark: #154a29;
+  --color-lilac: #d8f0de;
+  --color-cream: #f4faf5;
+  --shadow-lift: 0 30px 60px -24px rgb(21 74 41 / 0.42);
+  --color-brand-strong: #154a29; /* the brand colour in High contrast */
+}
+[data-theme="sunset"] {
+  --color-brand: #a63c16;
+  --color-brand-dark: #742809;
+  --color-lilac: #ffe2d1;
+  --color-cream: #fff8f3;
+  --shadow-lift: 0 30px 60px -24px rgb(116 40 9 / 0.42);
+  --color-brand-strong: #742809; /* the brand colour in High contrast */
+}
+[data-theme="rose"] {
+  --color-brand: #b4235a;
+  --color-brand-dark: #7a1239;
+  --color-lilac: #fde0ea;
+  --color-cream: #fff6f8;
+  --shadow-lift: 0 30px 60px -24px rgb(122 18 57 / 0.42);
+  --color-brand-strong: #7a1239; /* the brand colour in High contrast */
+}
+[data-theme="slate"] {
+  --color-brand: #3f4b5e;
+  --color-brand-dark: #252d3a;
+  --color-lilac: #e2e7ef;
+  --color-cream: #f6f7f9;
+  --shadow-lift: 0 30px 60px -24px rgb(37 45 58 / 0.42);
+  --color-brand-strong: #252d3a; /* the brand colour in High contrast */
 }
 
 /* High contrast: near-black on white, no pale colours behind text, and a solid
@@ -149,38 +179,21 @@ html[data-theme="dark"] {
 html[data-contrast="more"] {
   --color-ink: #000;
   --color-muted: #1c1c1c;
-  --color-brand: #3a1a9e;
-  --color-brand-dark: #22105e;
+  /* A deep shade of the chosen theme's colour (9:1 or more on white). */
+  --color-brand: var(--color-brand-strong, #3a1a9e);
+  --color-brand-dark: color-mix(in oklab, var(--color-brand-strong, #3a1a9e) 65%, #000);
   --color-leaf: #0b5a3f;
   --color-cream: #fff;
   --color-mint: #fff;
   --color-lilac: #fff;
   --color-peach: #fff;
   --color-sun: #fff;
-  --color-coral: #3a1a9e;
+  --color-coral: var(--color-brand-strong, #3a1a9e);
   --color-surface: #fff;
   --color-on-brand: #fff;
   --color-alert: #a00018;
   --color-error: #8f0016;
   --color-error-soft: #fff;
-}
-html[data-theme="dark"][data-contrast="more"] {
-  --color-ink: #fff;
-  --color-muted: #ececec;
-  --color-brand: #d9ccff;
-  --color-brand-dark: #c2b0ff;
-  --color-leaf: #8ff0c4;
-  --color-cream: #000;
-  --color-mint: #000;
-  --color-lilac: #000;
-  --color-peach: #000;
-  --color-sun: #000;
-  --color-coral: #d9ccff;
-  --color-surface: #000;
-  --color-on-brand: #000;
-  --color-alert: #ffb3b3;
-  --color-error: #ffb3b3;
-  --color-error-soft: #000;
 }
 /* Solid edges instead of soft shadows, and around anything that used to be a pale
    colour (buttons, the current page in the menu...). */
@@ -212,9 +225,15 @@ html[data-contrast="more"] .text-gradient-brand {
   background-clip: text;
 }
 
-/* The slowly moving purple background of the "Ready to feel closer?" card. */
+/* The slowly moving brand-coloured background of the "Ready to feel closer?" card. */
 @utility bg-cta-gradient {
-  background-image: linear-gradient(120deg, var(--color-brand), oklch(58% 0.2 292), var(--color-brand-dark), var(--color-brand));
+  background-image: linear-gradient(
+    120deg,
+    var(--color-brand),
+    color-mix(in oklab, var(--color-brand) 55%, var(--color-brand-dark)),
+    var(--color-brand-dark),
+    var(--color-brand)
+  );
   background-size: 300% 300%;
 }
 
