@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
 import { Message } from "../components/AuthLayout";
 import { buttonVariants } from "../components/ButtonLink";
@@ -9,7 +9,7 @@ import { supabase } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
 import { cleanContacts, cleanPhone, telHref, type Contact, type Contacts } from "../family/contacts";
 import { localTime, spokenDay, startOfLocalDay, summariseDay } from "../family/dailySummary";
-import { describe, summarise, timeAgo, whatHappened, whereInRoom, type EventRow, type Mood } from "../family/status";
+import { headline, summarise, timeAgo, whatHappened, whereInRoom, type EventRow, type Mood } from "../family/status";
 import {
   alertType,
   canCheckOn,
@@ -106,6 +106,8 @@ export default function DashboardPage() {
     );
   return (
     <Family
+      // A different account (signed in from another tab) starts with a fresh page, not the old family's news.
+      key={session.user.id}
       userId={session.user.id}
       email={session.user.email ?? ""}
       loggingOut={loggingOut}
@@ -178,10 +180,16 @@ function Family({
     save(alertSettingsKey(userId), next);
   }
 
-  // Refresh "2 minutes ago" every 20 seconds.
+  // Refresh "2 minutes ago" (and notice a camera that went quiet) every 20 seconds,
+  // and straight away when this tab is looked at again.
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 20_000);
-    return () => clearInterval(t);
+    const tick = () => setNow(Date.now());
+    const t = setInterval(tick, 20_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, []);
 
   // Find the care circle: the one with the newest news (so family members see the
@@ -239,8 +247,10 @@ function Family({
         });
     }
 
+    // A new name each time: Supabase hands back an old channel with the same name
+    // while it is still closing (e.g. leaving and coming straight back), and that one never goes live.
     const channel = db
-      .channel(`family-${circle.id}`)
+      .channel(`family-${circle.id}-${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "movement_events", filter: `circle_id=eq.${circle.id}` },
@@ -283,6 +293,16 @@ function Family({
   const sayTime = (ms: number) => (lang === "en" ? localTime(ms, t) : spokenClock(lang, clock)(new Date(ms).toISOString()));
   const daySpoken = spokenDay(summariseDay(todayEvents, now, { t, timeOf: sayTime }), who, t);
   const { latest } = summary;
+
+  // Say "Phone stopped watching" once when the phone goes quiet while this page is
+  // open. (A "stopped" message from the phone is said by spoken.heard instead.)
+  const wasSilent = useRef<boolean | null>(null);
+  const { silent } = spoken;
+  useEffect(() => {
+    if (!summary.lastHeard) return; // still loading
+    if (wasSilent.current === false && summary.phoneSilent) silent(summary.lastHeard);
+    wasSilent.current = summary.phoneSilent;
+  }, [summary.phoneSilent, summary.lastHeard, silent]);
 
   return (
     <SiteLayout title="Family page">
@@ -342,14 +362,17 @@ function Family({
               <h2 id="now-title" className="text-xl font-extrabold">
                 {t("Right now")}
               </h2>
-              <LivePill>{live ? t("Live") : t("Connecting…")}</LivePill>
+              {/* "Live" only while the camera is really watching, not just while this page is connected. */}
+              <LivePill off={live && !summary.cameraOn}>
+                {!live ? t("Connecting…") : summary.cameraOn ? t("Live") : t("Camera off")}
+              </LivePill>
             </div>
             <p
               aria-live="polite"
               className={`mt-3 leading-tight font-black ${simple ? "text-5xl sm:text-6xl" : "text-3xl sm:text-4xl"}`}
             >
               <span key={latest?.id ?? "none"} className="block animate-pop">
-                {latest ? describe(latest, now, t) : circle ? t("No news yet") : t("Loading…")}
+                {latest ? headline(summary, now, clock, t) : circle ? t("No news yet") : t("Loading…")}
               </span>
             </p>
             {summary.mood === "alert" && (

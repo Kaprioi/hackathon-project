@@ -15,8 +15,12 @@ export interface EventRow {
   created_at: string;
 }
 
-/** If the phone has been silent this long, it is probably off (it sends a heartbeat every minute). */
-export const PHONE_SILENT_MS = 3 * 60_000;
+/**
+ * If the phone has been silent this long, it has stopped watching (it sends a
+ * heartbeat every 30 seconds while it watches). This catches a closed tab, a flat
+ * battery or lost internet, which can't send a "stopped" message.
+ */
+export const PHONE_SILENT_MS = 2 * 60_000;
 
 /** "What is happening" in a few words, e.g. "Moving around" or "Sitting still". */
 export function whatHappened(e: Pick<EventRow, "kind" | "posture">, t: Translate = english): string {
@@ -77,6 +81,10 @@ export interface Summary {
   lastHeard: EventRow | null;
   /** True when the phone has said nothing (not even a heartbeat) for a while. */
   phoneSilent: boolean;
+  /** True while the camera is watching: heard from lately, and not stopped. */
+  cameraOn: boolean;
+  /** When the camera stopped watching (its "stopped" news, or when it was last heard from), or null while it watches. */
+  stoppedAt: string | null;
   /** Newest first, heartbeats left out. */
   timeline: EventRow[];
 }
@@ -89,8 +97,23 @@ export function summarise(events: EventRow[], now: number, timelineLength = 10):
   const lastHeard = newestFirst[0] ?? null;
   const phoneSilent =
     !!lastHeard && latest?.kind !== "stopped" && now - Date.parse(lastHeard.created_at) > PHONE_SILENT_MS;
+  const stoppedAt = latest?.kind === "stopped" ? latest.created_at : phoneSilent && lastHeard ? lastHeard.created_at : null;
+  const cameraOn = !!lastHeard && !stoppedAt;
   let mood: Mood = "ok";
   if (latest?.kind === "fall") mood = "alert";
-  else if (!latest || latest.kind === "stopped" || phoneSilent) mood = "quiet";
-  return { latest, mood, lastHeard, phoneSilent, timeline: real.slice(0, timelineLength) };
+  else if (!latest || !cameraOn) mood = "quiet";
+  return { latest, mood, lastHeard, phoneSilent, cameraOn, stoppedAt, timeline: real.slice(0, timelineLength) };
+}
+
+/**
+ * The big "Right now" line. Once the camera has stopped, it says so ("The phone
+ * stopped watching at 3:42 pm.") instead of showing its last news as if it were
+ * live. A possible fall stays on screen even if the camera went quiet afterwards.
+ * `clock` turns a time into words like "3:42 pm".
+ */
+export function headline(summary: Summary, now: number, clock: (iso: string) => string, t: Translate = english): string | null {
+  const { latest, stoppedAt } = summary;
+  if (!latest) return null;
+  if (stoppedAt && latest.kind !== "fall") return t("The phone stopped watching at {at}.", { at: clock(stoppedAt) });
+  return describe(latest, now, t);
 }

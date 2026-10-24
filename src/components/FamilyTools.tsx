@@ -246,6 +246,15 @@ export function AlertSettingsPanel({
           />
           {t("Out of sight (nobody in view of the phone)")}
         </label>
+        <label className={row}>
+          <input
+            type="checkbox"
+            className={box}
+            checked={settings.cameraOff}
+            onChange={(e) => set({ cameraOff: e.target.checked })}
+          />
+          {t("The phone camera stopped watching")}
+        </label>
       </fieldset>
       <fieldset className="mt-6 flex flex-col gap-3">
         <legend className="text-xl font-extrabold">{t("Quiet hours")}</legend>

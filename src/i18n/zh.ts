@@ -25,6 +25,7 @@ const zh: Record<string, string> = {
   "Skip to main content": "跳到主要内容",
   "Only the people you invite can see anything.": "只有您邀请的人才能看到内容。",
   Live: "实时",
+  "Camera off": "摄像头已关闭",
   "Loading…": "正在加载…",
   "Page not found": "找不到页面",
   "Family page": "家人页面",
@@ -354,6 +355,7 @@ const zh: Record<string, string> = {
   "Highlight these": "突出显示",
   "Possible falls": "可能跌倒",
   "Out of sight (nobody in view of the phone)": "看不到人（手机画面里没有人）",
+  "The phone camera stopped watching": "手机摄像头停止看护",
   "Quiet hours": "安静时段",
   "Tone down highlights at night": "夜里减弱提醒",
   From: "从",
@@ -472,6 +474,9 @@ const zh: Record<string, string> = {
     "视频只留在这部手机上。只会发送简短的文字，比如“正在走动 - 左边”。视频和照片绝不会离开手机。",
   "Please sign in first, so your family can see the updates.": "请先登录，这样您的家人才能看到消息。",
   "Start watching": "开始看护",
+  "The camera stopped because this page was hidden or the screen turned off. Keep this page open on the screen while it watches.":
+    "因为这个页面被切到后台或屏幕关闭了，摄像头已停止。看护时请让这个页面一直显示在屏幕上。",
+  "The camera is now watching in another tab, so it stopped here.": "摄像头已在另一个标签页中看护，所以这里已停止。",
   "Starting... (the first time takes a little longer)": "正在启动……（第一次会慢一点）",
   "The database isn't set up on this website yet, so you can try the camera but your family won't see anything.":
     "这个网站的数据库还没设置好，所以您可以试用摄像头，但家人看不到任何内容。",

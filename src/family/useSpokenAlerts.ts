@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { english, type Lang, type Translate } from "../i18n/translate";
 import { useLanguage } from "../i18n/useLanguage";
-import { REPEAT_FALL_AFTER_MS, shouldSpeak, type AlertSettings } from "./alerts";
+import { REPEAT_FALL_AFTER_MS, shouldSpeak, shouldSpeakSilence, type AlertSettings } from "./alerts";
 import { pickVoice } from "./readAloud";
 import { canSpeak, loadVoices, playChime, speakAndWait, unlockSound, utterancesFor } from "./speech";
 import type { EventRow } from "./status";
@@ -133,5 +133,22 @@ export function useSpokenAlerts({
     [say],
   );
 
-  return { heard, turnedOn, needsTap: canSpeak && on && !unlocked };
+  /**
+   * Call once when the phone goes quiet while the page is open (a closed tab or a
+   * flat battery can't send "stopped"), with the last news heard from it. Says
+   * "Phone stopped watching, at 3:42 pm" once for that silence.
+   */
+  const silent = useCallback(
+    (lastHeard: EventRow) => {
+      const now = latest.current;
+      // Negative ids can't clash with real news, so each silence is said only once.
+      const e: EventRow = { ...lastHeard, id: -lastHeard.id, kind: "stopped", zone: null, posture: null };
+      if (!canSpeak || !now.on || spoken.current.has(e.id) || !shouldSpeakSilence(now.settings, Date.now())) return;
+      spoken.current.add(e.id);
+      say((lang, t) => latest.current.words(e, false, lang, t), true);
+    },
+    [say],
+  );
+
+  return { heard, silent, turnedOn, needsTap: canSpeak && on && !unlocked };
 }

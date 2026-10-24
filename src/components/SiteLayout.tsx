@@ -258,13 +258,14 @@ export function SiteFooter() {
 }
 
 /** A small green "Live" sign with a pulsing dot. */
-export function LivePill({ children }: { children?: React.ReactNode }) {
+/** The small "Live" badge. `off` shows a grey, still dot instead (e.g. "Camera off"). */
+export function LivePill({ children, off = false }: { children?: React.ReactNode; off?: boolean }) {
   const { t } = useLanguage();
   return (
-    <span className="flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 text-sm font-bold text-leaf">
+    <span className={`flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 text-sm font-bold ${off ? "text-muted" : "text-leaf"}`}>
       <span className="relative flex h-2 w-2">
-        <span className="absolute inset-0 animate-pulse-ring rounded-full bg-leaf" />
-        <span className="relative h-2 w-2 rounded-full bg-leaf" />
+        {!off && <span className="absolute inset-0 animate-pulse-ring rounded-full bg-leaf" />}
+        <span className={`relative h-2 w-2 rounded-full ${off ? "bg-muted" : "bg-leaf"}`} />
       </span>
       {children ?? t("Live")}
     </span>

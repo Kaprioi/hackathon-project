@@ -12,7 +12,7 @@ Finds people with the phone's camera, follows the one you tap, and drives the st
 | `servoModel.ts` | Guesses where the camera is pointing, by copying how the firmware moves the motors. |
 | `stand.ts` | Web Bluetooth link to the ESP32: moves, radar readings, mist on/off. |
 | `config.ts` | Every setting and tuning number, plus the Bluetooth IDs (must match the firmware). |
-| `events.ts` | Turns each frame's people into a few small text events for the family page (moving/still/nobody/fall, left/middle/right, posture, a heartbeat every minute). No camera code, so it's testable. |
+| `events.ts` | Turns each frame's people into a few small text events for the family page (moving/still/nobody/fall, left/middle/right, posture, a heartbeat every 30 seconds). No camera code, so it's testable. |
 | `cloud.ts` | Sends those events to Supabase: finds your care circle, registers this phone as a `devices` row once, then adds `movement_events` rows. Nothing else is sent. |
 | `events.test.mjs` | Tests for `events.ts` with made-up people boxes. |
 | `brain.test.mjs` | Tests with made-up frames, including a simulated room. Run `npm run test:tracker`. |
