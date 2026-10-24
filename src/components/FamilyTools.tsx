@@ -192,9 +192,12 @@ export function SpokenAlertsSwitch({
 export function AlertSettingsPanel({
   settings,
   onChange,
+  children,
 }: {
   settings: AlertSettings;
   onChange: (settings: AlertSettings) => void;
+  /** More settings, shown after quiet hours. */
+  children?: React.ReactNode;
 }) {
   const id = useId();
   const { t } = useLanguage();
@@ -285,6 +288,7 @@ export function AlertSettingsPanel({
           {t('A possible fall always shows in "Right now", even in quiet hours.')}
         </p>
       </fieldset>
+      {children}
       <p className="mt-6 text-lg text-muted">{t("Alerts by phone message or email are coming later.")}</p>
     </details>
   );

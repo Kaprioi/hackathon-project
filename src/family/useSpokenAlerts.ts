@@ -140,5 +140,19 @@ export function useSpokenAlerts({
     [say],
   );
 
-  return { heard, silent, turnedOn, needsTap: on && !unlocked, note };
+  /**
+   * Call for a gentle heads-up the page worked out by itself, like "No movement
+   * for 3 hours". Said once per `key`; the page checks the settings and quiet hours.
+   */
+  const saidHeadsUp = useRef(new Set<string>());
+  const headsUp = useCallback(
+    (key: string, build: (lang: Lang, t: Translate) => string) => {
+      if (!latest.current.on || saidHeadsUp.current.has(key)) return;
+      saidHeadsUp.current.add(key);
+      say(build, true);
+    },
+    [say],
+  );
+
+  return { heard, silent, headsUp, turnedOn, needsTap: on && !unlocked, note };
 }
