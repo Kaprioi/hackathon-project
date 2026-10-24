@@ -1,0 +1,442 @@
+<meta charset="utf-8">
+<title>SightLine Wiring</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+/* Layout: workbench. The breadboard model on the left (sticky), the wire-by-wire
+   list for the chosen step on the right; one column on phones. */
+:root {
+  --bg: #F2F4F1; --surface: #FFFFFF; --stage: #E3E8E4; --ink: #18201D; --muted: #5B6863;
+  --line: #CED7D2; --accent: #0E7369; --accent-soft: #D6ECE8; --alert: #B4610E; --alert-soft: #F6E6D3;
+  --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111614; --surface: #18201D; --stage: #1D2623; --ink: #E3EAE6; --muted: #9AA8A2; --line: #2C3833;
+  --accent: #45B9AD; --accent-soft: #173A36; --alert: #E39B4C; --alert-soft: #3A2B1B; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #111614; --surface: #18201D; --stage: #1D2623; --ink: #E3EAE6; --muted: #9AA8A2; --line: #2C3833;
+  --accent: #45B9AD; --accent-soft: #173A36; --alert: #E39B4C; --alert-soft: #3A2B1B; color-scheme: dark; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 1rem; line-height: 1.55; }
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(1.8rem, 3.4vw, 2.5rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: 1.3rem; font-weight: 800; }
+p { margin: 0; }
+code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.wrap { max-width: 1400px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 56px; display: grid; gap: 20px; }
+.eyebrow { font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+.intro { display: grid; gap: 8px; max-width: 70ch; }
+.intro p { color: var(--muted); }
+.layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+@media (max-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr); gap: 20px; } }
+.viewer { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); display: grid; gap: 10px; }
+@media (max-width: 960px) { .viewer { position: static; } }
+.stage { position: relative; height: min(70vh, 600px); border-radius: 14px; overflow: hidden; background: var(--stage); border: 1px solid var(--line); }
+@media (max-width: 960px) { .stage { height: 380px; } }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.note { position: absolute; left: 12px; bottom: 10px; font-size: 0.78rem; color: var(--muted); pointer-events: none; }
+.tip { position: absolute; padding: 5px 10px; border-radius: 6px; background: var(--ink); color: var(--bg); font-size: 0.82rem; pointer-events: none; transform: translate(-50%, -135%); white-space: nowrap; }
+.tabs { display: flex; flex-wrap: wrap; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); width: fit-content; max-width: 100%; }
+.tabs button { font: inherit; font-size: 0.9rem; font-weight: 700; padding: 7px 13px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--surface); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { font: inherit; font-size: 0.88rem; font-weight: 700; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.panel { display: grid; gap: 16px; min-width: 0; }
+.panel > p { color: var(--muted); }
+.wires { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: w; }
+.wire { counter-increment: w; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: start; padding: 11px 13px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; text-align: left; font: inherit; color: inherit; width: 100%; }
+.wire:hover, .wire[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.wire .swatch { grid-row: span 2; width: 34px; height: 8px; border-radius: 4px; margin-top: 8px; }
+.wire b { font-family: var(--font-display); font-size: 1.02rem; }
+.wire b::before { content: counter(w) ". "; color: var(--accent); }
+.wire span { color: var(--muted); font-size: 0.92rem; }
+.warn { background: var(--alert-soft); border-radius: 8px; padding: 10px 13px; font-size: 0.93rem; }
+.warn b { color: var(--alert); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.85rem; color: var(--muted); }
+.legend i { display: inline-block; width: 22px; height: 6px; border-radius: 3px; vertical-align: middle; margin-right: 6px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <div class="intro">
+    <span class="eyebrow">SightLine · breadboard wiring</span>
+    <h1>SightLine Wiring</h1>
+    <p>Every wire, in the hole it plugs into. Pick a step, then tap a wire in the list to light it up on the model. Hole names match the letters (a–j) and numbers (1–30) printed on a half-size breadboard.</p>
+  </div>
+
+  <div class="layout">
+    <aside class="viewer" aria-label="3D wiring model">
+      <div class="stage" id="stage"><span class="note" id="note">Drag to rotate · scroll or pinch to zoom · tap a wire for its name</span></div>
+      <div class="controls">
+        <button class="btn" id="topBtn">Top view</button>
+        <button class="btn" id="angleBtn">Angled view</button>
+      </div>
+      <div class="legend" aria-label="Wire colors">
+        <span><i style="background:#D23B2E"></i>5V power</span>
+        <span><i style="background:#2B2B2B;outline:1px solid #888"></i>Ground</span>
+        <span><i style="background:#E8B21C"></i>Servo signal</span>
+        <span><i style="background:#2E9B57"></i>Radar TX</span>
+        <span><i style="background:#2F6FD0"></i>Radar RX</span>
+      </div>
+    </aside>
+
+    <main class="panel">
+      <div class="tabs" role="tablist" aria-label="Wiring step">
+        <button role="tab" data-step="3" aria-selected="true">Step 3 · Power</button>
+        <button role="tab" data-step="4" aria-selected="false">Step 4 · Servos</button>
+        <button role="tab" data-step="6" aria-selected="false">Step 6 · Radars</button>
+        <button role="tab" data-step="all" aria-selected="false">Everything</button>
+      </div>
+      <h2 id="stepTitle">Step 3 · Power</h2>
+      <p id="stepIntro"></p>
+      <ol class="wires" id="wireList"></ol>
+      <div class="warn"><b>Keep column 11 empty.</b> The Feather's pin <b>12</b> sits in column 11. Anything plugged into holes a–b of that column at power-on makes uploads fail.</div>
+      <div class="warn" id="safety"><b>Unplug the 5V supply</b> before adding or moving any wire. Plug it back in only when the step's wires are all in.</div>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ---------- breadboard geometry (millimetres) ----------
+// Columns 1-30 run left to right; rows a-e above the center gap, f-j below.
+// Row positions in 0.1" steps from row a: a0 … e4, gap, f7 … j11.
+const P = 2.54;
+const ROW_U = { a: 0, b: 1, c: 2, d: 3, e: 4, f: 7, g: 8, h: 9, i: 10, j: 11 };
+// Power rails, each long edge: inner = blue (−), outer = red (+).
+const RAIL_U = { "top-": -3, "top+": -4, "bottom-": 14, "bottom+": 15 };
+const colX = (c) => (c - 15.5) * P;
+const rowY = (u) => (5.5 - u) * P;          // board-plane y: row a is "up" (far side)
+const BB = { w: 82, d: 55, h: 9.5 };
+
+function hole(name) {                          // "j6", "bottom+ 2", "top- 19"
+  const m = name.match(/^([a-j])(\d+)$/);
+  if (m) return { x: colX(+m[2]), y: rowY(ROW_U[m[1]]), z: BB.h };
+  const [rail, col] = name.split(" ");
+  return { x: colX(+col), y: rowY(RAIL_U[rail]), z: BB.h };
+}
+const railName = (s) => {
+  const [rail, col] = s.split(" ");
+  const side = rail.startsWith("top") ? "top" : "bottom";
+  return `${side} ${rail.endsWith("+") ? "red (+)" : "blue (−)"} rail, column ${col}`;
+};
+const holeName = (s) => (/^[a-j]\d+$/.test(s) ? `hole ${s}` : railName(s));
+
+// ---------- the Feather: 16-pin side in row i, 12-pin side in row c ----------
+// Pin positions count from the USB-C end; position p sits in column p + 2.
+const PINS16 = ["RST", "3V", "NC", "GND", "A0", "A1", "A2", "A3", "A4", "A5", "SCK", "MO", "MI", "RX", "TX", "37"];
+const PINS12 = ["BAT", "EN", "USB", "13", "12", "27", "33", "15", "32", "14", "SCL", "SDA"];  // positions 5-16
+const pin16Col = (label) => PINS16.indexOf(label) + 3;
+const pin12Col = (label) => PINS12.indexOf(label) + 7;
+
+// ---------- off-board parts, in board-plane coords ----------
+const JACK = { x: -62, y: -23 };
+const SERVO_PLUG = { pan: { x: 46, y: 36 }, tilt: { x: 46, y: 46 } };
+const RADAR = { left: { x: 14, y: -44 }, right: { x: -6, y: 42 } };
+const radarPin = (side, label) => {
+  const order = ["TX", "RX", "OUT", "GND", "VCC"];   // read your board's own labels
+  const r = RADAR[side], dir = side === "left" ? 1 : -1;
+  return { x: r.x + (order.indexOf(label) - 2) * P, y: r.y + dir * 9, z: 4 };
+};
+const plugPin = (servo, i) => ({ x: SERVO_PLUG[servo].x + (i - 1) * P, y: SERVO_PLUG[servo].y - 4, z: 6 });
+
+const RED = 0xD23B2E, BLACK = 0x2B2B2B, YELLOW = 0xE8B21C, GREEN = 0x2E9B57, BLUE = 0x2F6FD0;
+
+// Every wire: step, color, from, to (hole names or off-board points), and plain-English text.
+const WIRES = [
+  { step: 3, color: RED, a: { pt: { x: JACK.x + 12, y: JACK.y + 3, z: 7 } }, b: "bottom+ 2",
+    title: "Barrel jack + → bottom red rail", text: "Red wire from the jack adapter's + screw to the bottom red (+) rail, column 2." },
+  { step: 3, color: BLACK, a: { pt: { x: JACK.x + 12, y: JACK.y - 3, z: 7 } }, b: "bottom- 3",
+    title: "Barrel jack − → bottom blue rail", text: "Black wire from the jack adapter's − screw to the bottom blue (−) rail, column 3." },
+  { step: 3, color: BLACK, a: `j${pin16Col("GND")}`, b: `bottom- ${pin16Col("GND")}`,
+    title: "Feather GND → bottom blue rail", text: `Short black jumper from hole j${pin16Col("GND")} (next to the Feather's GND pin) down to the bottom blue (−) rail, column ${pin16Col("GND")}.` },
+  { step: 3, color: RED, a: "bottom+ 30", b: "top+ 30",
+    title: "Link the red rails", text: "Red jumper from the bottom red (+) rail to the top red (+) rail, both at column 30, so both edges get 5V." },
+  { step: 3, color: BLACK, a: "bottom- 29", b: "top- 29",
+    title: "Link the blue rails", text: "Black jumper from the bottom blue (−) rail to the top blue (−) rail, both at column 29, so both edges share ground." },
+
+  { step: 4, color: BLACK, a: { pt: plugPin("pan", 0) }, b: "top- 24", title: "Pan servo black → top blue rail", text: "Into the pan servo's plug: black → top blue (−) rail, column 24." },
+  { step: 4, color: RED, a: { pt: plugPin("pan", 1) }, b: "top+ 25", title: "Pan servo red → top red rail", text: "Pan servo red → top red (+) rail, column 25." },
+  { step: 4, color: YELLOW, a: { pt: plugPin("pan", 2) }, b: `a${pin12Col("27")}`, title: "Pan servo yellow → Feather 27", text: `Pan servo yellow → hole a${pin12Col("27")}, next to the Feather's pin 27.` },
+  { step: 4, color: BLACK, a: { pt: plugPin("tilt", 0) }, b: "top- 26", title: "Tilt servo black → top blue rail", text: "Into the tilt servo's plug: black → top blue (−) rail, column 26." },
+  { step: 4, color: RED, a: { pt: plugPin("tilt", 1) }, b: "top+ 27", title: "Tilt servo red → top red rail", text: "Tilt servo red → top red (+) rail, column 27." },
+  { step: 4, color: YELLOW, a: { pt: plugPin("tilt", 2) }, b: `a${pin12Col("33")}`, title: "Tilt servo yellow → Feather 33", text: `Tilt servo yellow → hole a${pin12Col("33")}, next to the Feather's pin 33.` },
+
+  { step: 6, color: RED, a: { pt: radarPin("left", "VCC") }, b: "bottom+ 22", title: "Left radar VCC → bottom red rail", text: "Left radar VCC → bottom red (+) rail, column 22." },
+  { step: 6, color: BLACK, a: { pt: radarPin("left", "GND") }, b: "bottom- 21", title: "Left radar GND → bottom blue rail", text: "Left radar GND → bottom blue (−) rail, column 21." },
+  { step: 6, color: GREEN, a: { pt: radarPin("left", "TX") }, b: `j${pin16Col("RX")}`, title: "Left radar TX → Feather RX", text: `Left radar TX → hole j${pin16Col("RX")}, next to the Feather's RX pin. Crossing TX to RX is correct.` },
+  { step: 6, color: BLUE, a: { pt: radarPin("left", "RX") }, b: `j${pin16Col("TX")}`, title: "Left radar RX → Feather TX", text: `Left radar RX → hole j${pin16Col("TX")}, next to the Feather's TX pin.` },
+  { step: 6, color: RED, a: { pt: radarPin("right", "VCC") }, b: "top+ 18", title: "Right radar VCC → top red rail", text: "Right radar VCC → top red (+) rail, column 18." },
+  { step: 6, color: BLACK, a: { pt: radarPin("right", "GND") }, b: "top- 19", title: "Right radar GND → top blue rail", text: "Right radar GND → top blue (−) rail, column 19." },
+  { step: 6, color: GREEN, a: { pt: radarPin("right", "TX") }, b: `a${pin12Col("32")}`, title: "Right radar TX → Feather 32", text: `Right radar TX → hole a${pin12Col("32")}, next to the Feather's pin 32.` },
+  { step: 6, color: BLUE, a: { pt: radarPin("right", "RX") }, b: `a${pin12Col("14")}`, title: "Right radar RX → Feather 14", text: `Right radar RX → hole a${pin12Col("14")}, next to the Feather's pin 14.` },
+];
+
+const STEP_INFO = {
+  3: { title: "Step 3 · Power", intro: "The Feather sits in columns 3–18: its long pin row in row i, its short pin row in row c, USB-C end at column 3. Then five wires bring 5V and ground to both rails. The Feather itself still runs from its own USB-C cable." },
+  4: { title: "Step 4 · Servos", intro: "Push male-to-male jumpers into each servo's 3-wire plug. Power goes to the top rails, which step 3 linked to the bottom ones." },
+  6: { title: "Step 6 · Radars", intro: "Female ends go on the radar pins. Read the labels printed on your radar board: the pin order differs between sellers, and the model shows one common order." },
+  all: { title: "Everything", intro: "The finished breadboard with every wire from steps 3, 4 and 6." },
+};
+
+const $ = (s) => document.querySelector(s);
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let currentStep = "3", selected = null;
+
+// ---------- wire list (works without the 3D model) ----------
+function renderList() {
+  const info = STEP_INFO[currentStep];
+  $("#stepTitle").textContent = info.title;
+  $("#stepIntro").textContent = info.intro;
+  const list = $("#wireList");
+  list.innerHTML = "";
+  WIRES.forEach((w, i) => {
+    if (currentStep !== "all" && String(w.step) !== currentStep) return;
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.className = "wire"; b.dataset.i = i; b.setAttribute("aria-pressed", String(selected === i));
+    b.innerHTML = `<i class="swatch" style="background:#${w.color.toString(16).padStart(6, "0")}${w.color === BLACK ? ";outline:1px solid #888" : ""}"></i><b>${w.title}</b><span>${w.text}</span>`;
+    b.addEventListener("click", () => select(selected === i ? null : i));
+    li.appendChild(b); list.appendChild(li);
+  });
+}
+let onChange = () => {};
+function select(i) {
+  selected = i;
+  document.querySelectorAll(".wire").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.i === i)));
+  onChange();
+}
+document.querySelectorAll(".tabs button").forEach((t) => t.addEventListener("click", () => {
+  currentStep = t.dataset.step; selected = null;
+  document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
+  renderList(); onChange();
+}));
+renderList();
+
+// ---------- 3D model ----------
+if (!window.THREE) $("#note").textContent = "The 3D model couldn't load here. The wire list still works.";
+else document.fonts.ready.then(build3D);
+
+function build3D() {
+  const stage = $("#stage");
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  stage.prepend(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, 1, 1, 3000);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.minDistance = 60; controls.maxDistance = 700;
+  const views = {
+    angle: () => { camera.position.set(-6, 118, 128); controls.target.set(-6, 0, 4); },
+    top: () => { camera.position.set(-6, 205, 1); controls.target.set(-6, 0, 0); },
+  };
+  views.angle();
+  $("#topBtn").addEventListener("click", views.top);
+  $("#angleBtn").addEventListener("click", views.angle);
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x50605a, 0.95));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(-80, 220, 120); scene.add(sun);
+
+  // Board-plane (x, y, height) → three.js (x, height, -y): row a is the far side.
+  const V = (p) => new THREE.Vector3(p.x, p.z, -p.y);
+  const root = new THREE.Group(); scene.add(root);
+  const mat = (color, extra = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.6 }, extra));
+  const box = (w, d, h, color, at, extra) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color, extra));
+    m.position.copy(V({ x: at.x, y: at.y, z: at.z + h / 2 })); root.add(m); return m;
+  };
+
+  // Text drawn onto a canvas, mapped flat onto a surface
+  function surfaceTexture(wmm, dmm, ppm, draw) {
+    const c = document.createElement("canvas");
+    c.width = Math.round(wmm * ppm); c.height = Math.round(dmm * ppm);
+    const g = c.getContext("2d"); g.scale(ppm, ppm); draw(g);
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 8; return t;
+  }
+  function flatLabel(wmm, dmm, cx, cy, z, tex) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(wmm, dmm).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }));
+    m.position.copy(V({ x: cx, y: cy, z })); root.add(m); return m;
+  }
+  function sprite(text, at, size = 5, color = "#18201D", bg = "rgba(255,255,255,0.92)") {
+    const c = document.createElement("canvas"); const g = c.getContext("2d");
+    g.font = "700 48px 'Atkinson Hyperlegible', sans-serif";
+    const w = g.measureText(text).width + 36; c.width = w; c.height = 72;
+    g.font = "700 48px 'Atkinson Hyperlegible', sans-serif";
+    g.fillStyle = bg; g.beginPath(); g.roundRect(0, 0, w, 72, 16); g.fill();
+    g.fillStyle = color; g.textBaseline = "middle"; g.fillText(text, 18, 38);
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+    s.scale.set(size * w / 72, size, 1); s.position.copy(V(at)); s.renderOrder = 10; root.add(s); return s;
+  }
+
+  // ----- breadboard -----
+  box(BB.w, BB.d, BB.h, 0xF4F3EE, { x: 0, y: 0, z: 0 });
+  const bbTex = surfaceTexture(BB.w, BB.d, 16, (g) => {
+    const X = (x) => x + BB.w / 2, Y = (y) => BB.d / 2 - y;
+    g.fillStyle = "#F4F3EE"; g.fillRect(0, 0, BB.w, BB.d);
+    g.fillStyle = "#E4E2DA"; g.fillRect(0, Y(rowY(4.6)), BB.w, (rowY(4.6) - rowY(6.4)));   // center gap
+    // rail stripes
+    for (const [rail, u] of Object.entries(RAIL_U)) {
+      const plus = rail.endsWith("+");
+      const yy = rowY(u) + (plus ? (rail.startsWith("top") ? 1.6 : -1.6) : (rail.startsWith("top") ? -1.6 : 1.6));
+      g.strokeStyle = plus ? "#D23B2E" : "#2F6FD0"; g.lineWidth = 0.45;
+      g.beginPath(); g.moveTo(X(colX(0.6)), Y(yy)); g.lineTo(X(colX(30.4)), Y(yy)); g.stroke();
+      g.fillStyle = plus ? "#D23B2E" : "#2F6FD0"; g.font = "700 3.2px sans-serif"; g.textBaseline = "middle";
+      g.fillText(plus ? "+" : "−", X(colX(0.3)) - 1.6, Y(rowY(u)));
+    }
+    // holes
+    g.fillStyle = "#3A3F45";
+    const sq = (x, y) => g.fillRect(X(x) - 0.55, Y(y) - 0.55, 1.1, 1.1);
+    for (let c = 1; c <= 30; c++) {
+      for (const u of Object.values(ROW_U)) sq(colX(c), rowY(u));
+      for (const u of Object.values(RAIL_U)) sq(colX(c), rowY(u));
+    }
+    // labels
+    g.fillStyle = "#6A706C"; g.font = "600 1.9px 'JetBrains Mono', monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+    for (let c = 1; c <= 30; c++) if (c === 1 || c % 5 === 0) {
+      g.fillText(String(c), X(colX(c)), Y(rowY(-1.35)));
+      g.fillText(String(c), X(colX(c)), Y(rowY(12.35)));
+    }
+    for (const [r, u] of Object.entries(ROW_U)) { g.fillText(r, X(colX(0.1)), Y(rowY(u))); g.fillText(r, X(colX(30.9)), Y(rowY(u))); }
+    // pin 12 column warning
+    g.strokeStyle = "#B4610E"; g.lineWidth = 0.35; g.setLineDash([0.8, 0.6]);
+    g.strokeRect(X(colX(pin12Col("12"))) - 1.2, Y(rowY(-0.6)), 2.4, rowY(-0.6) - rowY(4.6));
+  });
+  flatLabel(BB.w, BB.d, 0, 0, BB.h + 0.02, bbTex);
+
+  // ----- Feather V2 -----
+  const fx = colX(10.5), fy = (rowY(ROW_U.c) + rowY(ROW_U.i)) / 2;   // board center
+  const pcbZ = BB.h + 2.5;
+  for (const [u, n, first] of [[ROW_U.i, 16, 3], [ROW_U.c, 12, 7]]) {   // header spacers + pins
+    box(n * P, P, 2.5, 0x1C1C1C, { x: colX(first + (n - 1) / 2), y: rowY(u), z: BB.h });
+    for (let k = 0; k < n; k++) box(0.64, 0.64, 1.2, 0xC9A64B, { x: colX(first + k), y: rowY(u), z: pcbZ + 1.6 }, { metalness: 0.7, roughness: 0.3 });
+  }
+  box(50.8, 22.86, 1.6, 0x15181B, { x: fx, y: fy, z: pcbZ });
+  const featherTex = surfaceTexture(50.8, 22.86, 24, (g) => {
+    const X = (x) => x - (fx - 25.4), Y = (y) => (fy + 11.43) - y;
+    g.fillStyle = "#15181B"; g.fillRect(0, 0, 50.8, 22.86);
+    g.textAlign = "center"; g.textBaseline = "middle";
+    const lab = (txt, x, y, warn) => {
+      g.font = `700 ${txt.length > 2 ? 1.25 : 1.5}px 'JetBrains Mono', monospace`;
+      g.fillStyle = warn ? "#F2A04A" : "#F4F3EE"; g.fillText(txt, X(x), Y(y));
+    };
+    PINS16.forEach((t, k) => lab(t, colX(k + 3), rowY(ROW_U.i) + 2.3));
+    PINS12.forEach((t, k) => lab(t, colX(k + 7), rowY(ROW_U.c) - 2.3, t === "12"));
+    g.fillStyle = "#2E3338"; g.fillRect(X(colX(9)), Y(fy + 4.5), 16, 9);           // ESP32 module
+    g.fillStyle = "#9AA8A2"; g.font = "700 1.6px 'Atkinson Hyperlegible', sans-serif";
+    g.fillText("ESP32 Feather V2", X(colX(12.2)), Y(fy));
+    g.fillText("USB-C", X(fx - 21), Y(fy));
+  });
+  flatLabel(50.8, 22.86, fx, fy, pcbZ + 1.62, featherTex);
+  box(7.5, 9, 3.2, 0xB9BEC4, { x: fx - 24.6, y: fy, z: pcbZ + 1.6 }, { metalness: 0.7, roughness: 0.3 });   // USB-C
+  sprite("Feather: columns 3–18", { x: fx - 12, y: BB.d / 2 + 6, z: 2 }, 4.2);
+
+  // ----- barrel jack adapter -----
+  const jackBody = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 5.5, 14, 28).rotateZ(Math.PI / 2), mat(0x2B2B2B));
+  jackBody.position.copy(V({ x: JACK.x - 4, y: JACK.y, z: 5.5 })); root.add(jackBody);
+  box(9, 12, 9, 0x2E9B57, { x: JACK.x + 8, y: JACK.y, z: 0 });
+  sprite("Barrel jack (5V in)", { x: JACK.x, y: JACK.y - 11, z: 6 }, 4);
+
+  // ----- servos and radars -----
+  const servoBodies = [], radarBodies = [];
+  for (const [name, p] of Object.entries(SERVO_PLUG)) {
+    const body = box(20, 10, 12, 0x24272B, { x: p.x + 34, y: p.y, z: 0 });
+    const plug = box(8, 4, 3, 0x1C1C1C, { x: p.x, y: p.y - 2, z: 4.5 });
+    const ribbon = box(26, 2.4, 1, 0x7A5C3A, { x: p.x + 17, y: p.y, z: 5 });
+    const tag = sprite(`${name === "pan" ? "Pan" : "Tilt"} servo plug`, { x: p.x + 34, y: p.y, z: 18 }, 3.8);
+    servoBodies.push({ step: 4, objs: [body, plug, ribbon, tag] });
+  }
+  for (const side of ["left", "right"]) {
+    const r = RADAR[side], dir = side === "left" ? 1 : -1;
+    const pcb = box(22, 16, 1.2, 0x1F5E3B, { x: r.x, y: r.y, z: 0 });
+    const head = box(13, 2.5, 2.5, 0x1C1C1C, { x: r.x, y: r.y + dir * 7.6, z: 1.2 });
+    const objs = [pcb, head];
+    objs.push(sprite("pins: TX · RX · OUT · GND · VCC", { x: r.x, y: r.y + dir * 2.5, z: 3 }, 2.6, "#F4F3EE", "rgba(31,94,59,0.95)"));
+    objs.push(sprite(`${side === "left" ? "Left" : "Right"} radar`, { x: r.x, y: r.y - dir * 4, z: 9 }, 3.8));
+    radarBodies.push({ step: 6, objs });
+  }
+
+  // ----- wires -----
+  const endpoint = (e) => (typeof e === "string" ? hole(e) : e.pt);
+  const wireMeshes = WIRES.map((w, i) => {
+    const a = endpoint(w.a), b = endpoint(w.b);
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    const lift = 6 + dist * 0.18 + (i % 3) * 1.5;                // stagger heights so wires don't merge
+    const pts = [
+      { ...a, z: a.z - 1.5 }, { ...a, z: a.z + 3 },
+      { x: a.x + (b.x - a.x) * 0.25, y: a.y + (b.y - a.y) * 0.25, z: Math.max(a.z, b.z) + lift },
+      { x: a.x + (b.x - a.x) * 0.75, y: a.y + (b.y - a.y) * 0.75, z: Math.max(a.z, b.z) + lift },
+      { ...b, z: b.z + 3 }, { ...b, z: b.z - 1.5 },
+    ].map(V);
+    const curve = new THREE.CatmullRomCurve3(pts, false, "centripetal");
+    const m = new THREE.Mesh(new THREE.TubeGeometry(curve, 64, 0.62, 10, false), mat(w.color, { roughness: 0.45 }));
+    m.userData.i = i; root.add(m);
+    const ends = [a, b].filter((_, k) => typeof [w.a, w.b][k] === "string").map((p) => {   // dupont pin housings
+      const h = new THREE.Mesh(new THREE.BoxGeometry(2.3, 6, 2.3), mat(0x1C1C1C));
+      h.position.copy(V({ ...p, z: p.z + 3 })); root.add(h); return h;
+    });
+    return { mesh: m, ends, w };
+  });
+
+  // ----- show the chosen step -----
+  function apply() {
+    const inStep = (s) => currentStep === "all" || String(s) === currentStep;
+    const shownSteps = currentStep === "all" ? [3, 4, 6] : [3, 4, 6].filter((s) => s <= +currentStep);
+    wireMeshes.forEach(({ mesh, ends, w }, i) => {
+      const done = shownSteps.includes(w.step);                    // earlier steps stay, faded
+      const active = inStep(w.step);
+      const vis = done || active;
+      mesh.visible = vis; ends.forEach((e) => (e.visible = vis));
+      const m = mesh.material;
+      const dim = (selected !== null && selected !== i) || (!active && currentStep !== "all");
+      m.transparent = dim; m.opacity = dim ? 0.22 : 1; m.depthWrite = !dim;
+      m.emissive = new THREE.Color(selected === i ? css("--accent") : "#000000");
+      m.emissiveIntensity = selected === i ? 0.55 : 0;
+    });
+    for (const g of [...servoBodies, ...radarBodies]) g.objs.forEach((o) => (o.visible = currentStep === "all" || +currentStep >= g.step));
+  }
+  onChange = apply; apply();
+
+  function applyTheme() { renderer.setClearColor(new THREE.Color(css("--stage"))); }
+  applyTheme();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+  new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  // ----- tap / hover a wire -----
+  const tip = document.createElement("span"); tip.className = "tip"; tip.hidden = true; stage.appendChild(tip);
+  const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+  const hitWire = (ev) => {
+    const r = renderer.domElement.getBoundingClientRect();
+    ptr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ptr, camera);
+    const hit = ray.intersectObjects(wireMeshes.filter((x) => x.mesh.visible && x.mesh.material.opacity > 0.5).map((x) => x.mesh))[0];
+    return { hit, r };
+  };
+  renderer.domElement.addEventListener("pointermove", (ev) => {
+    const { hit, r } = hitWire(ev);
+    if (hit) { tip.hidden = false; tip.textContent = WIRES[hit.object.userData.i].title; tip.style.left = ev.clientX - r.left + "px"; tip.style.top = ev.clientY - r.top + "px"; }
+    else tip.hidden = true;
+  });
+  renderer.domElement.addEventListener("pointerleave", () => (tip.hidden = true));
+  let downAt = null;
+  renderer.domElement.addEventListener("pointerdown", (ev) => (downAt = [ev.clientX, ev.clientY]));
+  renderer.domElement.addEventListener("pointerup", (ev) => {
+    if (!downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 5) return;   // a drag, not a tap
+    const { hit } = hitWire(ev);
+    select(hit ? hit.object.userData.i : null);
+    const row = document.querySelector(`.wire[data-i="${hit ? hit.object.userData.i : -1}"]`);
+    if (row && !matchMedia("(max-width: 960px)").matches) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  });
+
+  function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  new ResizeObserver(resize).observe(stage); resize();
+  renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+}
+</script>
