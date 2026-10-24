@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./index.css";
+import { startDisplaySettings } from "./lib/displaySettings";
 import CareProfilePage from "./pages/CareProfilePage";
 import DashboardPage from "./pages/DashboardPage";
 import HomePage from "./pages/HomePage";
@@ -12,6 +13,9 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 // Phone Tracker: loaded only when someone opens /tracker, so the homepage stays fast.
 const TrackerPage = lazy(() => import("./tracker/TrackerPage.tsx"));
+
+// Text size, motion, dark mode and contrast, as this browser asked for them, before anything is drawn.
+startDisplaySettings();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

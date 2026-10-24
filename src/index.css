@@ -21,6 +21,8 @@
   --color-surface: #fff; /* cards */
   --color-on-brand: #fff; /* text on purple */
   --color-alert: oklch(60% 0.19 18); /* "please check in" red */
+  --color-error: #a61b1b; /* error messages */
+  --color-error-soft: #fdecec; /* behind error messages */
 
   --shadow-soft: 0 14px 40px -16px rgb(31 42 55 / 0.22);
   --shadow-lift: 0 30px 60px -24px rgb(61 39 144 / 0.42);
@@ -116,6 +118,92 @@
   }
 }
 
+/* The "Display" settings in the header (see displaySettings.ts) swap the colours
+   above for dark mode and/or high contrast. Tailwind's classes (text-ink, bg-surface...)
+   read these, so every page follows along. Each text colour passes WCAG AA on the
+   backgrounds it is used on in that mode. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --color-ink: #eef1f6;
+  --color-muted: #bcc4d0;
+  --color-brand: #b9a6ff; /* light purple: readable as text, and as a button with dark text */
+  --color-brand-dark: #9a82f5;
+  --color-leaf: #6fdcae;
+  --color-cream: #12161d;
+  --color-mint: #173a2f;
+  --color-lilac: #2c2452;
+  --color-peach: #44291b;
+  --color-sun: #4a3f12;
+  --color-coral: #ff9f7a;
+  --color-surface: #1d222b;
+  --color-on-brand: #14102a;
+  --color-alert: #ff8f8f;
+  --color-error: #ff9c9c;
+  --color-error-soft: #3a1717;
+  --shadow-soft: 0 14px 40px -16px rgb(0 0 0 / 0.7);
+  --shadow-lift: 0 30px 60px -24px rgb(0 0 0 / 0.8);
+}
+
+/* High contrast: near-black on white, no pale colours behind text, and a solid
+   outline instead of soft shadows so every card and button has a strong edge. */
+html[data-contrast="more"] {
+  --color-ink: #000;
+  --color-muted: #1c1c1c;
+  --color-brand: #3a1a9e;
+  --color-brand-dark: #22105e;
+  --color-leaf: #0b5a3f;
+  --color-cream: #fff;
+  --color-mint: #fff;
+  --color-lilac: #fff;
+  --color-peach: #fff;
+  --color-sun: #fff;
+  --color-coral: #3a1a9e;
+  --color-surface: #fff;
+  --color-on-brand: #fff;
+  --color-alert: #a00018;
+  --color-error: #8f0016;
+  --color-error-soft: #fff;
+}
+html[data-theme="dark"][data-contrast="more"] {
+  --color-ink: #fff;
+  --color-muted: #ececec;
+  --color-brand: #d9ccff;
+  --color-brand-dark: #c2b0ff;
+  --color-leaf: #8ff0c4;
+  --color-cream: #000;
+  --color-mint: #000;
+  --color-lilac: #000;
+  --color-peach: #000;
+  --color-sun: #000;
+  --color-coral: #d9ccff;
+  --color-surface: #000;
+  --color-on-brand: #000;
+  --color-alert: #ffb3b3;
+  --color-error: #ffb3b3;
+  --color-error-soft: #000;
+}
+/* Solid edges instead of soft shadows, and around anything that used to be a pale
+   colour (buttons, the current page in the menu...). */
+html[data-contrast="more"] .shadow-soft,
+html[data-contrast="more"] .shadow-lift {
+  box-shadow: 0 0 0 3px var(--color-ink);
+}
+html[data-contrast="more"] .bg-lilac,
+html[data-contrast="more"] .bg-mint,
+html[data-contrast="more"] .bg-peach,
+html[data-contrast="more"] .bg-sun {
+  box-shadow: inset 0 0 0 3px var(--color-ink);
+}
+/* No see-through frosted header in high contrast. */
+html[data-contrast="more"] .glass {
+  background-color: var(--color-surface);
+  backdrop-filter: none;
+}
+html[data-contrast="more"] .text-gradient-brand {
+  background-image: none;
+  color: var(--color-brand);
+}
+
 /* Purple-to-coral words in headings. */
 @utility text-gradient-brand {
   background-image: linear-gradient(90deg, var(--color-brand), var(--color-coral));
@@ -176,6 +264,52 @@ html {
   scroll-behavior: smooth;
 }
 
+/* The "Display" setting in the header: bigger text everywhere (see displaySettings.ts). */
+html[data-text-size="large"] {
+  font-size: 131.25%; /* 21px */
+}
+html[data-text-size="extra"] {
+  font-size: 150%; /* 24px */
+}
+/* Bigger text doesn't fit the header's row of links on a tablet or small laptop,
+   so the phone-style menu button is used there instead. */
+@media (max-width: 1023px) {
+  html[data-text-size="large"] .site-nav {
+    display: none;
+  }
+  html[data-text-size="large"] .site-menu-button {
+    display: grid;
+  }
+  html[data-text-size="large"] .site-mobile-menu {
+    display: block;
+  }
+}
+@media (max-width: 1279px) {
+  html[data-text-size="extra"] .site-nav {
+    display: none;
+  }
+  html[data-text-size="extra"] .site-menu-button {
+    display: grid;
+  }
+  html[data-text-size="extra"] .site-mobile-menu {
+    display: block;
+  }
+}
+
+/* On a narrow phone with bigger text, the header shows just the heart (the name is
+   still read out by screen readers), so the menu button stays on screen. */
+@media (max-width: 479px) {
+  html[data-text-size="large"] .site-wordmark,
+  html[data-text-size="extra"] .site-wordmark {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 body {
   background-color: var(--color-cream);
   color: var(--color-ink);
@@ -200,21 +334,45 @@ body {
   outline-color: var(--color-ink);
 }
 
-/* People who ask for less motion get a still page with everything shown. */
+/* People who ask for less motion get a still page with everything shown: either
+   their device asks for it, or they turned on "Reduce motion" in the header
+   (data-motion="reduce"). Turning it off there (data-motion="full") wins over the device. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  ::before,
-  ::after {
+  html:not([data-motion="full"]) *,
+  html:not([data-motion="full"]) ::before,
+  html:not([data-motion="full"]) ::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition: none !important;
     scroll-behavior: auto !important;
   }
-  .reveal {
+  html:not([data-motion="full"]) {
+    scroll-behavior: auto;
+  }
+  html:not([data-motion="full"]) .reveal {
     opacity: 1;
     transform: none;
   }
-  .highlight-sweep {
+  html:not([data-motion="full"]) .highlight-sweep {
     background-size: 100% 100%;
   }
+}
+
+html[data-motion="reduce"] {
+  scroll-behavior: auto;
+}
+html[data-motion="reduce"] *,
+html[data-motion="reduce"] ::before,
+html[data-motion="reduce"] ::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+html[data-motion="reduce"] .reveal {
+  opacity: 1;
+  transform: none;
+}
+html[data-motion="reduce"] .highlight-sweep {
+  background-size: 100% 100%;
 }

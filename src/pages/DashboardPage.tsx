@@ -5,6 +5,8 @@ import { buttonVariants } from "../components/ButtonLink";
 import SiteLayout, { Blobs, LivePill } from "../components/SiteLayout";
 import { supabase } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
+import { cleanContacts, cleanPhone, telHref, type Contact, type Contacts } from "../family/contacts";
+import { startOfLocalDay, summariseDay } from "../family/dailySummary";
 import { describe, summarise, timeAgo, whatHappened, whereInRoom, type EventRow, type Mood } from "../family/status";
 
 // The family page: the latest news from the phone camera in big words, a short
@@ -12,9 +14,12 @@ import { describe, summarise, timeAgo, whatHappened, whereInRoom, type EventRow,
 
 const EVENT_COLUMNS = "id, kind, zone, posture, created_at";
 const HOW_MANY = 50;
+// Today's news for "Today so far" (heartbeats left out, so this is a whole day).
+const TODAY_MAX = 1000;
 
-// Dark red that passes WCAG AA contrast on white and on the cream background.
-const ERROR_RED = "text-[#a61b1b]";
+// Dark red that passes WCAG AA contrast on white and on the cream background
+// (a lighter red in dark mode, see index.css).
+const ERROR_RED = "text-error";
 
 // The "Right now" card looks like the pretend family page on the homepage:
 // mint when all is well, red when someone may have fallen, white when quiet.
@@ -89,6 +94,7 @@ function Family({
   const [logOutError, setLogOutError] = useState("");
   const [circle, setCircle] = useState<Circle | null>(null);
   const [events, setEvents] = useState<EventRow[]>([]);
+  const [todayEvents, setTodayEvents] = useState<EventRow[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -140,6 +146,18 @@ function Family({
           setProblem(null);
           setEvents((old) => merge(old, (data ?? []) as EventRow[]));
         });
+      db.from("movement_events")
+        .select(EVENT_COLUMNS)
+        .eq("circle_id", circle!.id)
+        .neq("kind", "heartbeat")
+        .gte("created_at", new Date(startOfLocalDay(Date.now())).toISOString())
+        .order("created_at", { ascending: false })
+        .limit(TODAY_MAX)
+        .then(({ data, error }) => {
+          // The rest of the page still works without it, so no error message here.
+          if (cancelled || error) return;
+          setTodayEvents((old) => merge(old, (data ?? []) as EventRow[], TODAY_MAX));
+        });
     }
 
     const channel = db
@@ -148,7 +166,9 @@ function Family({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "movement_events", filter: `circle_id=eq.${circle.id}` },
         (payload) => {
-          setEvents((old) => merge(old, [payload.new as EventRow]));
+          const row = payload.new as EventRow;
+          setEvents((old) => merge(old, [row]));
+          if (row.kind !== "heartbeat") setTodayEvents((old) => merge(old, [row], TODAY_MAX));
           setNow(Date.now());
         },
       )
@@ -178,6 +198,7 @@ function Family({
   }
 
   const summary = summarise(events, now);
+  const day = summariseDay(todayEvents, now);
   const { latest } = summary;
 
   return (
@@ -213,7 +234,7 @@ function Family({
           {problem && (
             <p
               role="alert"
-              className={`rounded-2xl border-[3px] border-[#a61b1b] bg-surface p-5 text-xl font-bold ${ERROR_RED}`}
+              className={`rounded-2xl border-[3px] border-error bg-surface p-5 text-xl font-bold ${ERROR_RED}`}
             >
               {problem}
             </p>
@@ -237,6 +258,7 @@ function Family({
             {summary.mood === "alert" && (
               <p className="mt-4 text-xl font-bold">
                 The phone thinks someone may have fallen. Please call or visit to check they are okay.
+                The Call buttons are just below.
               </p>
             )}
             {summary.phoneSilent && summary.lastHeard && (
@@ -258,6 +280,10 @@ function Family({
               {live ? "This page updates by itself." : "Connecting for live updates…"}
             </p>
           </section>
+
+          <CallCard userId={userId} />
+
+          {circle && <TodaySoFar lines={day.lines} hasNews={day.hasNews} falls={day.falls} />}
 
           {summary.timeline.length > 0 && (
             <section aria-labelledby="timeline-title">
@@ -290,10 +316,10 @@ function Family({
 }
 
 /** Adds new events to the list without duplicates, newest first, keeping it short. */
-function merge(old: EventRow[], incoming: EventRow[]): EventRow[] {
+function merge(old: EventRow[], incoming: EventRow[], keep = HOW_MANY): EventRow[] {
   const byId = new Map(old.map((e) => [e.id, e]));
   for (const e of incoming) byId.set(e.id, e);
-  return [...byId.values()].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id).slice(0, HOW_MANY);
+  return [...byId.values()].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id).slice(0, keep);
 }
 
 /** "14:05" in the viewer's own time. */
@@ -354,5 +380,248 @@ function AddFamily({ circleId }: { circleId: string }) {
         )}
       </form>
     </section>
+  );
+}
+
+/** A calm, plain-words summary of today, from the same news as the timeline. */
+function TodaySoFar({ lines, hasNews, falls }: { lines: string[]; hasNews: boolean; falls: number }) {
+  return (
+    <section aria-labelledby="today-title" className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
+      <h2 id="today-title" className="text-2xl font-extrabold">
+        Today so <span className="text-gradient-brand">far</span>
+      </h2>
+      {hasNews ? (
+        <ul className="mt-4 flex flex-col gap-3">
+          {lines.map((line) => (
+            <li
+              key={line}
+              className={`flex items-start gap-3 text-xl font-bold ${falls > 0 && line.includes("possible fall") ? ERROR_RED : ""}`}
+            >
+              <span aria-hidden="true" className="mt-2.5 h-3 w-3 shrink-0 rounded-full bg-brand" />
+              {line}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-xl text-muted">
+          Nothing from the phone camera yet today. A short summary of the day will build up here once it starts
+          watching.
+        </p>
+      )}
+    </section>
+  );
+}
+
+// The Call numbers are saved in this browser, one set per account.
+const contactsKey = (userId: string) => `carenest-call-numbers-${userId}`;
+// The Care profile page saves the person's name under this key (see CareProfilePage.tsx).
+const careProfileKey = (userId: string) => `carenest-care-profile-${userId}`;
+
+function loadContacts(userId: string): Contacts {
+  try {
+    return cleanContacts(JSON.parse(localStorage.getItem(contactsKey(userId)) ?? "{}"));
+  } catch {
+    return {};
+  }
+}
+
+function saveContacts(userId: string, contacts: Contacts) {
+  try {
+    localStorage.setItem(contactsKey(userId), JSON.stringify(contacts));
+  } catch {
+    // Private browsing can block saving. The buttons still work until the page closes.
+  }
+}
+
+/** The name given on the Care profile page, if any, like "Mum". */
+function careProfileName(userId: string): string {
+  try {
+    const name = JSON.parse(localStorage.getItem(careProfileKey(userId)) ?? "{}")?.name;
+    return typeof name === "string" ? name.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+function PhoneIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" className="shrink-0">
+      <path
+        d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+/** Big one-tap "Call" buttons: the person being cared for, and an emergency contact. */
+function CallCard({ userId }: { userId: string }) {
+  const id = useId();
+  const [contacts, setContacts] = useState(() => loadContacts(userId));
+  const [editing, setEditing] = useState(false);
+  const hasAny = Boolean(contacts.person || contacts.emergency);
+
+  function save(next: Contacts) {
+    setContacts(next);
+    saveContacts(userId, next);
+    setEditing(false);
+  }
+
+  return (
+    <section aria-labelledby={`${id}-title`} className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id={`${id}-title`} className="text-2xl font-extrabold">
+          Call
+        </h2>
+        {hasAny && !editing && (
+          <button type="button" onClick={() => setEditing(true)} className={smallButton}>
+            Change numbers
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <ContactsForm
+          initial={contacts}
+          suggestedName={careProfileName(userId)}
+          onSave={save}
+          onCancel={() => setEditing(false)}
+        />
+      ) : hasAny ? (
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          {contacts.person && <CallLink contact={contacts.person} fallback="them" primary />}
+          {contacts.emergency && <CallLink contact={contacts.emergency} fallback="emergency contact" />}
+        </div>
+      ) : (
+        <div className="mt-2">
+          <p className="text-xl text-muted">
+            Add a phone number, so you can ring them (or an emergency contact) with one tap from this page.
+          </p>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className={`${buttonVariants.primary} mt-4 w-full text-xl sm:w-auto`}
+          >
+            Add a phone number
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CallLink({ contact, fallback, primary = false }: { contact: Contact; fallback: string; primary?: boolean }) {
+  return (
+    <a
+      href={telHref(contact.phone)}
+      className={`${primary ? buttonVariants.primary : buttonVariants.outline} flex-1 flex-col gap-0 py-3 text-xl`}
+    >
+      <span className="flex items-center gap-2">
+        <PhoneIcon />
+        Call {contact.name || fallback}
+      </span>
+      <span className={`text-base font-bold ${primary ? "text-on-brand" : "text-muted"}`}>{contact.phone}</span>
+    </a>
+  );
+}
+
+function ContactsForm({
+  initial,
+  suggestedName,
+  onSave,
+  onCancel,
+}: {
+  initial: Contacts;
+  suggestedName: string;
+  onSave: (contacts: Contacts) => void;
+  onCancel: () => void;
+}) {
+  const id = useId();
+  const [personName, setPersonName] = useState(initial.person?.name ?? suggestedName);
+  const [personPhone, setPersonPhone] = useState(initial.person?.phone ?? "");
+  const [emergencyName, setEmergencyName] = useState(initial.emergency?.name ?? "");
+  const [emergencyPhone, setEmergencyPhone] = useState(initial.emergency?.phone ?? "");
+  const [error, setError] = useState("");
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const bad = [personPhone, emergencyPhone].some((p) => p.trim() && !cleanPhone(p));
+    if (bad) return setError("That doesn't look like a phone number. Please use only numbers, spaces and a + sign.");
+    const next: Contacts = {};
+    if (personPhone.trim()) next.person = { name: personName.trim(), phone: cleanPhone(personPhone) };
+    if (emergencyPhone.trim()) next.emergency = { name: emergencyName.trim(), phone: cleanPhone(emergencyPhone) };
+    onSave(next);
+  }
+
+  const input =
+    "min-h-14 w-full rounded-2xl border-[3px] border-muted bg-surface px-5 text-xl text-ink transition-colors hover:border-brand focus:border-brand";
+
+  return (
+    <form onSubmit={submit} className="mt-4 flex flex-col gap-5" noValidate>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-xl font-extrabold">The person you care for</legend>
+        <label htmlFor={`${id}-pname`} className="mt-1 text-lg font-bold">
+          Their name
+        </label>
+        <input
+          id={`${id}-pname`}
+          value={personName}
+          onChange={(e) => setPersonName(e.target.value)}
+          placeholder="For example: Mum"
+          className={input}
+        />
+        <label htmlFor={`${id}-pphone`} className="text-lg font-bold">
+          Their phone number
+        </label>
+        <input
+          id={`${id}-pphone`}
+          type="tel"
+          inputMode="tel"
+          autoComplete="off"
+          value={personPhone}
+          onChange={(e) => setPersonPhone(e.target.value)}
+          className={input}
+        />
+      </fieldset>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-xl font-extrabold">Emergency contact (optional)</legend>
+        <label htmlFor={`${id}-ename`} className="mt-1 text-lg font-bold">
+          Name
+        </label>
+        <input
+          id={`${id}-ename`}
+          value={emergencyName}
+          onChange={(e) => setEmergencyName(e.target.value)}
+          placeholder="For example: Neighbour Sam"
+          className={input}
+        />
+        <label htmlFor={`${id}-ephone`} className="text-lg font-bold">
+          Phone number
+        </label>
+        <input
+          id={`${id}-ephone`}
+          type="tel"
+          inputMode="tel"
+          autoComplete="off"
+          value={emergencyPhone}
+          onChange={(e) => setEmergencyPhone(e.target.value)}
+          className={input}
+        />
+      </fieldset>
+      {error && (
+        <p role="alert" className={`text-lg font-bold ${ERROR_RED}`}>
+          {error}
+        </p>
+      )}
+      <p className="text-base text-muted">Saved in this browser only. To remove a number, clear the box and save.</p>
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <button type="submit" className={`${buttonVariants.primary} text-xl`}>
+          Save numbers
+        </button>
+        <button type="button" onClick={onCancel} className={`${buttonVariants.outline} text-xl`}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
