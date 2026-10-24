@@ -556,6 +556,9 @@ function Demo() {
 
         {/* The pretend family page, on a phone. It shakes when someone may have fallen. */}
         <Reveal delay={150}>
+          <p className="sr-only" role="status" aria-live={playing ? "off" : "polite"}>
+            Grandma right now: {look.label}. {look.detail}, {state.side} side.
+          </p>
           <div key={state.shake} className={state.shake > 0 && state.mode === "fall" ? "animate-shake" : ""}>
             <div className="mx-auto w-full max-w-[340px] rounded-[48px] border-[10px] border-ink bg-cream p-4 shadow-lift">
               <div className="mx-auto mb-4 h-5 w-24 rounded-full bg-ink" />
@@ -565,7 +568,7 @@ function Demo() {
                 </span>
                 <LivePill />
               </div>
-              <div className={`mt-4 rounded-[28px] p-5 transition-colors duration-500 ${look.card}`} role="status" aria-live="polite">
+              <div className={`mt-4 rounded-[28px] p-5 transition-colors duration-500 ${look.card}`}>
                 <p className="text-sm font-bold opacity-80">Grandma · right now</p>
                 <p key={state.nextId} className="mt-1 animate-pop text-3xl font-black">
                   {look.label}

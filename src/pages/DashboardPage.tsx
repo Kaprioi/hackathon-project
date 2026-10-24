@@ -229,12 +229,10 @@ function Family({
               </h2>
               <LivePill>{live ? "Live" : "Connecting…"}</LivePill>
             </div>
-            <p
-              key={latest?.id ?? "none"}
-              aria-live="polite"
-              className="mt-3 animate-pop text-3xl leading-tight font-black sm:text-4xl"
-            >
-              {latest ? describe(latest, now) : circle ? "No news yet" : "Loading…"}
+            <p aria-live="polite" className="mt-3 text-3xl leading-tight font-black sm:text-4xl">
+              <span key={latest?.id ?? "none"} className="block animate-pop">
+                {latest ? describe(latest, now) : circle ? "No news yet" : "Loading…"}
+              </span>
             </p>
             {summary.mood === "alert" && (
               <p className="mt-4 text-xl font-bold">
