@@ -57,8 +57,8 @@ export function HeroIllustration({
         <g className="animate-bob">
           <path d="M40 270c0-90 20-130 60-130s60 40 60 130z" fill={coral} />
           <circle cx="100" cy="95" r="45" fill="#f2c2a0" />
-          <path d="M55 90c0-40 90-45 90 0-5-25-30-30-45-30s-40 5-45 30z" fill="#e9e6f2" />
-          <circle cx="100" cy="50" r="18" fill="#e9e6f2" />
+          <path d="M55 90c0-40 90-45 90 0-5-25-30-30-45-30s-40 5-45 30z" fill="#e6e9ee" />
+          <circle cx="100" cy="50" r="18" fill="#e6e9ee" />
           <circle cx="85" cy="98" r="4" fill={ink} />
           <circle cx="115" cy="98" r="4" fill={ink} />
           <path d="M88 115q12 10 24 0" stroke={ink} strokeWidth="4" fill="none" strokeLinecap="round" />
@@ -83,7 +83,7 @@ export function HeroIllustration({
       <circle cx="401" cy="244" r="14" fill={mint} />
       <path d="m394 244 5 5 9-10" stroke={leaf} strokeWidth="4" fill="none" strokeLinecap="round" />
       <rect x="386" y="266" width="30" height="6" rx="3" fill={ink} />
-      <rect x="390" y="278" width="22" height="5" rx="2.5" fill="#b9b2cc" />
+      <rect x="390" y="278" width="22" height="5" rx="2.5" fill="#b8c2d1" />
 
       {/* The update the family receives */}
       <path

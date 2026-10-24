@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, PointerEvent, ReactNode } from "react";
 import { Link } from "react-router";
+import BackButton from "../components/BackButton";
 import { buttonVariants } from "../components/ButtonLink";
 import Highlight from "../components/Highlight";
 import LanguagePicker from "../components/LanguagePicker";
@@ -649,6 +650,9 @@ export default function TrackerPage() {
           <div className="relative isolate flex min-h-full items-center justify-center p-4 sm:p-6">
             <Blobs fixed />
             <div className="w-full max-w-lg animate-slide-in space-y-5 rounded-[40px] bg-surface p-7 text-center shadow-lift sm:p-10">
+              <div className="text-left">
+                <BackButton />
+              </div>
               <Link
                 to="/"
                 className="group mx-auto flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline"
@@ -660,7 +664,7 @@ export default function TrackerPage() {
               <h1 className="text-4xl font-extrabold">
                 <Highlight text={t("Phone *camera*")} />
               </h1>
-              <p className="text-xl text-muted">
+              <p className="text-xl font-bold text-muted">
                 {t(
                   "Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a few words, how things are going.",
                 )}
@@ -672,8 +676,8 @@ export default function TrackerPage() {
               </p>
               {account === "signed-out" ? (
                 <div className="space-y-3">
-                  <p className="text-xl">{t("Please sign in first, so your family can see the updates.")}</p>
-                  <Link to="/login" className={`${buttonVariants.primary} min-h-16 w-full text-2xl`}>
+                  <p className="text-xl font-bold">{t("Please sign in first, so your family can see the updates.")}</p>
+                  <Link to="/login?next=/tracker" className={`${buttonVariants.primary} min-h-16 w-full text-2xl`}>
                     {t("Sign in")}
                   </Link>
                 </div>
@@ -687,14 +691,14 @@ export default function TrackerPage() {
                 </button>
               )}
               {account === "no-database" && (
-                <p className="rounded-2xl bg-sun px-4 py-3 text-lg text-ink">
+                <p className="rounded-2xl bg-sun px-4 py-3 text-lg font-bold text-ink">
                   {t(
                     "The database isn't set up on this website yet, so you can try the camera but your family won't see anything.",
                   )}
                 </p>
               )}
               {!Stand.supported() && (
-                <p className="text-base text-muted">
+                <p className="text-base font-bold text-muted">
                   {t(
                     "Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this page in the Bluefy app.",
                   )}

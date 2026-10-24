@@ -3,7 +3,7 @@ import { splitHighlight } from "../i18n/translate";
 
 /**
  * Shows a translated heading like "How it *works*", with the starred words in
- * the purple gradient (or wrapped by `wrap`, for a different look).
+ * the blue gradient (or wrapped by `wrap`, for a different look).
  */
 export default function Highlight({
   text,

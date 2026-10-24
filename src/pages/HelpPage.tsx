@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import ButtonLink from "../components/ButtonLink";
+import { GUIDE } from "../lib/guide";
 import SiteLayout, { Blobs } from "../components/SiteLayout";
 import Highlight from "../components/Highlight";
 import { AlertIcon, DashboardIcon, MovementIcon, PhoneOnTableIcon } from "../components/illustrations";
@@ -125,6 +126,9 @@ export default function HelpPage() {
               <Highlight text={t("Help and *how‑to*")} />
             </h1>
             <p className="mt-3 text-xl text-muted">{t("Getting started takes about five minutes. Here's how.")}</p>
+            <ButtonLink to={GUIDE} arrow className="mt-5">
+              {t("Set up your iPhone step by step")}
+            </ButtonLink>
           </div>
 
           <section aria-labelledby="steps-title">

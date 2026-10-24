@@ -6,10 +6,10 @@ const base =
   "group inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border-[3px] px-7 text-lg font-extrabold no-underline transition-all duration-200 hover:-translate-y-0.5 active:translate-y-1";
 
 export const buttonVariants: Record<Variant, string> = {
-  // Big purple button with a soft "press" shadow.
+  // Big blue button with a soft "press" shadow.
   primary: `${base} border-brand bg-brand text-on-brand shadow-[0_6px_0_var(--color-brand-dark)] hover:bg-brand-dark hover:shadow-[0_8px_0_var(--color-brand-dark)] active:shadow-[0_2px_0_var(--color-brand-dark)]`,
   outline: `${base} border-brand bg-surface text-brand hover:bg-lilac`,
-  // For use on the purple call-to-action card.
+  // For use on the blue call-to-action card.
   inverse: `${base} border-on-brand bg-surface text-brand shadow-[0_6px_0_var(--color-brand-dark)] hover:bg-lilac`,
   "inverse-outline": `${base} border-on-brand bg-transparent text-on-brand hover:bg-brand-dark`,
 };
