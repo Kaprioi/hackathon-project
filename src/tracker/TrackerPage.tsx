@@ -72,6 +72,10 @@ interface LogLine {
 
 const SETTINGS_KEY = "phoneTracker.settings.v1";
 
+// Colours for the dark camera view (see src/index.css for the rest of the palette).
+const HONEY = "#f5c76b";
+const PANEL = "rounded-[4px] bg-[rgba(14,19,17,0.86)]";
+
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -90,13 +94,15 @@ function saveSettings(s: Settings): void {
   }
 }
 
-const MODE_STYLE: Record<Mode, { pill: string; stroke: string }> = {
-  idle: { pill: "bg-white text-ink", stroke: "#ffffff" },
-  tracking: { pill: "bg-leaf text-white", stroke: "#3ddc97" },
-  hidden: { pill: "bg-sun text-ink", stroke: "#ffd84d" },
-  following: { pill: "bg-coral text-ink", stroke: "#ff9f7a" },
-  searching: { pill: "bg-coral text-ink", stroke: "#ff9f7a" },
-  lost: { pill: "bg-red-700 text-white", stroke: "#ff6b6b" },
+// The small square next to the state words (green = tracking or following, amber =
+// hidden or searching, red = lost), and the colour of the box round the person being followed.
+const MODE_STYLE: Record<Mode, { square: string; stroke: string }> = {
+  idle: { square: "bg-white", stroke: "#ffffff" },
+  tracking: { square: "bg-[#7fd3a4]", stroke: HONEY },
+  hidden: { square: "bg-honey", stroke: HONEY },
+  following: { square: "bg-[#7fd3a4]", stroke: HONEY },
+  searching: { square: "bg-honey", stroke: HONEY },
+  lost: { square: "bg-[#ff8a7a]", stroke: "#ff8a7a" },
 };
 
 /** Where the video actually appears inside an element using object-fit: contain. */
@@ -134,7 +140,7 @@ function drawOverlay(canvas: HTMLCanvasElement, video: HTMLVideoElement, people:
   const color = MODE_STYLE[out.mode].stroke;
   if (out.target) {
     const s = toScreen(out.target);
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 3;
     ctx.strokeStyle = color;
     ctx.setLineDash(out.mode === "hidden" ? [12, 8] : []);
     ctx.strokeRect(s.x, s.y, s.w, s.h);
@@ -164,11 +170,11 @@ function PanDial({ aim }: { aim: Angles | null }) {
   const nx = 40 + 30 * Math.cos(angle);
   const ny = 40 - 30 * Math.sin(angle);
   return (
-    <div className="flex items-center gap-2 rounded-2xl bg-black/60 px-3 py-2 text-base" aria-label={`Stand pointing at ${pan.toFixed(0)} degrees`}>
+    <div className={`flex items-center gap-2 ${PANEL} px-3 py-2 text-base`} aria-label={`Stand pointing at ${pan.toFixed(0)} degrees`}>
       <svg width="80" height="46" viewBox="0 0 80 46" aria-hidden="true">
         <path d="M 6 40 A 34 34 0 0 1 74 40" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="4" />
-        <line x1="40" y1="40" x2={nx} y2={ny} stroke="#ffd84d" strokeWidth="4" strokeLinecap="round" />
-        <circle cx="40" cy="40" r="4" fill="#ffd84d" />
+        <line x1="40" y1="40" x2={nx} y2={ny} stroke={HONEY} strokeWidth="4" strokeLinecap="round" />
+        <circle cx="40" cy="40" r="4" fill={HONEY} />
       </svg>
       <div className="leading-tight">
         <div>Pan {pan.toFixed(0)}°</div>
@@ -178,9 +184,10 @@ function PanDial({ aim }: { aim: Angles | null }) {
   );
 }
 
+/** One line of the facts list in the top right. "good" facts are shown in green. */
 function Chip({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "good" | "warn" }) {
-  const toneClass = tone === "good" ? "bg-leaf text-white" : tone === "warn" ? "bg-sun text-ink" : "bg-black/60 text-white";
-  return <span className={`rounded-full px-3 py-1 text-base font-semibold ${toneClass}`}>{children}</span>;
+  const toneClass = tone === "good" ? "text-[#7fd3a4]" : tone === "warn" ? "text-honey" : "text-white";
+  return <li className={`text-base font-semibold ${toneClass}`}>{children}</li>;
 }
 
 function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
@@ -188,8 +195,8 @@ function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { active?: bool
   return (
     <button
       {...rest}
-      className={`min-h-11 rounded-xl px-4 py-2 font-bold disabled:opacity-40 ${
-        active ? "bg-brand text-white" : "bg-white/90 text-ink"
+      className={`min-h-12 min-w-12 rounded-[4px] border-2 border-white px-4 py-2 font-bold disabled:opacity-40 ${
+        active ? "bg-white text-ink" : "bg-[rgba(14,19,17,0.86)] text-white"
       } ${className}`}
     />
   );
@@ -520,7 +527,7 @@ export default function TrackerPage() {
           : "No stand";
 
   return (
-    <main className="on-dark fixed inset-0 overflow-hidden bg-black text-white select-none">
+    <main className="fixed inset-0 overflow-hidden bg-[#161c1a] text-white select-none">
       <video ref={videoRef} className="absolute inset-0 h-full w-full object-contain" playsInline muted />
       <canvas
         ref={overlayRef}
@@ -531,8 +538,11 @@ export default function TrackerPage() {
 
       {/* The privacy sign: always on screen while the camera is on */}
       {running && (
-        <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 bg-leaf px-4 py-2 text-center text-lg font-extrabold text-white">
-          <span>● Camera on - video stays on this phone</span>
+        <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 bg-ok px-4 py-2 text-center text-lg font-bold text-white">
+          <span>
+            <span aria-hidden="true" className="mr-2 inline-block h-3 w-3 bg-white" />
+            Camera on - video stays on this phone
+          </span>
           <span className="text-base font-bold">
             {sendError
               ? "Family can't see updates right now"
@@ -544,9 +554,10 @@ export default function TrackerPage() {
       )}
 
       {/* Top: what it's doing, and the stand's status */}
-      <div className={`pointer-events-none absolute inset-x-0 flex flex-wrap ${running ? "top-20 sm:top-12" : "top-0"} items-start justify-between gap-2 p-3`}>
-        <div className="pointer-events-auto max-w-xl rounded-2xl bg-black/60 px-4 py-2" aria-live="polite">
-          <span className={`rounded-full px-3 py-1 font-mono text-base font-extrabold ${MODE_STYLE[snap.mode].pill}`}>
+      <div className={`pointer-events-none absolute inset-x-0 flex flex-wrap ${running ? "top-28 sm:top-20 lg:top-14" : "top-0"} items-start justify-between gap-2 p-3`}>
+        <div className={`pointer-events-auto max-w-xl ${PANEL} px-4 py-3`} aria-live="polite">
+          <span className="flex items-center gap-2 text-base font-bold tracking-wide">
+            <span aria-hidden="true" className={`inline-block h-3 w-3 shrink-0 ${MODE_STYLE[snap.mode].square}`} />
             {MODE_LABEL[snap.mode]}
           </span>
           <p className="mt-1 text-base leading-snug">{running ? snap.note : "Start the camera to begin."}</p>
@@ -556,32 +567,32 @@ export default function TrackerPage() {
             </p>
           )}
         </div>
-        <div className="flex flex-wrap justify-end gap-2">
+        <ul className={`${PANEL} px-4 py-2`} aria-label="Stand, radar and mist">
           <Chip tone={standStatus === "connected" ? "good" : "plain"}>{standLabel}</Chip>
           <Chip tone={radar ? "good" : "plain"}>{radar === null ? "Radar: -" : radar ? "Radar: someone there" : "Radar: empty"}</Chip>
           <Chip tone={snap.mistOn ? "good" : "plain"}>Mist {snap.mistOn ? "on" : "off"}</Chip>
           {running && <Chip>{snap.fps.toFixed(0)} fps</Chip>}
-        </div>
+        </ul>
       </div>
 
       {snap.portrait && running && (
-        <div className="absolute inset-x-0 top-1/3 mx-auto w-fit rounded-2xl bg-sun px-4 py-2 font-bold text-ink">
+        <div className="absolute inset-x-0 top-1/3 mx-auto w-fit rounded-[4px] bg-honey px-4 py-2 font-bold text-ink">
           Turn the phone sideways and switch off rotation lock.
         </div>
       )}
 
       {/* Bottom: the log on the left, controls on the right */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-3">
-        <ol className="max-w-md space-y-0.5 rounded-2xl bg-black/70 px-3 py-2 text-base empty:hidden" aria-label="What the tracker decided">
+        <ol className={`max-w-md space-y-0.5 ${PANEL} px-3 py-2 text-base empty:hidden portrait:hidden`} aria-label="What the tracker decided">
           {log.map((l, i) => (
             <li key={`${l.time}-${i}`} className={i === 0 ? "" : "text-white/85"}>
-              <span className="font-mono">{l.time}</span> {l.note}
+              <span className="tabular-nums">{l.time}</span> {l.note}
             </li>
           ))}
         </ol>
-        <div className="pointer-events-auto ml-auto flex flex-col items-end gap-2">
+        <div className="pointer-events-auto ml-auto flex flex-col items-end gap-2 portrait:w-full">
           <PanDial aim={snap.aim} />
-          <div className="flex flex-wrap justify-end gap-2 rounded-2xl bg-black/60 p-2" role="group" aria-label="Humidifier">
+          <div className={`flex flex-wrap justify-end gap-2 ${PANEL} p-2`} role="group" aria-label="Humidifier">
             <span className="self-center px-1 text-base font-semibold">Mist</span>
             <Button active={mistMode === "off"} onClick={() => chooseMist("off")}>Off</Button>
             <Button active={mistMode === "on"} onClick={() => chooseMist("on")}>On</Button>
@@ -629,14 +640,14 @@ export default function TrackerPage() {
       )}
 
       {!running && (
-        <div className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-black p-6">
-          <div className="max-w-lg space-y-5 text-center">
-            <h1 className="text-3xl font-extrabold">Phone camera</h1>
+        <div className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-[#161c1a] p-6">
+          <div className="max-w-lg space-y-5">
+            <h1 className="text-h1">Phone camera</h1>
             <p className="text-xl">
               Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a
               few words, how things are going.
             </p>
-            <p className="rounded-2xl bg-white px-4 py-3 text-lg font-bold text-ink">
+            <p className="rounded-[4px] bg-stone px-4 py-3 text-lg font-bold text-ink">
               Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or
               pictures ever leave it.
             </p>
@@ -645,7 +656,7 @@ export default function TrackerPage() {
                 <p className="text-xl">Please sign in first, so your family can see the updates.</p>
                 <Link
                   to="/login"
-                  className="inline-flex min-h-16 items-center justify-center rounded-2xl bg-white px-8 text-2xl font-extrabold text-brand no-underline"
+                  className="inline-flex min-h-14 items-center justify-center rounded-[4px] bg-white px-8 text-xl font-bold text-spruce no-underline"
                 >
                   Sign in
                 </Link>
@@ -654,13 +665,13 @@ export default function TrackerPage() {
               <button
                 onClick={startCamera}
                 disabled={loading || account === "checking"}
-                className="min-h-16 w-full rounded-2xl bg-white px-8 text-2xl font-extrabold text-brand disabled:opacity-60"
+                className="min-h-14 w-full rounded-[4px] bg-white px-8 text-xl font-bold text-spruce disabled:opacity-60"
               >
                 {loading ? "Starting... (the first time takes a little longer)" : "Start watching"}
               </button>
             )}
             {account === "no-database" && (
-              <p className="text-lg text-sun">
+              <p className="text-lg text-honey">
                 The database isn't set up on this website yet, so you can try the camera but your family won't see
                 anything.
               </p>
@@ -676,7 +687,7 @@ export default function TrackerPage() {
       )}
 
       {error && (
-        <div role="alert" className="absolute inset-x-0 bottom-28 mx-auto w-fit max-w-[90%] rounded-2xl bg-red-700 px-4 py-2 font-semibold">
+        <div role="alert" className="absolute inset-x-0 bottom-28 mx-auto w-fit max-w-[90%] rounded-[4px] bg-alert px-4 py-2 font-semibold">
           {error}{" "}
           <button className="ml-2 min-h-12 px-2 underline" onClick={() => setError("")}>
             Dismiss
@@ -700,7 +711,7 @@ function SettingsPanel(props: {
     <label className="block">
       <span className="flex justify-between font-semibold">
         <span>{label}</span>
-        <span className="font-mono">{s[key]}</span>
+        <span className="tabular-nums">{s[key]}</span>
       </span>
       <input
         type="range"
@@ -716,9 +727,9 @@ function SettingsPanel(props: {
   );
 
   return (
-    <div className="absolute inset-y-0 right-0 w-full max-w-sm space-y-4 overflow-y-auto bg-ink/95 p-4 text-white">
+    <div className="absolute inset-y-0 right-0 w-full max-w-sm space-y-4 overflow-y-auto bg-[rgba(14,19,17,0.95)] p-4 text-white">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-extrabold">Settings</h2>
+        <h2 className="text-h3">Settings</h2>
         <Button onClick={close}>Close</Button>
       </div>
 

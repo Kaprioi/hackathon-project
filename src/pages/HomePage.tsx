@@ -1,262 +1,258 @@
 import { Link } from "react-router";
-import ButtonLink from "../components/ButtonLink";
-import {
-  AlertIcon,
-  CheckInIcon,
-  DashboardIcon,
-  FamilyIllustration,
-  FamilyPhoneIcon,
-  HeroIllustration,
-  MovementIcon,
-  PhoneOnTableIcon,
-} from "../components/illustrations";
+import { primaryButton, textLink } from "../components/ButtonLink";
+import { Footer, Masthead, SkipLink } from "../components/SiteLayout";
 
-// The About Us page at "/". "Get started" opens the login page on its "Create your account" form.
-const GET_STARTED = "/login?mode=sign-up";
-const LOG_IN = "/login";
+// The About Us page at "/". It reads like a printed leaflet: a photo and a plain
+// headline, then sections with the heading on the left and the text on the right.
+// Every claim here matches what the app does today (see src/tracker/events.ts and
+// src/family/status.ts), so check those before changing the wording.
 
-// The only pages in the app. Shown in the header on every screen size.
-const navLinks = [
-  { to: "/", label: "About Us" },
-  { to: "/login", label: "Sign in" },
-  { to: "/tracker", label: "Phone camera" },
-  { to: "/dashboard", label: "Family" },
+const SIGN_UP = "/login?mode=sign-up";
+
+const sections = [
+  { href: "#how", label: "How it works" },
+  { href: "#alert", label: "When there's an alert" },
+  { href: "#costs", label: "What it costs" },
+  { href: "#who", label: "Who we are" },
 ];
 
 const steps = [
   {
-    icon: <PhoneOnTableIcon />,
-    bubble: "bg-peach",
-    title: "Stand a phone on a table",
-    text: "Put a phone on a table where it can see the room. Nothing to wear, nothing to charge on the wrist.",
+    lead: "Stand a spare phone on a table where it can see the room.",
+    text: "Open the Phone camera page on it, sign in, and press “Start watching”. There is nothing to wear and nothing to charge on the wrist.",
   },
   {
-    icon: <MovementIcon />,
-    bubble: "bg-lilac",
-    title: "CareNest watches for movement",
-    text: "The phone notices if someone is moving, sitting still, or may have fallen, and which side of the room they are in.",
+    lead: "The phone keeps an eye on the room.",
+    text: "It notices whether someone is moving about, sitting or standing still, or lying down, and which side of the room they are in. If someone goes from standing to lying down within about three seconds, it notes a possible fall.",
   },
   {
-    icon: <FamilyPhoneIcon />,
-    bubble: "bg-mint",
-    title: "Family sees how things are",
-    text: "Family open the CareNest family page and see, in plain words, what is happening right now.",
+    lead: "Family see it in plain words.",
+    text: "Sign in on your own phone or computer and open the family page. It says what is happening right now, for example “Moving around - left side - 2 minutes ago”, and it updates by itself.",
   },
 ];
 
-const features = [
-  {
-    icon: <AlertIcon />,
-    bg: "bg-peach",
-    title: "Fall & quiet alerts",
-    text: "If the phone thinks someone may have fallen, or it stops checking in, the family page says so in big letters.",
-  },
-  {
-    icon: <CheckInIcon />,
-    bg: "bg-mint",
-    title: "Video stays on the phone",
-    text: "The camera picture never leaves the phone. Only short notes like “moving around, left side” are sent.",
-  },
-  {
-    icon: <DashboardIcon />,
-    bg: "bg-lilac",
-    title: "Family page",
-    text: "One simple page shows what is happening right now and a short list of today’s news.",
-  },
-  {
-    icon: <MovementIcon />,
-    bg: "bg-sun",
-    title: "Updates by itself",
-    text: "The family page changes the moment something happens. No need to reload or ring round.",
-  },
+// Parts for the optional moving stand, from phone-tracker/docs/SHOPPING_LIST.md (checked 17 October 2026).
+const parts = [
+  { name: "Lynxmotion pan-and-tilt kit, with two servo motors", price: "$48.65" },
+  { name: "Adafruit ESP32 Feather V2 controller board", price: "$20.95" },
+  { name: "5V power supply and plug adapters", price: "$18.92" },
+  { name: "LD2410C radar sensors, pack of two", price: "$14.99" },
+  { name: "Bolt and nut for the phone holder", price: "about $1" },
 ];
 
-function Logo() {
+/** The h2 in the left third and the text in the right two thirds, with a thin rule on top. */
+function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
-    <Link to="/" className="flex min-h-12 items-center gap-3 text-2xl font-black text-ink no-underline">
-      <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
-        <circle cx="22" cy="22" r="22" fill="#c9f0df" />
-        <path d="M22 33s-11-6.5-11-14a6 6 0 0 1 11-3.4A6 6 0 0 1 33 19c0 7.5-11 14-11 14z" fill="#5b3cc4" />
-      </svg>
-      CareNest
-    </Link>
+    <section id={id} aria-labelledby={`${id}-title`} className="mx-auto mt-20 max-w-6xl scroll-mt-4 px-4 sm:px-6">
+      <div className="grid gap-6 border-t border-rule pt-8 md:grid-cols-12">
+        <h2 id={`${id}-title`} className="text-h2 md:col-span-4">
+          {title}
+        </h2>
+        <div className="max-w-[62ch] md:col-span-8">{children}</div>
+      </div>
+    </section>
   );
 }
 
 export default function HomePage() {
   return (
     <>
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:rounded-xl focus:bg-white focus:px-5 focus:py-3 focus:font-bold"
-      >
-        Skip to main content
-      </a>
-
-      <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-5">
-        <Logo />
-        <nav aria-label="Main">
-          <ul className="flex flex-wrap gap-2">
-            {navLinks.map((link) => (
-              <li key={link.to}>
-                <Link
-                  to={link.to}
-                  aria-current={link.to === "/" ? "page" : undefined}
-                  className="inline-flex min-h-12 items-center rounded-2xl px-4 text-lg font-extrabold text-brand no-underline hover:bg-lilac aria-[current=page]:bg-lilac aria-[current=page]:text-ink"
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </header>
+      <SkipLink />
+      <Masthead
+        sections={sections}
+        actions={
+          <Link to="/login" className={textLink}>
+            Sign in
+          </Link>
+        }
+      />
 
       <main id="main">
-        {/* Hero */}
-        <section className="px-6 pb-20 pt-8" aria-labelledby="hero-title">
-          <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
-            <div>
-              <p className="text-lg font-extrabold uppercase tracking-wide text-brand">About Us</p>
-              <h1 id="hero-title" className="mt-2 text-4xl font-extrabold leading-tight md:text-5xl">
-                Stay close to the people you love,{" "}
-                <mark className="bg-transparent bg-[linear-gradient(transparent_55%,var(--color-sun)_55%)] px-1 text-inherit">
-                  even from far away
-                </mark>
-                .
+        {/* Photo on the left, headline on the right. On a phone the photo comes first. */}
+        <section aria-labelledby="hero-title" className="mx-auto max-w-6xl md:px-6 md:pt-10">
+          <div className="grid md:grid-cols-12 md:gap-12">
+            <img
+              src="/photos/kitchen-woman-vegetables.jpg"
+              srcSet="/photos/kitchen-woman-vegetables-800.jpg 800w, /photos/kitchen-woman-vegetables.jpg 1400w"
+              sizes="(min-width: 768px) 58vw, 100vw"
+              width={1400}
+              height={931}
+              fetchPriority="high"
+              alt="An older woman chopping vegetables at her kitchen counter."
+              className="aspect-[4/3] h-full w-full object-cover md:col-span-7 md:aspect-auto md:max-h-[640px]"
+            />
+            <div className="flex flex-col items-start justify-center px-4 pt-8 sm:px-6 md:col-span-5 md:px-0 md:pt-0">
+              <h1 id="hero-title" className="text-h1 md:text-h1-lg">
+                A phone on her table, and a page that tells you how she is.
               </h1>
-              <p className="mt-5 max-w-[34ch] text-xl text-muted">
-                CareNest turns a spare phone on the table into a gentle helper. It notices movement in the room, and
-                family can see on their own phone that all is well — so Grandma can stay independent at home.
+              <p className="mt-5 text-lead">
+                CareNest runs on a spare phone. It watches the room for movement, and if your mother may have fallen,
+                the family page says so in plain words. The camera picture never leaves the phone.
               </p>
-              <div className="mt-8 flex flex-wrap gap-4">
-                <ButtonLink to={GET_STARTED}>Get started</ButtonLink>
-                <ButtonLink to={LOG_IN} variant="outline">
-                  Sign in
-                </ButtonLink>
+              <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2">
+                <a href="#how" className={primaryButton}>
+                  See how it works
+                </a>
+                <Link to={SIGN_UP} className={textLink}>
+                  or create an account
+                </Link>
               </div>
-              <ul className="mt-8 flex flex-wrap gap-3" aria-label="Why families choose CareNest">
-                {["Just a phone on a table", "Nothing to wear", "Video stays on the phone"].map((item) => (
-                  <li key={item} className="rounded-full border-2 border-mint bg-white px-4 py-2 font-bold text-leaf">
-                    <span aria-hidden="true">✓ </span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <HeroIllustration />
-          </div>
-        </section>
-
-        {/* How it works */}
-        <section className="px-6 py-20" aria-labelledby="how-title">
-          <div className="mx-auto max-w-6xl">
-            <h2 id="how-title" className="text-center text-4xl font-extrabold">
-              How it works
-            </h2>
-            <p className="mx-auto mb-12 mt-3 max-w-[40ch] text-center text-xl text-muted">
-              From a phone on the table to an update on your phone.
-            </p>
-            <div className="relative">
-              {/* Dashed line joining the three steps (wide screens only) */}
-              <div
-                aria-hidden="true"
-                className="absolute left-[17%] right-[17%] top-[90px] hidden border-t-[5px] border-dashed border-[#b7a6ef] md:block"
-              />
-              <ol className="relative grid gap-10 md:grid-cols-3">
-                {steps.map((step, i) => (
-                  <li key={step.title} className="relative text-center">
-                    <div
-                      className={`${step.bubble} mx-auto mb-5 grid h-[180px] w-[180px] place-items-center rounded-full border-[5px] border-white shadow-[0_10px_30px_rgba(31,42,55,0.08)]`}
-                    >
-                      {step.icon}
-                    </div>
-                    <span className="mb-2 inline-block rounded-full bg-ink px-4 py-1 font-extrabold text-white">
-                      Step {i + 1}
-                    </span>
-                    <h3 className="text-2xl font-extrabold">{step.title}</h3>
-                    <p className="mx-auto mt-2 max-w-[28ch] text-muted">{step.text}</p>
-                  </li>
-                ))}
-              </ol>
             </div>
           </div>
         </section>
 
-        {/* Features */}
-        <section className="mx-4 rounded-[48px] bg-white px-6 py-20" aria-labelledby="features-title">
-          <div className="mx-auto max-w-6xl">
-            <h2 id="features-title" className="text-center text-4xl font-extrabold">
-              Little helpers, big comfort
-            </h2>
-            <p className="mx-auto mb-10 mt-3 max-w-[40ch] text-center text-xl text-muted">
-              Made to be simple for everyone — grandparents included.
-            </p>
-            <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {features.map((feature) => (
-                <li key={feature.title} className={`${feature.bg} rounded-[32px] p-7`}>
-                  {feature.icon}
-                  <h3 className="mt-4 text-2xl font-extrabold">{feature.title}</h3>
-                  <p className="mt-2">{feature.text}</p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
+        <Section id="how" title="How it works">
+          <ol className="flex flex-col">
+            {steps.map((step, i) => (
+              <li key={step.lead} className="grid grid-cols-[3rem_1fr] gap-4 border-b border-rule py-5 first:pt-0">
+                <span aria-hidden="true" className="font-serif text-[2.4rem] leading-none font-semibold text-spruce">
+                  {i + 1}
+                </span>
+                <p>
+                  <strong>{step.lead}</strong> {step.text}
+                </p>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-6 bg-stone p-5">
+            <strong>About the camera.</strong> The picture is checked on the phone itself. It is never recorded and
+            never sent anywhere. Only short notes like “moving around, left side” leave the phone, and only the people
+            you add to your family page can read them.
+          </p>
+        </Section>
 
-        {/* Family */}
-        <section className="px-6 py-20" aria-labelledby="family-title">
-          <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
-            <FamilyIllustration />
-            <div>
-              <h2 id="family-title" className="text-4xl font-extrabold">
-                Everyone in the loop
-              </h2>
-              <p className="mb-8 mt-4 text-xl text-muted">
-                Add children, grandchildren, neighbours or a carer to your CareNest home. Everyone sees the same simple
-                update, so nobody has to ring round to check.
+        <Section id="alert" title="What happens when an alert goes off">
+          <ol className="flex flex-col gap-7 border-l-[3px] border-ink pl-6">
+            <li>
+              <p className="font-serif text-h3 font-semibold">First</p>
+              <p className="mt-1">
+                The phone sees someone go from standing to lying down within about three seconds. It sends one short
+                note, “Possible fall”, with the side of the room.
               </p>
-              <ButtonLink to={GET_STARTED}>Get started</ButtonLink>
-            </div>
-          </div>
-        </section>
+            </li>
+            <li>
+              <p className="font-serif text-h3 font-semibold">Then</p>
+              <p className="mt-1">
+                The family page turns pale red for everyone who can see it, without anyone needing to reload. It says:
+              </p>
+              <blockquote className="mt-3 flex flex-col gap-1 bg-stone p-5 font-serif text-lead italic">
+                <p>Please check on them.</p>
+                <p>Possible fall - left side - just now</p>
+                <p>The phone thinks someone may have fallen. Please call or visit to check they are okay.</p>
+              </blockquote>
+            </li>
+            <li>
+              <p className="font-serif text-h3 font-semibold">Next</p>
+              <p className="mt-1">
+                You ring her or go round. CareNest doesn't make calls or send text messages yet, so keep the family page
+                somewhere you will see it.
+              </p>
+              <figure className="mt-4">
+                <img
+                  src="/photos/woman-telephone-margaret.jpg"
+                  width={1400}
+                  height={931}
+                  loading="lazy"
+                  alt="An older woman sitting in her armchair, talking on a telephone."
+                  className="aspect-[3/2] w-full object-cover"
+                />
+              </figure>
+            </li>
+            <li>
+              <p className="font-serif text-h3 font-semibold">If the phone goes quiet</p>
+              <p className="mt-1">
+                The phone checks in once a minute while it is watching. If the family page hears nothing for three
+                minutes, it tells you to check that the phone is switched on and charging.
+              </p>
+            </li>
+          </ol>
+        </Section>
 
-        {/* Who we are */}
-        <section className="px-6 pb-20" aria-labelledby="team-title">
-          <div className="mx-auto max-w-3xl rounded-[40px] bg-white px-8 py-12 text-center">
-            <h2 id="team-title" className="text-4xl font-extrabold">
-              Who we are
-            </h2>
-            <p className="mt-4 text-xl text-muted">
-              We are a small hackathon team. Many of us have parents and grandparents who live alone, and we wanted a
-              simple, kind way to stay close without cameras sending pictures anywhere or gadgets to wear.
+        <Section id="costs" title="What it costs">
+          <p className="text-lead">
+            <strong>CareNest is free while we test it.</strong> All you need is a spare phone with a camera and a web
+            browser, and a table to stand it on.
+          </p>
+          <p className="mt-4">
+            If you would like the optional moving stand, which turns the phone to follow the person you pick, these are
+            the parts we use:
+          </p>
+          <table className="mt-5 w-full border-collapse">
+            <caption className="sr-only">Parts for the moving stand, with prices</caption>
+            <thead className="sr-only">
+              <tr>
+                <th scope="col">Part</th>
+                <th scope="col">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parts.map((part) => (
+                <tr key={part.name} className="border-t border-rule">
+                  <td className="py-3 pr-4">{part.name}</td>
+                  <td className="py-3 text-right whitespace-nowrap tabular-nums">{part.price}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-ink">
+                <th scope="row" className="py-3 pr-4 text-left font-bold">
+                  Total
+                </th>
+                <td className="py-3 text-right font-bold whitespace-nowrap tabular-nums">about $104</td>
+              </tr>
+            </tfoot>
+          </table>
+          <p className="mt-4 text-muted">
+            Prices as we found them on 17 October 2026, before shipping and tax. The stand connects over Bluetooth, which
+            works in Chrome or Edge on a computer, or in the free Bluefy app on an iPhone.
+          </p>
+        </Section>
+
+        <Section id="who" title="Who we are">
+          <div className="flex flex-col gap-4">
+            <p>
+              We are a small hackathon team. Many of us have parents and grandparents who live on their own, and we
+              wanted a simple way to know they are all right without asking them to wear anything.
+            </p>
+            <p>
+              Dennis built the stand: a phone holder on a pan-and-tilt neck with small radar sensors, so the phone
+              can turn to follow the person it is watching.
+            </p>
+            <p>
+              CareNest is still being tested. It is not a medical alarm and it does not call anyone for you, so please
+              keep any alarm you already rely on.
             </p>
           </div>
-        </section>
-
-        {/* Final call to action */}
-        <section className="px-6 pb-20" aria-labelledby="cta-title">
-          <div className="on-dark mx-auto max-w-6xl rounded-[40px] bg-brand px-8 py-14 text-center text-white">
-            <h2 id="cta-title" className="text-4xl font-extrabold">
-              Ready to feel closer?
-            </h2>
-            <p className="mt-3 text-xl">Make an account, stand a phone on the table and press “Start watching”.</p>
-            <div className="mt-8 flex flex-wrap justify-center gap-4">
-              <ButtonLink to={GET_STARTED} variant="inverse">
-                Get started
-              </ButtonLink>
-              <ButtonLink to={LOG_IN} variant="inverse-outline">
-                Sign in
-              </ButtonLink>
+          <figure className="mt-8">
+            <div className="grid grid-cols-5 gap-3">
+              <img
+                src="/photos/man-with-cat.jpg"
+                width={1400}
+                height={933}
+                loading="lazy"
+                alt="An older man at home holding his cat."
+                className="col-span-3 h-full w-full object-cover"
+              />
+              <img
+                src="/photos/couple-reading.jpg"
+                width={931}
+                height={1400}
+                loading="lazy"
+                alt="An older couple reading a book together on the sofa."
+                className="col-span-2 h-full w-full object-cover"
+              />
             </div>
+            <figcaption className="mt-2 text-base text-muted">
+              Not our team: photos by Shixart1985 on Wikimedia Commons. <Link to="/photo-credits">Photo credits</Link>
+            </figcaption>
+          </figure>
+          <div className="mt-6 border-2 border-dashed border-[#a9a190] bg-stone p-6">
+            <p className="font-serif italic">A photo of our team with the real stand will go here.</p>
           </div>
-        </section>
+        </Section>
       </main>
 
-      <footer className="mx-auto flex max-w-6xl flex-wrap justify-between gap-4 px-6 pb-10 text-muted">
-        <span>© {new Date().getFullYear()} CareNest</span>
-        <span>Only the people you invite can see anything.</span>
-      </footer>
+      <Footer />
     </>
   );
 }

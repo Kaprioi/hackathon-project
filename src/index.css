@@ -1,46 +1,84 @@
 @import "tailwindcss";
-@import "@fontsource-variable/nunito";
+@import "@fontsource-variable/source-serif-4";
+@import "@fontsource-variable/source-serif-4/wght-italic.css";
+@import "@fontsource-variable/public-sans";
 
-/* Colours and font for the whole app. Every text colour here passes WCAG AA
-   contrast on the light backgrounds it is used on. */
+/* Colours and fonts for the whole app: paper and ink, with one accent (spruce).
+   Every text colour here passes WCAG AA contrast on the backgrounds it is used on
+   (the numbers are the contrast on paper). No purple, no gradients. */
 @theme {
-  --font-sans: "Nunito Variable", ui-rounded, "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Public Sans Variable", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
 
-  --color-ink: #1f2a37; /* main text */
-  --color-muted: #46505f; /* secondary text */
-  --color-brand: #5b3cc4; /* purple buttons and links */
-  --color-brand-dark: #3d2790;
-  --color-leaf: #17795a; /* green "all okay" */
-  --color-cream: #f4fbf8; /* page background */
-  --color-mint: #c9f0df;
-  --color-lilac: #e7defd;
-  --color-peach: #ffe1cc;
-  --color-sun: #fff1b8;
-  --color-coral: #ff9f7a;
+  --color-paper: #faf8f3; /* page background */
+  --color-ink: #1f2421; /* text, thick rules, input borders (14.85:1) */
+  --color-muted: #585d56; /* secondary text, captions (6.35:1) */
+  --color-stone: #f1ede4; /* quote panels, help notes */
+  --color-rule: #d9d3c7; /* thin dividing lines (decorative) */
+  --color-spruce: #1c4f4a; /* the one accent: main buttons and links (8.73:1) */
+  --color-spruce-deep: #123733; /* button hover */
+  --color-ok: #1f5e3a; /* "All is well" (7.27:1) */
+  --color-alert: #a1281c; /* alerts and errors (6.98:1) */
+  --color-alert-tint: #fbedea; /* alert notice background (alert on it 6.49:1) */
+  --color-amber: #7a4e00; /* "no news" and warnings (6.78:1) */
+  --color-honey: #f5c76b; /* focus ring and the /tracker target box only */
+
+  /* Text sizes (the smallest is 18px). Use as text-body, text-lead, text-h1 and so on. */
+  --text-body: 1.0556rem; /* 19px */
+  --text-lead: 1.1667rem; /* 21px */
+  --text-h3: 1.3333rem; /* 24px */
+  --text-h2: 1.7778rem; /* 32px */
+  --text-h1: 2.1111rem; /* 38px, phones */
+  --text-h1-lg: 2.7778rem; /* 50px, wider screens */
 }
 
-/* Older readers: 18px base text (Tailwind's rem sizes all scale from this). */
-html {
-  font-size: 112.5%;
+/* Base styles sit in Tailwind's base layer so utility classes can override them. */
+@layer base {
+  /* Older readers: 18px base text (Tailwind's rem sizes all scale from this). */
+  html {
+    font-size: 112.5%;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 1.0556rem; /* 19px */
+    line-height: 1.6;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+
+  /* Links are spruce and underlined, like a printed leaflet. */
+  a {
+    color: var(--color-spruce);
+    text-decoration-line: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+
+  /* Plain links inside a sentence get a taller tap area (about 48px) without
+     changing how the text is laid out. */
+  :is(p, li, figcaption) a:not([class]) {
+    padding-block: 0.75rem;
+  }
 }
 
-body {
-  background-color: var(--color-cream);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  line-height: 1.6;
-}
-
-/* A thick, always-visible focus ring for keyboard users. */
+/* A thick, always-visible focus ring for keyboard users: honey inside, ink outside,
+   so it shows on light and dark backgrounds alike. */
 :focus-visible {
-  outline: 4px solid var(--color-ink);
-  outline-offset: 4px;
-  border-radius: 14px;
-}
-
-/* On dark or purple backgrounds, switch the focus ring to white. */
-.on-dark :focus-visible {
-  outline-color: #fff;
+  outline: 3px solid transparent; /* still shows in Windows high-contrast mode */
+  box-shadow:
+    0 0 0 3px var(--color-honey),
+    0 0 0 6px var(--color-ink);
+  border-radius: 4px;
 }
 
 @media (prefers-reduced-motion: reduce) {

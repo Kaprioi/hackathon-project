@@ -2,7 +2,7 @@
 
 **CareNest**: a phone standing on a table watches the room with its camera (all on the phone), and family see in plain words how their loved one is doing. No video or pictures ever leave the phone.
 
-The site has four pages:
+The site has five pages:
 
 | Page | Address | What it is |
 | --- | --- | --- |
@@ -10,6 +10,7 @@ The site has four pages:
 | Sign in | `/login` | Sign in or create an account (email and password) |
 | Phone camera | `/tracker` | Open this on the phone on the table and press **Start watching** |
 | Family | `/dashboard` | What is happening right now, recent news, and adding family |
+| Photo credits | `/photo-credits` | Credits for the photos on the site (they are CC BY 2.0, which asks for this) |
 
 The "forgot password" email also brings people to `/reset-password` to choose a new password.
 
@@ -133,7 +134,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
    npm test
    ```
 
-Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, and colours and fonts in `src/index.css`. `vercel.json` makes links like `/login`, `/dashboard` and `/reset-password` work when the site is deployed.
+Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, colours and fonts in `src/index.css` (paper and ink with one spruce green accent; Source Serif 4 headings and Public Sans text), and the photos in `public/photos/`. New photos must be real (never AI-made people) and credited on `/photo-credits`. `vercel.json` makes links like `/login`, `/dashboard` and `/reset-password` work when the site is deployed.
 
 Logging in: `/login` has log in, create an account, and "forgot your password". Creating an account logs people straight in and takes them to `/dashboard`. The "forgot password" email brings people back to `/reset-password` to choose a new password (and if "Confirm email" is turned back on, the confirmation email brings them to `/dashboard`). `/dashboard` is the family page (below) and sends people to `/login` if they aren't logged in.
 
@@ -152,7 +153,7 @@ It also still drives the optional Phone Tracker stand: it follows the person you
 
 Where family members see how things are. After logging in, the login page brings you here; if nobody is logged in it sends you to `/login`. It shows:
 
-- **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns peach with a "please call or visit" note if the phone thinks someone may have fallen, and warns you if the phone has not checked in for over 3 minutes (it normally sends a heartbeat every minute).
+- **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns pale red with a "please call or visit" note if the phone thinks someone may have fallen, and warns you if the phone has not checked in for over 3 minutes (it normally sends a heartbeat every minute).
 - **Recent news**: the last 10 events with their times.
 - **Add a family member** (only for the circle's owner): type the email of someone who already has a CareNest account, and they will see the same page. For privacy the page gives the same answer whether or not that email has an account. A family member's page shows the circle with the newest news, so they see the phone of the person they were added for.
 
