@@ -1,6 +1,8 @@
 import { useEffect, useId, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
 import { Message } from "../components/AuthLayout";
+import { buttonVariants } from "../components/ButtonLink";
+import SiteLayout, { Blobs, LivePill } from "../components/SiteLayout";
 import { supabase } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
 import { describe, summarise, timeAgo, whatHappened, whereInRoom, type EventRow, type Mood } from "../family/status";
@@ -14,14 +16,24 @@ const HOW_MANY = 50;
 // Dark red that passes WCAG AA contrast on white and on the cream background.
 const ERROR_RED = "text-[#a61b1b]";
 
+// The "Right now" card looks like the pretend family page on the homepage:
+// mint when all is well, red when someone may have fallen, white when quiet.
 const moodStyles: Record<Mood, string> = {
-  ok: "border-leaf bg-mint",
-  alert: "border-[#a61b1b] bg-peach",
-  quiet: "border-muted bg-white",
+  ok: "bg-mint text-ink",
+  alert: "bg-alert text-on-brand",
+  quiet: "border-[3px] border-lilac bg-surface text-ink",
 };
 
+// The coloured dot next to each piece of news.
+function dotColour(kind: EventRow["kind"]): string {
+  if (kind === "fall") return "bg-alert";
+  if (kind === "moving") return "bg-leaf";
+  if (kind === "still") return "bg-coral";
+  return "bg-brand";
+}
+
 const smallButton =
-  "inline-flex min-h-12 items-center justify-center rounded-2xl border-[3px] border-brand bg-white px-5 text-lg font-extrabold text-brand transition-colors hover:bg-lilac disabled:cursor-not-allowed disabled:opacity-70";
+  "inline-flex min-h-12 items-center justify-center rounded-2xl border-[3px] border-brand bg-surface px-5 text-lg font-extrabold text-brand no-underline transition-all duration-200 hover:-translate-y-0.5 hover:bg-lilac disabled:cursor-not-allowed disabled:opacity-70";
 
 interface Circle {
   id: string;
@@ -53,9 +65,12 @@ export default function DashboardPage() {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-6 px-6 text-center">
-      {children}
-    </main>
+    <SiteLayout title="Family page">
+      {/* As tall as the screen, so the footer doesn't jump when the page appears. */}
+      <div className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-6 px-6 text-center">
+        {children}
+      </div>
+    </SiteLayout>
   );
 }
 
@@ -77,15 +92,6 @@ function Family({
   const [problem, setProblem] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-
-  // Name the browser tab after the page, like the log in pages do.
-  useEffect(() => {
-    const previous = document.title;
-    document.title = "Family page — CareNest";
-    return () => {
-      document.title = previous;
-    };
-  }, []);
 
   // Refresh "2 minutes ago" every 20 seconds.
   useEffect(() => {
@@ -175,94 +181,113 @@ function Family({
   const { latest } = summary;
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b-[3px] border-lilac bg-white">
-        <nav className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <Link to="/" className="inline-flex min-h-12 items-center text-2xl font-extrabold text-brand no-underline">
-            CareNest
-          </Link>
-          <div className="flex flex-wrap gap-3">
-            <Link to="/tracker" className={smallButton}>
-              Phone camera
-            </Link>
+    <SiteLayout title="Family page">
+      {/* At least as tall as the screen, so the footer doesn't jump as the news loads in. */}
+      <section className="relative isolate min-h-screen px-4 pb-24 pt-6 sm:px-6">
+        <Blobs fixed />
+        <div className="mx-auto flex max-w-3xl flex-col gap-8">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="inline-flex items-center gap-3 rounded-full bg-surface px-4 py-2 text-base font-extrabold uppercase tracking-wide text-brand shadow-soft">
+                <span className="relative flex h-3 w-3">
+                  <span className="absolute inset-0 animate-pulse-ring rounded-full bg-leaf" />
+                  <span className="relative h-3 w-3 rounded-full bg-leaf" />
+                </span>
+                {circle?.name ?? "Your family"}
+              </p>
+              <h1 className="mt-4 text-4xl font-extrabold md:text-5xl">
+                Family <span className="text-gradient-brand">page</span>
+              </h1>
+              <p className="mt-2 text-lg text-muted">
+                Signed in as <strong className="text-ink">{email}</strong>
+              </p>
+            </div>
             <button type="button" onClick={logOut} disabled={loggingOut} className={smallButton}>
               {loggingOut ? "Logging out…" : "Log out"}
             </button>
           </div>
-        </nav>
-      </header>
 
-      <main className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-8">
-        <div>
-          <h1 className="text-4xl font-extrabold">Family page</h1>
-          <p className="text-lg text-muted">
-            Signed in as <strong className="text-ink">{email}</strong>
-          </p>
-        </div>
+          {location.state?.passwordChanged && <Message kind="success">Your new password is saved.</Message>}
+          {logOutError && <Message kind="error">{logOutError}</Message>}
 
-        {location.state?.passwordChanged && <Message kind="success">Your new password is saved.</Message>}
-        {logOutError && <Message kind="error">{logOutError}</Message>}
-
-        {problem && (
-          <p role="alert" className={`rounded-2xl border-[3px] border-[#a61b1b] bg-white p-5 text-xl font-bold ${ERROR_RED}`}>
-            {problem}
-          </p>
-        )}
-
-        <section aria-labelledby="now-title" className={`rounded-3xl border-[3px] p-6 ${moodStyles[summary.mood]}`}>
-          <h2 id="now-title" className="text-xl font-extrabold text-muted">
-            Right now
-          </h2>
-          <p aria-live="polite" className="mt-2 text-3xl leading-tight font-extrabold sm:text-4xl">
-            {latest ? describe(latest, now) : circle ? "No news yet" : "Loading…"}
-          </p>
-          {summary.mood === "alert" && (
-            <p className={`mt-4 text-xl font-bold ${ERROR_RED}`}>
-              The phone thinks someone may have fallen. Please call or visit to check they are okay.
+          {problem && (
+            <p
+              role="alert"
+              className={`rounded-2xl border-[3px] border-[#a61b1b] bg-surface p-5 text-xl font-bold ${ERROR_RED}`}
+            >
+              {problem}
             </p>
           )}
-          {summary.phoneSilent && summary.lastHeard && (
-            <p className="mt-4 text-xl font-bold">
-              The phone last checked in {timeAgo(summary.lastHeard.created_at, now)}.
-              Check that it is switched on, charging, and showing the "Camera on" sign.
-            </p>
-          )}
-          {!latest && circle && (
-            <p className="mt-4 text-xl">
-              Stand a phone on a table, sign in on it with this account, open{" "}
-              <Link to="/tracker" className="font-bold text-brand underline">
-                Phone camera
-              </Link>{" "}
-              and press "Start watching". News will appear here by itself.
-            </p>
-          )}
-          <p className="mt-4 text-lg text-muted">
-            {live ? "This page updates by itself." : "Connecting for live updates…"}
-          </p>
-        </section>
 
-        {summary.timeline.length > 0 && (
-          <section aria-labelledby="timeline-title">
-            <h2 id="timeline-title" className="text-2xl font-extrabold">
-              Recent news
-            </h2>
-            <ol className="mt-4 flex flex-col gap-3">
-              {summary.timeline.map((e) => (
-                <li key={e.id} className="flex flex-wrap items-baseline gap-x-4 rounded-2xl border-[3px] border-lilac bg-white px-5 py-3">
-                  <span className="min-w-20 text-xl font-extrabold text-brand">{clock(e.created_at)}</span>
-                  <span className="text-xl">
-                    {whatHappened(e)}
-                    {e.kind !== "nobody" && whereInRoom(e.zone) ? ` - ${whereInRoom(e.zone)}` : ""}
-                  </span>
-                </li>
-              ))}
-            </ol>
+          <section
+            aria-labelledby="now-title"
+            className={`rounded-[32px] p-6 shadow-lift transition-colors duration-500 sm:p-8 ${moodStyles[summary.mood]} ${summary.mood === "alert" ? "animate-shake" : ""}`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 id="now-title" className="text-xl font-extrabold">
+                Right now
+              </h2>
+              <LivePill>{live ? "Live" : "Connecting…"}</LivePill>
+            </div>
+            <p
+              key={latest?.id ?? "none"}
+              aria-live="polite"
+              className="mt-3 animate-pop text-3xl leading-tight font-black sm:text-4xl"
+            >
+              {latest ? describe(latest, now) : circle ? "No news yet" : "Loading…"}
+            </p>
+            {summary.mood === "alert" && (
+              <p className="mt-4 text-xl font-bold">
+                The phone thinks someone may have fallen. Please call or visit to check they are okay.
+              </p>
+            )}
+            {summary.phoneSilent && summary.lastHeard && (
+              <p className="mt-4 text-xl font-bold">
+                The phone last checked in {timeAgo(summary.lastHeard.created_at, now)}.
+                Check that it is switched on, charging, and showing the "Camera on" sign.
+              </p>
+            )}
+            {!latest && circle && (
+              <p className="mt-4 text-xl">
+                Stand a phone on a table, sign in on it with this account, open{" "}
+                <Link to="/tracker" className="font-bold text-brand underline">
+                  Phone camera
+                </Link>{" "}
+                and press "Start watching". News will appear here by itself.
+              </p>
+            )}
+            <p className="mt-4 text-lg font-bold">
+              {live ? "This page updates by itself." : "Connecting for live updates…"}
+            </p>
           </section>
-        )}
 
-        {circle && circle.owner_id === userId && <AddFamily circleId={circle.id} />}
-      </main>
-    </div>
+          {summary.timeline.length > 0 && (
+            <section aria-labelledby="timeline-title">
+              <h2 id="timeline-title" className="text-2xl font-extrabold">
+                Recent news
+              </h2>
+              <ol className="mt-4 flex flex-col gap-3">
+                {summary.timeline.map((e) => (
+                  <li
+                    key={e.id}
+                    className="flex animate-slide-in items-center gap-4 rounded-2xl bg-surface px-5 py-4 shadow-soft"
+                  >
+                    <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full ${dotColour(e.kind)}`} />
+                    <span className="flex-1 text-xl font-bold">
+                      {whatHappened(e)}
+                      {e.kind !== "nobody" && whereInRoom(e.zone) ? ` - ${whereInRoom(e.zone)}` : ""}
+                    </span>
+                    <span className="text-lg font-bold text-muted">{clock(e.created_at)}</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+
+          {circle && circle.owner_id === userId && <AddFamily circleId={circle.id} />}
+        </div>
+      </section>
+    </SiteLayout>
   );
 }
 
@@ -298,10 +323,11 @@ function AddFamily({ circleId }: { circleId: string }) {
   }
 
   return (
-    <section aria-labelledby={`${id}-title`} className="rounded-3xl border-[3px] border-lilac bg-white p-6">
-      <h2 id={`${id}-title`} className="text-2xl font-extrabold">
-        Add a family member
+    <section aria-labelledby={`${id}-title`} className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
+      <h2 id={`${id}-title`} className="text-3xl font-extrabold">
+        Everyone in the <span className="text-gradient-brand">loop</span>
       </h2>
+      <p className="mt-1 text-xl font-extrabold">Add a family member</p>
       <p className="mt-2 text-lg text-muted">They need their own CareNest account first. Then type their email here.</p>
       <form onSubmit={add} className="mt-4 flex flex-col gap-3">
         <label htmlFor={`${id}-email`} className="text-xl font-extrabold">
@@ -314,12 +340,12 @@ function AddFamily({ circleId }: { circleId: string }) {
           autoComplete="off"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="min-h-14 w-full rounded-2xl border-[3px] border-muted bg-white px-5 text-xl text-ink"
+          className="min-h-14 w-full rounded-2xl border-[3px] border-muted bg-surface px-5 text-xl text-ink transition-colors hover:border-brand focus:border-brand"
         />
         <button
           type="submit"
           disabled={busy}
-          className="inline-flex min-h-14 items-center justify-center rounded-2xl border-[3px] border-brand bg-brand px-7 text-xl font-extrabold text-white shadow-[0_6px_0_var(--color-brand-dark)] hover:bg-brand-dark disabled:opacity-70"
+          className={`${buttonVariants.primary} mt-2 text-xl disabled:opacity-70`}
         >
           {busy ? "Adding…" : "Add to family"}
         </button>

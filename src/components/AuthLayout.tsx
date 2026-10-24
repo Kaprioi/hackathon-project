@@ -1,63 +1,30 @@
-import { useEffect } from "react";
 import { Link } from "react-router";
-
-function Logo() {
-  return (
-    <Link to="/" className="flex min-h-12 items-center gap-3 text-2xl font-black text-ink no-underline">
-      <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
-        <circle cx="22" cy="22" r="22" fill="#c9f0df" />
-        <path d="M22 33s-11-6.5-11-14a6 6 0 0 1 11-3.4A6 6 0 0 1 33 19c0 7.5-11 14-11 14z" fill="#5b3cc4" />
-      </svg>
-      CareNest
-    </Link>
-  );
-}
+import { buttonVariants } from "./ButtonLink";
+import SiteLayout, { Blobs } from "./SiteLayout";
 
 export const linkButton =
   "inline-flex min-h-12 items-center rounded-xl px-1 text-lg font-bold text-brand underline underline-offset-4 hover:text-brand-dark";
 
-const buttonBase =
-  "inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border-[3px] px-7 text-xl font-extrabold transition-colors disabled:cursor-not-allowed disabled:opacity-70";
-export const primaryButton = `${buttonBase} border-brand bg-brand text-white shadow-[0_6px_0_var(--color-brand-dark)] hover:bg-brand-dark`;
-export const outlineButton = `${buttonBase} border-brand bg-white text-brand hover:bg-lilac`;
+// The same big buttons as the homepage, stretched to the width of the card.
+export const primaryButton = `${buttonVariants.primary} w-full text-xl disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0`;
+export const outlineButton = `${buttonVariants.outline} w-full text-xl disabled:cursor-not-allowed disabled:opacity-70`;
 
 // Dark red that passes WCAG AA contrast on white and on the cream background.
 export const ERROR_RED = "text-[#a61b1b]";
 
-// The page frame shared by the log in, new password and dashboard pages:
-// the same header as the homepage, then one big rounded white card.
+// The page frame shared by the log in and new password pages: the same header,
+// footer and drifting colour clouds as the homepage, then one big rounded white card.
 export default function AuthLayout({ title, children }: { title: string; children: React.ReactNode }) {
-  // Name the browser tab after the page, so it is easy to find again.
-  useEffect(() => {
-    const previous = document.title;
-    document.title = `${title} — CareNest`;
-    return () => {
-      document.title = previous;
-    };
-  }, [title]);
-
   return (
-    <>
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:rounded-xl focus:bg-white focus:px-5 focus:py-3 focus:font-bold"
-      >
-        Skip to main content
-      </a>
-
-      <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-5">
-        <Logo />
-        <Link to="/" className={linkButton}>
-          Back to homepage
-        </Link>
-      </header>
-
-      <main id="main" className="px-4 pb-20 pt-4">
-        <div className="mx-auto max-w-xl rounded-[40px] bg-white p-7 shadow-[0_10px_30px_rgba(31,42,55,0.08)] sm:p-10">
+    <SiteLayout title={title}>
+      {/* At least as tall as the screen, so the footer doesn't jump when "Loading…" turns into the form. */}
+      <section className="relative isolate min-h-screen px-4 pb-24 pt-6">
+        <Blobs fixed />
+        <div className="mx-auto max-w-xl animate-slide-in rounded-[40px] bg-surface p-7 shadow-lift sm:p-10">
           {children}
         </div>
-      </main>
-    </>
+      </section>
+    </SiteLayout>
   );
 }
 
