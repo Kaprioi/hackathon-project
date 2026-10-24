@@ -78,6 +78,15 @@ function Family({
   const [live, setLive] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
+  // Name the browser tab after the page, like the log in pages do.
+  useEffect(() => {
+    const previous = document.title;
+    document.title = "Family page — CareNest";
+    return () => {
+      document.title = previous;
+    };
+  }, []);
+
   // Refresh "2 minutes ago" every 20 seconds.
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 20_000);

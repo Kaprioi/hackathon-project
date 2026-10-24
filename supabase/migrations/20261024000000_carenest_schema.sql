@@ -103,6 +103,20 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- Accounts made before this migration ran get the same profile and care circle.
+do $$
+declare
+  u record;
+  new_circle uuid;
+begin
+  for u in select id, email from auth.users where id not in (select id from public.profiles) loop
+    insert into public.profiles (id, email) values (u.id, u.email);
+    insert into public.care_circles (owner_id) values (u.id) returning id into new_circle;
+    insert into public.care_circle_members (circle_id, user_id, role) values (new_circle, u.id, 'owner');
+  end loop;
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Circle owner adds a family member by the email they signed up with.
 -- Returns true if that person was found and added.
