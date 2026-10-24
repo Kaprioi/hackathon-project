@@ -63,6 +63,20 @@ Newest entry at the top. Add one entry at the end of every session.
   - A "Posture: standing / sitting / lying" chip shows what the alert thinks.
   - Faces: a face was only saved when the target's box didn't touch anyone else's (rare in a group), and the reader took the clearest face in the head crop, possibly a neighbour's. Now a little overlap is fine (under 0.3), and the reader takes the face nearest where this person's head should be.
   - On screen: each box shows its latest face number ("face 0.38 ✓", "face 0.61 ?" when unsure, "face 0.85 ✗"). The chip says "No face seen yet" or "Face too far away" when nothing usable was read. 73 tests.
+- **Committed and pushed** everything to PR #13 (commit `7cbf53e`).
+- **Firmware compile check (Apple approved installing arduino-cli):**
+  - arduino-cli 1.5.1 from Arduino's GitHub release (checksum matched; the exe isn't digitally signed), with ESP32 core 3.3.12, ESP32Servo 3.2.1 and ld2410 0.2.2.
+  - The first compile failed inside the toolchain: the long scratchpad path made gcc's include paths pass Windows' 260-character limit. Moved the packages to `C:\Users\marba\.ard`.
+  - SightLine (PR #7): compiles, 1.43 MB (42%), 16% RAM, 2 harmless format warnings in Kris's WiFi code. Single-radar sketch: compiles, no warnings.
+  - Checked that the website and firmware agree: Bluetooth IDs and name, the "pan,tilt" format, the limits, the 15%/20 ms motor easing, and camera vs radar steering. Not run on hardware yet.
+- **Phone test: the target turned around, a passer-by in similar clothes walked past, and the box sometimes went to them.** Cause: from behind, the target matched worse (only the front look was known). A clear colour match elsewhere then took over instantly, and while the passer-by overlapped the target, the better-coloured box won. Fixes:
+  - Extra looks of the target (up to 3: their back, say) are learned while following them cleanly: right after a strong match (under 0.19) or a face match, with nobody overlapping since, and the new look steady for 1 s. The first try learned a look-alike's clothes; the look-alike test caught it, hence the strong-match rule.
+  - A smoothly followed box isn't dropped instantly for a colour match elsewhere (only by the steady rule).
+  - When one box clearly continues the target's (over half overlap), it wins over colours.
+  - Test: turn around, then a passer-by in the front colours walks past in front: it stays on the target. 74 tests.
+- **The fps chip now shows the AI's time per picture** ("AI 85 ms"), to see on the phone what limits the speed.
+- **Does a low frame rate hurt?** Simulated crossings at real walking speeds (0.15–0.5 of the picture per second) at 3, 4, 5, 7, 10 and 15 fps: with different clothes, or the same top and different trousers, it stayed on the right person at every frame rate. With identical outfits, a crossing went wrong in about 1 run in 5, at any frame rate. So faster processing wouldn't make the demo noticeably more reliable; distinct clothes and visible faces do. A proper fix for identical outfits would track everyone's motion (a bigger job, not built).
+- **A fall could lose the person on the floor.** Lying down puts the top and trousers side by side, so their colours matched badly (0.53). If the camera missed a frame or two mid-fall (likely: falls are fast and blurry), the tracker dropped them after 1.5 s and flickered to HIDDEN. Fix (`appearance.ts`): a box flatter than 0.75 (height/width in real pixels) is read left/right instead of top/bottom, both ways round (which end is the head is unknown); the closer one counts. Now the lying person matches (0.00–0.12) and stays tracked; simulated falls at 7–15 fps with up to 4 missed frames all kept them and raised the fall alert. Tests: lying colours match standing ones (and someone else lying doesn't); a fall with 3 missed frames keeps tracking for 4 s. 76 tests.
 - Next: Apple retests on the Samsung (hand-held turning, faces) and the iPhone (reloads, Bluefy); commit after that; Kris merges PR #13; then the fall alert.
 
 ## 2026-10-23 (evening) — Website, mist that follows you, SightLine merge
