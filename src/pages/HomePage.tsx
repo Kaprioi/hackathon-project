@@ -12,8 +12,8 @@ import {
   PillIcon,
 } from "../components/illustrations";
 
-// There is no sign-up page yet, so "Get started" goes to the login page for now.
-const GET_STARTED = "/login";
+// "Get started" opens the login page on its "Create your account" form.
+const GET_STARTED = "/login?mode=sign-up";
 const LOG_IN = "/login";
 
 const steps = [
