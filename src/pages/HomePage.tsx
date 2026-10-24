@@ -556,8 +556,8 @@ function Demo() {
 
         {/* The pretend family page, on a phone. It shakes when someone may have fallen. */}
         <Reveal delay={150}>
-          <p className="sr-only" role="status" aria-live={playing ? "off" : "polite"}>
-            Grandma right now: {look.label}. {look.detail}, {state.side} side.
+          <p className="sr-only" role="status" aria-live="polite">
+            {playing ? "" : `Grandma right now: ${look.label}. ${look.detail}, ${state.side} side.`}
           </p>
           <div key={state.shake} className={state.shake > 0 && state.mode === "fall" ? "animate-shake" : ""}>
             <div className="mx-auto w-full max-w-[340px] rounded-[48px] border-[10px] border-ink bg-cream p-4 shadow-lift">
