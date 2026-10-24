@@ -164,7 +164,7 @@ function PanDial({ aim }: { aim: Angles | null }) {
   const nx = 40 + 30 * Math.cos(angle);
   const ny = 40 - 30 * Math.sin(angle);
   return (
-    <div className="flex items-center gap-2 rounded-2xl bg-black/60 px-3 py-2 text-sm" aria-label={`Stand pointing at ${pan.toFixed(0)} degrees`}>
+    <div className="flex items-center gap-2 rounded-2xl bg-black/60 px-3 py-2 text-base" aria-label={`Stand pointing at ${pan.toFixed(0)} degrees`}>
       <svg width="80" height="46" viewBox="0 0 80 46" aria-hidden="true">
         <path d="M 6 40 A 34 34 0 0 1 74 40" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="4" />
         <line x1="40" y1="40" x2={nx} y2={ny} stroke="#ffd84d" strokeWidth="4" strokeLinecap="round" />
@@ -172,7 +172,7 @@ function PanDial({ aim }: { aim: Angles | null }) {
       </svg>
       <div className="leading-tight">
         <div>Pan {pan.toFixed(0)}°</div>
-        <div className="text-white/70">Tilt {(aim?.tilt ?? LIMITS.center).toFixed(0)}°</div>
+        <div className="text-white/90">Tilt {(aim?.tilt ?? LIMITS.center).toFixed(0)}°</div>
       </div>
     </div>
   );
@@ -180,7 +180,7 @@ function PanDial({ aim }: { aim: Angles | null }) {
 
 function Chip({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "good" | "warn" }) {
   const toneClass = tone === "good" ? "bg-leaf text-white" : tone === "warn" ? "bg-sun text-ink" : "bg-black/60 text-white";
-  return <span className={`rounded-full px-3 py-1 text-sm font-semibold ${toneClass}`}>{children}</span>;
+  return <span className={`rounded-full px-3 py-1 text-base font-semibold ${toneClass}`}>{children}</span>;
 }
 
 function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
@@ -551,7 +551,7 @@ export default function TrackerPage() {
           </span>
           <p className="mt-1 text-base leading-snug">{running ? snap.note : "Start the camera to begin."}</p>
           {snap.match !== null && (snap.mode === "lost" || snap.mode === "searching" || snap.mode === "following") && (
-            <p className="text-sm text-white/75">
+            <p className="text-base text-white/90">
               Closest match {snap.match.toFixed(2)} (locks on below {(settings.matchLimit * (snap.mode === "following" ? TUNING.followLookSlack : 1)).toFixed(2)})
             </p>
           )}
@@ -572,9 +572,9 @@ export default function TrackerPage() {
 
       {/* Bottom: the log on the left, controls on the right */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-3">
-        <ol className="max-w-md space-y-0.5 rounded-2xl bg-black/50 px-3 py-2 text-sm empty:hidden" aria-label="What the tracker decided">
+        <ol className="max-w-md space-y-0.5 rounded-2xl bg-black/70 px-3 py-2 text-base empty:hidden" aria-label="What the tracker decided">
           {log.map((l, i) => (
-            <li key={`${l.time}-${i}`} className={i === 0 ? "" : "text-white/60"}>
+            <li key={`${l.time}-${i}`} className={i === 0 ? "" : "text-white/85"}>
               <span className="font-mono">{l.time}</span> {l.note}
             </li>
           ))}
@@ -582,7 +582,7 @@ export default function TrackerPage() {
         <div className="pointer-events-auto ml-auto flex flex-col items-end gap-2">
           <PanDial aim={snap.aim} />
           <div className="flex flex-wrap justify-end gap-2 rounded-2xl bg-black/60 p-2" role="group" aria-label="Humidifier">
-            <span className="self-center px-1 text-sm font-semibold">Mist</span>
+            <span className="self-center px-1 text-base font-semibold">Mist</span>
             <Button active={mistMode === "off"} onClick={() => chooseMist("off")}>Off</Button>
             <Button active={mistMode === "on"} onClick={() => chooseMist("on")}>On</Button>
             <Button active={mistMode === "follow"} onClick={() => chooseMist("follow")}>Follow me</Button>
@@ -666,7 +666,7 @@ export default function TrackerPage() {
               </p>
             )}
             {!Stand.supported() && (
-              <p className="text-base text-white/80">
+              <p className="text-base text-white/90">
                 Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this
                 page in the Bluefy app.
               </p>
@@ -678,7 +678,7 @@ export default function TrackerPage() {
       {error && (
         <div role="alert" className="absolute inset-x-0 bottom-28 mx-auto w-fit max-w-[90%] rounded-2xl bg-red-700 px-4 py-2 font-semibold">
           {error}{" "}
-          <button className="ml-2 underline" onClick={() => setError("")}>
+          <button className="ml-2 min-h-12 px-2 underline" onClick={() => setError("")}>
             Dismiss
           </button>
         </div>
@@ -704,14 +704,14 @@ function SettingsPanel(props: {
       </span>
       <input
         type="range"
-        className="w-full"
+        className="h-12 w-full"
         min={min}
         max={max}
         step={step}
         value={s[key]}
         onChange={(e) => update({ [key]: Number(e.target.value) } as Partial<Settings>)}
       />
-      <span className="text-sm text-white/70">{help}</span>
+      <span className="text-base text-white/90">{help}</span>
     </label>
   );
 
@@ -742,7 +742,7 @@ function SettingsPanel(props: {
 
       <fieldset className="space-y-2">
         <legend className="font-semibold">Motor directions</legend>
-        <p className="text-sm text-white/70">If the stand turns away from you, flip that direction.</p>
+        <p className="text-base text-white/90">If the stand turns away from you, flip that direction.</p>
         <div className="flex gap-2">
           <Button active={s.panSign === -1} onClick={() => update({ panSign: s.panSign === 1 ? -1 : 1 })}>
             Flip left/right
@@ -760,7 +760,7 @@ function SettingsPanel(props: {
 
       <fieldset className="space-y-2">
         <legend className="font-semibold">Test the motors</legend>
-        <p className="text-sm text-white/70">
+        <p className="text-base text-white/90">
           {canTest
             ? "Left should bring what was on the left of the screen toward the middle. If it does the opposite, flip left/right above. Same for Up."
             : "Connect the stand and press Release first."}
