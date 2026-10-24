@@ -74,7 +74,9 @@ const EVENT_WORDS: Record<MovementEvent["kind"], string> = {
 };
 
 function describe(e: MovementEvent): string {
-  return [EVENT_WORDS[e.kind], e.zone && `${e.zone} side`, e.posture && e.posture !== "unknown" && e.posture]
+  // "middle", not "middle side"
+  const where = e.zone && (e.zone === "middle" ? "middle" : `${e.zone} side`);
+  return [EVENT_WORDS[e.kind], where, e.posture && e.posture !== "unknown" && e.posture]
     .filter(Boolean)
     .join(" - ");
 }
@@ -1007,6 +1009,7 @@ export default function TrackerPage() {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         aria-label="Camera view. Tap a person to follow them."
+        aria-hidden={!running}
       />
       {ripple && <span key={ripple.key} className="tracker-tap" style={{ left: ripple.x, top: ripple.y }} aria-hidden="true" />}
 
@@ -1018,7 +1021,8 @@ export default function TrackerPage() {
 
       {/* Top: the privacy sign (always on screen while the camera is on), then what it's
           doing on the left and readings on the right */}
-      <div className="pointer-events-none absolute inset-x-0 top-0">
+      {/* Before the camera starts, the start screen covers these: keep screen readers and the Tab key off them too */}
+      <div className="pointer-events-none absolute inset-x-0 top-0" inert={!running}>
         {running && (
           <div
             className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 bg-leaf px-3 py-1.5 text-center font-extrabold text-on-brand shadow-soft"
@@ -1089,7 +1093,11 @@ export default function TrackerPage() {
       </div>
 
       {/* Bottom: messages, then the controls */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2" style={SAFE_BOTTOM}>
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2"
+        style={SAFE_BOTTOM}
+        inert={!running}
+      >
         {snap.portrait && running && connected && (
           <p className="rounded-xl bg-sun px-3 py-1.5 text-center text-sm font-bold text-ink">
             Turn the phone sideways for the stand, and switch off rotation lock.
@@ -1157,15 +1165,16 @@ export default function TrackerPage() {
         <div className="on-light absolute inset-0 z-10 overflow-y-auto bg-cream text-ink select-text" style={SAFE_ALL}>
           <div className="relative isolate flex min-h-full items-center justify-center px-2 py-3 [@media(min-height:600px)]:py-6">
             <Blobs fixed />
-            <div className="flex w-full max-w-lg animate-slide-in flex-col items-center gap-3 rounded-[32px] bg-surface p-5 text-center shadow-lift sm:rounded-[40px] sm:p-10 [@media(min-height:600px)]:gap-4">
+            <div className="flex w-full max-w-lg animate-slide-in flex-col items-center gap-2 [@media(max-height:599px)]:max-w-2xl rounded-[32px] bg-surface px-5 py-4 text-center shadow-lift [@media(min-height:600px)]:gap-4 [@media(min-height:600px)]:py-5 [@media(min-height:600px)]:sm:rounded-[40px] [@media(min-height:600px)]:sm:p-10">
+              {/* On a short screen (a phone turned sideways) the logo is skipped, so "Start watching" stays in view */}
               <Link
                 to="/"
-                className="group flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline"
+                className="group flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline [@media(max-height:599px)]:hidden"
               >
                 <LogoMark />
                 CareNest
               </Link>
-              <h1 className="text-3xl font-extrabold [@media(min-height:600px)]:text-4xl">
+              <h1 className="text-2xl font-extrabold [@media(min-height:600px)]:text-4xl">
                 Phone <span className="text-gradient-brand">camera</span>
               </h1>
               <p className="text-base text-muted [@media(min-height:600px)]:text-xl">
