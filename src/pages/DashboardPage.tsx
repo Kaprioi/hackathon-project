@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation } from "react-router";
 import { Message } from "../components/AuthLayout";
 import { buttonVariants } from "../components/ButtonLink";
 import Highlight from "../components/Highlight";
+import RemindersCard from "../components/RemindersCard";
 import SiteLayout, { Blobs, LivePill } from "../components/SiteLayout";
 import FamilyNotes from "../components/FamilyNotes";
 import { useLanguage } from "../i18n/useLanguage";
@@ -472,6 +473,8 @@ function Family({
 
           {/* Call buttons stay in simple view too: they matter most. */}
           <CallCard userId={userId} />
+
+          {!simple && circle && <RemindersCard circleId={circle.id} now={now} />}
 
           {!simple && circle && <TodaySoFar lines={day.lines} hasNews={day.hasNews} fallLine={day.fallLine} spoken={daySpoken} />}
 

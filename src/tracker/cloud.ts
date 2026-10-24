@@ -25,7 +25,8 @@ export class Cloud {
     private db: SupabaseClient,
     /** Who was signed in when this connected. */
     readonly userId: string,
-    private circleId: string,
+    /** The care circle this phone sends to (also used for its daily reminders). */
+    readonly circleId: string,
     private deviceId: string,
   ) {}
 
