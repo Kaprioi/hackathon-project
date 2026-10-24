@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink } from "react-router";
 import { Arrow } from "./ButtonLink";
+import { DisplayButton, DisplayPanel } from "./DisplaySettings";
+import { motionIsReduced } from "../lib/displaySettings";
 
 // The header, footer and page frame shared by every page except the phone camera.
 // Copied from the Lovable design: a sticky header that turns frosted when you
@@ -33,7 +35,13 @@ export function SiteHeader() {
   const [scrolled, setScrolled] = useState(false);
   const [progress, setProgress] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
+  const displayButton = useRef<HTMLButtonElement>(null);
+  const closeDisplay = useCallback(() => {
+    setDisplayOpen(false);
+    displayButton.current?.focus();
+  }, []);
 
   useEffect(() => {
     const onScroll = () => {
@@ -66,20 +74,20 @@ export function SiteHeader() {
         className={`sticky top-0 z-50 transition-all duration-300 ${scrolled || menuOpen ? "glass shadow-soft" : "bg-transparent"}`}
       >
         <div
-          className={`mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 transition-all duration-300 ${scrolled ? "py-2" : "py-5"}`}
+          className={`mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 transition-all sm:gap-4 sm:px-6 duration-300 ${scrolled ? "py-2" : "py-5"}`}
         >
           <Link to="/" className="group flex min-h-12 items-center gap-3 text-2xl font-black text-ink no-underline">
             <LogoMark />
-            CareNest
+            <span className="site-wordmark">CareNest</span>
           </Link>
-          <nav aria-label="Main" className="hidden md:block">
+          <nav aria-label="Main" className="site-nav hidden md:block">
             <ul className="flex gap-1">
               {navLinks.map((link) => (
                 <li key={link.to}>
                   <NavLink
                     to={link.to}
                     end
-                    className="relative inline-flex min-h-12 items-center rounded-2xl px-4 text-lg font-extrabold text-brand no-underline transition-colors hover:bg-lilac aria-[current=page]:bg-lilac aria-[current=page]:text-ink"
+                    className="relative inline-flex min-h-12 items-center rounded-2xl px-3 text-lg lg:px-4 font-extrabold text-brand no-underline transition-colors hover:bg-lilac aria-[current=page]:bg-lilac aria-[current=page]:text-ink"
                   >
                     {link.label}
                   </NavLink>
@@ -87,31 +95,46 @@ export function SiteHeader() {
               ))}
             </ul>
           </nav>
-          <button
-            ref={menuButton}
-            type="button"
-            className="grid h-12 w-12 place-items-center rounded-2xl bg-lilac text-brand md:hidden"
-            aria-expanded={menuOpen}
-            aria-controls="mobile-menu"
-            aria-label={menuOpen ? "Close menu" : "Open menu"}
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            <span className="relative block h-4 w-6" aria-hidden="true">
-              <span
-                className={`absolute left-0 h-[3px] w-6 rounded-full bg-brand transition-all duration-300 ${menuOpen ? "top-[7px] rotate-45" : "top-0"}`}
-              />
-              <span
-                className={`absolute left-0 top-[7px] h-[3px] w-6 rounded-full bg-brand transition-opacity duration-200 ${menuOpen ? "opacity-0" : "opacity-100"}`}
-              />
-              <span
-                className={`absolute left-0 h-[3px] w-6 rounded-full bg-brand transition-all duration-300 ${menuOpen ? "top-[7px] -rotate-45" : "top-[14px]"}`}
-              />
-            </span>
-          </button>
+          <div className="flex items-center gap-2">
+            <DisplayButton
+              open={displayOpen}
+              buttonRef={displayButton}
+              onToggle={() => {
+                setDisplayOpen((open) => !open);
+                setMenuOpen(false);
+              }}
+            />
+            <button
+              ref={menuButton}
+              type="button"
+              className="site-menu-button grid h-12 w-12 place-items-center rounded-2xl bg-lilac text-brand md:hidden"
+              aria-expanded={menuOpen}
+              aria-controls="mobile-menu"
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              onClick={() => {
+                setMenuOpen((open) => !open);
+                setDisplayOpen(false);
+              }}
+            >
+              <span className="relative block h-4 w-6" aria-hidden="true">
+                <span
+                  className={`absolute left-0 h-[3px] w-6 rounded-full bg-brand transition-all duration-300 ${menuOpen ? "top-[7px] rotate-45" : "top-0"}`}
+                />
+                <span
+                  className={`absolute left-0 top-[7px] h-[3px] w-6 rounded-full bg-brand transition-opacity duration-200 ${menuOpen ? "opacity-0" : "opacity-100"}`}
+                />
+                <span
+                  className={`absolute left-0 h-[3px] w-6 rounded-full bg-brand transition-all duration-300 ${menuOpen ? "top-[7px] -rotate-45" : "top-[14px]"}`}
+                />
+              </span>
+            </button>
+          </div>
         </div>
 
+        {displayOpen && <DisplayPanel onClose={closeDisplay} />}
+
         {menuOpen && (
-          <nav id="mobile-menu" aria-label="Mobile" className="animate-slide-in border-t-2 border-lilac px-6 pb-6 pt-3 md:hidden">
+          <nav id="mobile-menu" aria-label="Mobile" className="site-mobile-menu animate-slide-in border-t-2 border-lilac px-6 pb-6 pt-3 md:hidden">
             <ul className="flex flex-col gap-2">
               {navLinks.map((link, i) => (
                 <li key={link.to} className="animate-slide-in" style={{ animationDelay: `${i * 60}ms` }}>
@@ -141,7 +164,7 @@ export function SiteHeader() {
       <button
         type="button"
         aria-label="Back to top"
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        onClick={() => window.scrollTo({ top: 0, behavior: motionIsReduced() ? "auto" : "smooth" })}
         className={`fixed bottom-6 right-6 z-50 grid h-14 w-14 place-items-center rounded-full bg-brand text-on-brand shadow-lift transition-all duration-300 hover:bg-brand-dark ${progress > 0.12 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-6 opacity-0"}`}
       >
         <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">

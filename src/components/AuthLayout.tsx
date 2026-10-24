@@ -10,7 +10,7 @@ export const primaryButton = `${buttonVariants.primary} w-full text-xl disabled:
 export const outlineButton = `${buttonVariants.outline} w-full text-xl disabled:cursor-not-allowed disabled:opacity-70`;
 
 // Dark red that passes WCAG AA contrast on white and on the cream background.
-export const ERROR_RED = "text-[#a61b1b]";
+export const ERROR_RED = "text-error";
 
 // The page frame shared by the log in and new password pages: the same header,
 // footer and drifting colour clouds as the homepage, then one big rounded white card.
@@ -33,7 +33,7 @@ export function Message({ kind, children }: { kind: "error" | "success"; childre
   return kind === "error" ? (
     <p
       role="alert"
-      className={`rounded-2xl border-[3px] border-[#a61b1b] bg-[#fdecec] p-4 text-lg font-bold ${ERROR_RED}`}
+      className={`rounded-2xl border-[3px] border-error bg-error-soft p-4 text-lg font-bold ${ERROR_RED}`}
     >
       {children}
     </p>

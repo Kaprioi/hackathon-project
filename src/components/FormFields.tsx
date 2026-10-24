@@ -32,7 +32,7 @@ export function TextField({
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={`min-h-14 w-full rounded-2xl border-[3px] bg-surface px-5 text-xl text-ink transition-colors ${
-          error ? "border-[#a61b1b]" : "border-muted hover:border-brand focus:border-brand"
+          error ? "border-error" : "border-muted hover:border-brand focus:border-brand"
         }`}
         {...inputProps}
       />
