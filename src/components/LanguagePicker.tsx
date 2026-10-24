@@ -31,7 +31,14 @@ export default function LanguagePicker({ className = "", compact = false }: { cl
         className={`language-select min-h-12 cursor-pointer rounded-2xl border-[3px] border-lilac bg-surface ${compact ? "px-2" : "px-3"} text-lg font-extrabold text-ink transition-colors hover:border-brand focus:border-brand`}
       >
         {LANGUAGES.map((l) => (
-          <option key={l.code} value={l.code} lang={l.htmlLang} aria-label={compact ? l.name : undefined}>
+          // The read-out name starts with the short name on screen ("EN, English"),
+          // so people using voice control can say what they see.
+          <option
+            key={l.code}
+            value={l.code}
+            lang={l.htmlLang}
+            aria-label={compact && !l.name.startsWith(l.short) ? `${l.short}, ${l.name}` : undefined}
+          >
             {compact ? l.short : l.name}
           </option>
         ))}

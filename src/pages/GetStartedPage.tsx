@@ -23,13 +23,14 @@ function phoneCameraAddress(): string {
 
 export default function GetStartedPage() {
   const session = useSession();
+  const { t } = useLanguage();
   // Not signed in: sign in first, then come straight back here.
   if (session === null) return <Navigate to={`/login?next=${GUIDE}`} replace />;
   if (session === undefined)
     return (
       <SiteLayout title="Set up your iPhone">
         <div className="mx-auto flex min-h-screen max-w-2xl items-center justify-center px-6">
-          <p className="text-xl text-muted">Loading…</p>
+          <p className="text-xl text-muted">{t("Loading…")}</p>
         </div>
       </SiteLayout>
     );

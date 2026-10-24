@@ -161,30 +161,30 @@ function DisplayName({ userId }: { userId: string }) {
       <h2 id="name-title" className="text-2xl font-extrabold">
         {t("Your name")}
       </h2>
-      {!loaded ? (
-        <p className="mt-2 text-lg text-muted">{t("Loading…")}</p>
-      ) : (
-        <form noValidate onSubmit={save} className="mt-4 flex flex-col gap-4">
-          <TextField
-            label="Name"
-            hint="The name your family will see."
-            autoComplete="name"
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              setFieldError("");
-              setResult(null);
-            }}
-            error={fieldError}
-          />
-          <div aria-live="polite" className="empty:hidden">
-            {result && <Message kind={result.ok ? "success" : "error"}>{t(result.text)}</Message>}
-          </div>
-          <button type="submit" disabled={busy} className={button}>
-            {busy ? t("Saving…") : t("Save name")}
-          </button>
-        </form>
-      )}
+      {/* The form shows straight away (switched off until the name arrives), so the
+          boxes below don't jump down the page when it loads. */}
+      <form noValidate onSubmit={save} className="mt-4 flex flex-col gap-4">
+        <TextField
+          label="Name"
+          hint="The name your family will see."
+          autoComplete="name"
+          value={name}
+          disabled={!loaded}
+          placeholder={loaded ? undefined : t("Loading…")}
+          onChange={(e) => {
+            setName(e.target.value);
+            setFieldError("");
+            setResult(null);
+          }}
+          error={fieldError}
+        />
+        <div aria-live="polite" className="empty:hidden">
+          {result && <Message kind={result.ok ? "success" : "error"}>{t(result.text)}</Message>}
+        </div>
+        <button type="submit" disabled={busy || !loaded} className={button}>
+          {busy ? t("Saving…") : t("Save name")}
+        </button>
+      </form>
     </section>
   );
 }
