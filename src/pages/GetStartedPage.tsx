@@ -146,7 +146,7 @@ function Guide({ userId }: { userId: string }) {
       title: t("Sign in *on the iPhone*"),
       body: (
         <p>
-          {t("The iPhone opens the Phone Camera page. Tap")} <strong>{t("Sign In")}</strong>{" "}
+          {t("The iPhone opens the Phone Camera page. Tap")} <strong>{t("Sign in")}</strong>{" "}
           {t("and use the same email and password you used here.")}
         </p>
       ),
