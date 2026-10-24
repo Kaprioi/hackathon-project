@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { checkingLine, type AlertSettings } from "../family/alerts";
+import { pickVoice, speechLocale, speechParts } from "../family/readAloud";
 import { useLanguage } from "../i18n/useLanguage";
 
 // Small extras for the family page: the "Read aloud" speaker button, the simple
@@ -24,9 +25,27 @@ function SpeakerIcon({ size }: { size: number }) {
   );
 }
 
+/** The browser's voices. Chrome loads them a moment after the page, so wait briefly for them. */
+function loadVoices(): Promise<SpeechSynthesisVoice[]> {
+  const synth = window.speechSynthesis;
+  const now = synth.getVoices();
+  if (now.length > 0) return Promise.resolve(now);
+  return new Promise((resolve) => {
+    const done = () => {
+      synth.removeEventListener("voiceschanged", done);
+      clearTimeout(timer);
+      resolve(synth.getVoices());
+    };
+    const timer = setTimeout(done, 1500);
+    synth.addEventListener("voiceschanged", done);
+  });
+}
+
 /**
  * A speaker button that reads `text` out loud with the browser's own voice.
  * Shows nothing at all in browsers that can't speak. Press again to stop.
+ * Spanish and Chinese use a voice for that language; if the device has none,
+ * a short note says so instead of reading it in an English voice.
  */
 export function ReadAloudButton({
   text,
@@ -39,48 +58,92 @@ export function ReadAloudButton({
   big?: boolean;
 }) {
   const [speaking, setSpeaking] = useState(false);
-  const { t } = useLanguage();
-  const mine = useRef<SpeechSynthesisUtterance | null>(null);
+  const [noVoice, setNoVoice] = useState(false);
+  const { lang, t } = useLanguage();
+  // The sentences being spoken. Holding on to them stops Chrome from throwing
+  // them away (and going quiet) partway through. Each press gets a new list.
+  const mine = useRef<SpeechSynthesisUtterance[] | null>(null);
 
-  // Stop talking if the button disappears (e.g. leaving the page).
+  // Stop talking if the button disappears (e.g. leaving the page) or the language changes.
   useEffect(
     () => () => {
-      if (mine.current) window.speechSynthesis.cancel();
+      if (mine.current) {
+        mine.current = null;
+        window.speechSynthesis.cancel();
+      }
+      setSpeaking(false);
+      setNoVoice(false);
     },
-    [],
+    [lang],
   );
 
   if (!canSpeak) return null;
 
-  function toggle() {
+  async function toggle() {
     const synth = window.speechSynthesis;
+    const wasTalking = synth.speaking || synth.pending;
+    mine.current = null;
     synth.cancel();
     if (speaking) {
       setSpeaking(false);
       return;
     }
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = document.documentElement.lang || "en";
-    u.rate = 0.9; // a little slower than normal, easier to follow
-    u.onend = u.onerror = () => {
-      if (mine.current === u) mine.current = null;
-      setSpeaking(false);
+
+    const voices = await loadVoices();
+    const voice = pickVoice(voices, lang);
+    // No voice for Spanish or Chinese here: say so rather than read it badly.
+    // (If the browser lists no voices at all we can't tell, so just try.)
+    if (lang !== "en" && !voice && voices.length > 0) {
+      setNoVoice(true);
+      return;
+    }
+    setNoVoice(false);
+
+    const parts = speechParts(text, lang).map((sentence) => {
+      const u = new SpeechSynthesisUtterance(sentence);
+      u.lang = lang === "en" ? document.documentElement.lang || "en" : speechLocale(lang);
+      if (voice && lang !== "en") u.voice = voice;
+      // A little slower is easier to follow in English. Other voices can sound
+      // stretched when slowed, so they keep their natural speed.
+      if (lang === "en") u.rate = 0.9;
+      return u;
+    });
+    if (parts.length === 0) return;
+    const finish = () => {
+      if (mine.current === parts) {
+        mine.current = null;
+        setSpeaking(false);
+      }
     };
-    mine.current = u;
+    parts[parts.length - 1].onend = finish;
+    for (const u of parts) u.onerror = finish;
+    mine.current = parts;
     setSpeaking(true);
-    synth.speak(u);
+
+    // Chrome can drop speech that starts the instant other speech is stopped.
+    if (wasTalking) await new Promise((r) => setTimeout(r, 100));
+    if (mine.current !== parts) return;
+    synth.resume(); // in case the browser left speech paused
+    for (const u of parts) synth.speak(u);
   }
 
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-pressed={speaking}
-      className={`inline-flex items-center justify-center gap-2 rounded-2xl border-[3px] border-current bg-surface font-extrabold text-brand transition-colors hover:bg-lilac ${big ? "min-h-16 px-6 text-2xl" : "min-h-12 px-4 text-lg"}`}
-    >
-      <SpeakerIcon size={big ? 30 : 22} />
-      {speaking ? t("Stop reading") : t(label)}
-    </button>
+    <span className="inline-flex flex-col items-start gap-2">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-pressed={speaking}
+        className={`inline-flex items-center justify-center gap-2 rounded-2xl border-[3px] border-current bg-surface font-extrabold text-brand transition-colors hover:bg-lilac ${big ? "min-h-16 px-6 text-2xl" : "min-h-12 px-4 text-lg"}`}
+      >
+        <SpeakerIcon size={big ? 30 : 22} />
+        {speaking ? t("Stop reading") : t(label)}
+      </button>
+      {noVoice && (
+        <span role="status" className="text-lg font-bold text-muted">
+          {t("This device has no voice for this language, so it can't read this aloud.")}
+        </span>
+      )}
+    </span>
   );
 }
 
