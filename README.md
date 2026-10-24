@@ -74,7 +74,7 @@ Each worker gets its own branch, opens a pull request when done, and the first m
 
 The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tailwind CSS. It is set up to deploy on Vercel, import into Lovable, and use Supabase for data.
 
-1. Install the packages (once, and again whenever `package.json` changes):
+1. Install the packages (once, and again whenever `package.json` changes). If you forget, `npm run dev` and `npm test` stop and tell you which packages are missing:
 
    ```bash
    npm install
