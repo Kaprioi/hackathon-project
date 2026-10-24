@@ -3,7 +3,7 @@ import { Link } from "react-router";
 type Variant = "primary" | "outline" | "inverse" | "inverse-outline";
 
 const base =
-  "inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border-[3px] px-7 text-lg font-extrabold no-underline transition-colors";
+  "inline-flex min-h-14 items-center justify-center gap-2 whitespace-nowrap rounded-2xl border-[3px] px-6 text-lg sm:px-7 font-extrabold no-underline transition-colors";
 
 const variants: Record<Variant, string> = {
   // Big purple button with a soft "press" shadow.
