@@ -18,7 +18,10 @@ export interface RgbaImage {
   data: Uint8ClampedArray | Uint8Array;
 }
 
-/** Colour amounts for the upper body, then the lower body. */
+/**
+ * Colour amounts for the upper body, then the lower body. For someone lying down it holds two
+ * such readings, one for each way round (we can't tell which end their head is).
+ */
 export type Look = Float32Array;
 
 const HUES = 16; // colour wheel slices (22.5 degrees each)
@@ -26,6 +29,12 @@ const COLOUR_BINS = HUES * 2; // each slice in dark and light
 const GREYS = 5; // black ... white
 const BINS = COLOUR_BINS + GREYS;
 const UPPER_WEIGHT = 0.6; // the top matters more: it's bigger and rarely hidden by furniture
+const READING = BINS * 2; // one reading: upper body, then lower body
+/**
+ * A box flatter than this (height / width in real pixels) is someone lying down: their top and
+ * trousers are side by side, not one above the other. (Someone crouching or sitting is taller.)
+ */
+const LYING = 0.75;
 
 /** How much of a pixel counts as "colour" rather than "grey", from its saturation. */
 function colourShare(sat: number, v: number): number {
@@ -109,7 +118,8 @@ function addRegion(
 
 /** The look of the person inside `box`, or null if the box is too small to tell. */
 export function lookOf(img: RgbaImage, box: Box): Look | null {
-  const out = new Float32Array(BINS * 2);
+  if ((box.h * img.height) / (box.w * img.width) < LYING) return lyingLook(img, box);
+  const out = new Float32Array(READING);
   // Stay in the middle half of the box, so the background beside the person counts less.
   const left = box.x + box.w * 0.25;
   const right = box.x + box.w * 0.75;
@@ -119,8 +129,38 @@ export function lookOf(img: RgbaImage, box: Box): Look | null {
   return out;
 }
 
+/**
+ * Someone lying down: the left and right parts of the box (staying in its middle half, top to
+ * bottom). Read both ways round: head on the left (left = upper body), and head on the right.
+ */
+function lyingLook(img: RgbaImage, box: Box): Look | null {
+  const top = box.y + box.h * 0.25;
+  const bottom = box.y + box.h * 0.75;
+  const left = new Float32Array(BINS);
+  const right = new Float32Array(BINS);
+  if (!addRegion(img, box.x + box.w * 0.15, top, box.x + box.w * 0.48, bottom, left, 0)) return null;
+  if (!addRegion(img, box.x + box.w * 0.52, top, box.x + box.w * 0.85, bottom, right, 0)) return null;
+  const out = new Float32Array(READING * 2);
+  out.set(left, 0);
+  out.set(right, BINS);
+  out.set(right, READING);
+  out.set(left, READING + BINS);
+  return out;
+}
+
+/** The readings in a look: one, or two for someone lying down. */
+function readings(l: Look): Look[] {
+  return l.length > READING ? [l.subarray(0, READING), l.subarray(READING)] : [l];
+}
+
 /** 0 = identical colours, 1 = nothing in common. Same person between frames: usually well under 0.3. */
 export function lookDistance(a: Look, b: Look): number {
+  let best = Infinity;
+  for (const x of readings(a)) for (const y of readings(b)) best = Math.min(best, readingDistance(x, y));
+  return best;
+}
+
+function readingDistance(a: Look, b: Look): number {
   let upper = 0;
   let lower = 0;
   for (let k = 0; k < BINS; k++) {
@@ -134,6 +174,7 @@ export function lookDistance(a: Look, b: Look): number {
 
 /** Mixes a little of a new look into the saved one, so it slowly adapts to lighting. */
 export function blendLook(saved: Look, fresh: Look, amount: number): Look {
+  if (saved.length !== fresh.length) return saved; // standing and lying down: not comparable bin by bin
   const out = new Float32Array(saved.length);
   for (let k = 0; k < saved.length; k++) out[k] = saved[k] * (1 - amount) + fresh[k] * amount;
   return out;

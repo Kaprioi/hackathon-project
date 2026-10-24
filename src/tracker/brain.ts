@@ -104,6 +104,11 @@ export class Brain {
   private anchor: Look | null = null;
   /** The same look, slowly adapted to lighting, but only while we're sure it's them. */
   private look: Look | null = null;
+  /** Other sides of the target (turned around), learned while following them cleanly. */
+  private views: Look[] = [];
+  private viewCandidate: { look: Look; since: number } | null = null;
+  /** True while nobody has overlapped the target since their last clear colour match. */
+  private cleanSinceClear = false;
   /** When we started following someone who only looks "sort of" like the target. */
   private doubtSince: number | null = null;
   /** True once we've followed a doubtful match for too long: only clear matches count until we see a clear one. */
@@ -179,6 +184,8 @@ export class Brain {
     this.mode = "idle";
     this.anchor = null;
     this.look = null;
+    this.views = [];
+    this.viewCandidate = null;
     this.doubtSince = null;
     this.doubtSpent = false;
     this.lastBox = null;
@@ -428,6 +435,7 @@ export class Brain {
     }
     this.anchor = looks[chosen];
     this.look = looks[chosen];
+    this.views = [];
     this.doubtSince = null;
     this.doubtSpent = false;
     this.chainTrusted = true;
@@ -446,6 +454,8 @@ export class Brain {
     this.radarEmptySince = null;
     this.lump.stop();
     this.chainTrusted = false; // until a clear colour match confirms it's them
+    this.cleanSinceClear = false;
+    this.viewCandidate = null;
     this.setMode("tracking", f.t, note);
   }
 
@@ -468,7 +478,10 @@ export class Brain {
     // them after they're lost: in a crowd, a stranger often scores under matchLimit.
     // (Never by colours away from someone whose face says they're the target.)
     if (!this.faceKnown.has(i) && best.i >= 0 && best.i !== i && best.d !== null && best.d <= limit * TUNING.switchStrict) {
-      const muchBetter = i < 0 || (di !== null && (di > limit || best.d + TUNING.switchMargin < di));
+      // A box we've followed smoothly isn't dropped on the spot for a colour match elsewhere
+      // (Apple's test: a passer-by in the target's front colours while the target showed their back).
+      const instant = !(this.chainTrusted && i >= 0);
+      const muchBetter = instant && (i < 0 || (di !== null && (di > limit || best.d + TUNING.switchMargin < di)));
       // Better, but not by much (the one we're on also roughly matches)? Switch only if it
       // stays that way for a moment, so a single lucky frame can't pull the box away.
       const better = di !== null && best.d + TUNING.switchMarginSteady < di;
@@ -548,6 +561,9 @@ export class Brain {
       this.anchor = look;
       this.look = look;
     }
+    if (this.faceKnown.has(i)) this.cleanSinceClear = true; // the face says it's them
+    if (!this.isAlone(f, i)) this.cleanSinceClear = false;
+    this.learnView(f.t, look, d);
 
     // Aim a little ahead to make up for the delay between camera and motor.
     const lead: Angles = {
@@ -573,6 +589,13 @@ export class Brain {
    */
   private closestCandidate(f: FrameInput, looks: (Look | null)[], expected: Angles, gate: number): number {
     const limit = this.settings.matchLimit;
+    // Following them smoothly and one box clearly continues theirs from the last frame? That box,
+    // whatever the colours say: someone walking past in front can spoil the target's colours
+    // for a moment, and the passer-by may look more like them (Apple's phone test).
+    if (this.chainTrusted && this.lastBox && f.t - this.lastSeenT < 400) {
+      const cont = bestOverlap(f.people, this.lastBox, 0.5);
+      if (cont >= 0 && !this.ruledOut.has(cont) && !this.seenWith.has(cont)) return cont;
+    }
     let best = -1;
     let bestScore = Infinity;
     f.people.forEach((p, i) => {
@@ -858,8 +881,32 @@ export class Brain {
   /** How much `l` looks like the target: 0 = same, 1 = nothing alike. Null if we can't tell. */
   private dist(l: Look | null): number | null {
     if (!l || !this.anchor) return null;
-    const fromAnchor = lookDistance(this.anchor, l);
-    return this.look ? Math.min(fromAnchor, lookDistance(this.look, l)) : fromAnchor;
+    let d = lookDistance(this.anchor, l);
+    if (this.look) d = Math.min(d, lookDistance(this.look, l));
+    for (const v of this.views) d = Math.min(d, lookDistance(v, l));
+    return d;
+  }
+
+  /**
+   * Learns another side of the target (they turned around) as an extra look, so a passer-by in
+   * their front colours can't take over. Only from a clean stretch: followed smoothly, nobody
+   * overlapping them since their last clear match, and the new look steady for a moment.
+   */
+  private learnView(t: number, look: Look | null, d: number | null): void {
+    if (!look || d === null || d <= this.settings.matchLimit * 0.6 || !this.chainTrusted || !this.cleanSinceClear) {
+      this.viewCandidate = null;
+      return;
+    }
+    const c = this.viewCandidate;
+    if (!c || lookDistance(c.look, look) > TUNING.viewSame) {
+      this.viewCandidate = { look, since: t };
+      return;
+    }
+    if (t - c.since >= TUNING.viewSteadyMs) {
+      this.views.push(look);
+      if (this.views.length > TUNING.maxViews) this.views.shift();
+      this.viewCandidate = null;
+    }
   }
 
   /** Keeps count of how long we've been following someone who only "sort of" looks right. */
@@ -868,6 +915,8 @@ export class Brain {
       this.doubtSince = null;
       this.doubtSpent = false;
       this.chainTrusted = true;
+      // Extra looks may only be learned after a strong match (a "just under the limit" one could be a look-alike).
+      if (d === null || d <= this.settings.matchLimit * 0.5) this.cleanSinceClear = true;
       return;
     }
     if (this.chainTrusted) {

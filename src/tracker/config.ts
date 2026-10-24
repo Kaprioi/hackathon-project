@@ -117,6 +117,14 @@ export const TUNING = {
   weakScore: 0.2,
   /** Follow the target on weak detections alone for at most this long. */
   weakMaxMs: 5000,
+  /**
+   * Extra looks of the target (from behind, say), learned while following them cleanly: their
+   * look must differ from what we know, stay the same (within viewSame) for viewSteadyMs, and
+   * nobody may have overlapped them since their last clear match. Keep at most maxViews.
+   */
+  viewSame: 0.2,
+  viewSteadyMs: 1000,
+  maxViews: 3,
   /** A face verdict sticks to the person it was about for this long (it follows their box). */
   faceVerdictMs: 15000,
   /**

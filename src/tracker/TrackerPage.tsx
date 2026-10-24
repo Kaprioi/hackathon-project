@@ -56,6 +56,8 @@ interface Snapshot {
   turn: Turn;
   /** How many face fingerprints of the target are saved. */
   facesSaved: number;
+  /** How long the person detector takes per picture (milliseconds, smoothed). */
+  aiMs: number;
   /** What the tracked person seems to be doing (for the emergency alert), or null. */
   posture: "standing" | "sitting" | "lying" | null;
   /** Why no face was read lately: none where the head should be, or too far away. */
@@ -653,6 +655,7 @@ export default function TrackerPage() {
     portrait: false,
     turn: 0,
     facesSaved: 0,
+    aiMs: 0,
     posture: null,
     faceMiss: null,
   });
@@ -1016,6 +1019,7 @@ export default function TrackerPage() {
     let raf = 0;
     let lastVideoTime = -1;
     let lastDetectT = -Infinity;
+    let aiMs = 0; // detector time per picture, smoothed
     let frames = 0;
     let fpsStart = performance.now();
     let fps = 0;
@@ -1072,8 +1076,10 @@ export default function TrackerPage() {
       const dh = Math.max(1, Math.round(uh * dScale));
       drawUpright(detectCanvas, video, turn, dw, dh);
       let found: Detection[] = [];
+      const aiStart = performance.now();
       try {
         found = detector.detect(detectCanvas, t);
+        aiMs = aiMs ? aiMs * 0.9 + (performance.now() - aiStart) * 0.1 : performance.now() - aiStart;
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -1193,6 +1199,7 @@ export default function TrackerPage() {
           portrait,
           turn,
           facesSaved: faceWatcher.saved,
+          aiMs,
           posture: emergencyRef.current.posture,
           faceMiss: faceWatcher.miss,
         });
@@ -1366,7 +1373,7 @@ export default function TrackerPage() {
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           {running && (
             <Chip>
-              {snap.fps.toFixed(0)} fps{delegate ? ` · ${delegate}` : ""}
+              {snap.fps.toFixed(0)} fps{delegate ? ` · ${delegate}` : ""}{snap.aiMs ? ` · AI ${snap.aiMs.toFixed(0)} ms` : ""}
             </Chip>
           )}
           {running && settings.faces && (snap.mode !== "idle" || faceStatus === "loading" || faceStatus === "failed") && (

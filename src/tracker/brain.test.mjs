@@ -569,6 +569,35 @@ test("a tap that hits nobody changes nothing: same target, same notes", () => {
   }
 });
 
+test("you turn around, then someone in your colours walks past: it stays with you", () => {
+  // Apple's phone test. From behind your top looks different (white instead of red); the
+  // passer-by wears exactly what you wore from the front.
+  const brain = newBrain();
+  let t = 0;
+  const front = person(0.4, RED, BLUE);
+  const back = person(0.4, WHITE, BLUE);
+  let out = brain.update(frame(t, [front], { tap: { x: 0.47, y: 0.5 } }));
+  for (let i = 0; i < 10; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [front]));
+  }
+  // You turn around and stand there for 2 seconds, alone.
+  for (let i = 0; i < 30; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [back]));
+  }
+  assert.ok(Math.abs(out.target.x - 0.4) < 0.01, "still on you from behind");
+  // The passer-by walks past from the right, close by, for about 2 seconds.
+  for (let i = 0; i < 30; i++) {
+    t += FRAME_MS;
+    const passer = person(0.85 - i * 0.025, RED, BLUE);
+    const people = Math.abs(passer.box.x - 0.4) < 0.05 ? [back] : [back, passer]; // briefly hidden behind you
+    out = brain.update(frame(t, people));
+    assert.ok(Math.abs(out.target.x - 0.4) < 0.01, `frame ${i}: left you for the passer-by (${out.note})`);
+  }
+  assert.equal(out.mode, "tracking");
+});
+
 test("a face match re-finds you, even after a change of clothes", () => {
   const brain = newBrain();
   let t = 0;
@@ -830,4 +859,75 @@ test("walking into different light: your colours drift, but it keeps following y
   }
   assert.equal(out.mode, "tracking", `should still be tracking you, ended in ${out.mode}: ${out.note}`);
   assert.ok(Math.abs(out.target.x - 0.56) < 0.02, `box should be on you at x=0.56, got ${out.target.x}`);
+});
+
+/**
+ * A body seen from the side, as a thick bar from the feet (fixed on the floor) to the head,
+ * tipped over by `angle` (0 = standing, PI/2 = lying flat with the head to the right).
+ * Returns its box and paints it: the top half of the bar (head end) in `top`, the rest in `bottom`.
+ */
+function tippedBody(img, angle, top, bottom, feetX = 0.5) {
+  const fx = feetX * W;
+  const fy = 0.8 * H;
+  const len = 0.6 * H;
+  const thick = 0.15 * W;
+  const ux = Math.sin(angle);
+  const uy = -Math.cos(angle);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const along = (x - fx) * ux + (y - fy) * uy;
+      const across = Math.abs(-(x - fx) * uy + (y - fy) * ux);
+      if (along < 0 || along > len || across > thick / 2) continue;
+      const c = along > len / 2 ? top : bottom;
+      const i = (y * W + x) * 4;
+      img.data[i] = c[0];
+      img.data[i + 1] = c[1];
+      img.data[i + 2] = c[2];
+    }
+  }
+  const hx = fx + ux * len;
+  const hy = fy + uy * len;
+  const nx = (Math.cos(angle) * thick) / 2;
+  const ny = (Math.sin(angle) * thick) / 2;
+  const xs = [fx + nx, fx - nx, hx + nx, hx - nx];
+  const ys = [fy + ny, fy - ny, hy + ny, hy - ny];
+  const x0 = Math.max(0, Math.min(...xs));
+  const y0 = Math.max(0, Math.min(...ys));
+  return { x: x0 / W, y: y0 / H, w: (Math.min(W, Math.max(...xs)) - x0) / W, h: (Math.min(H, Math.max(...ys)) - y0) / H };
+}
+
+function tippedFrame(t, angle, { seen = true, tap = null, top = RED, bottom = BLUE } = {}) {
+  const img = { width: W, height: H, data: new Uint8ClampedArray(W * H * 4).fill(128) };
+  const box = tippedBody(img, angle, top, bottom);
+  return { t, people: seen ? [box] : [], weak: [], image: img, radar: null, camera: CENTER, tap, faces: [] };
+}
+
+test("clothes colours: someone lying down still matches how they looked standing, whichever way they lie", () => {
+  const stand = tippedFrame(0, 0);
+  const standing = lookOf(stand.image, stand.people[0]);
+  for (const angle of [Math.PI / 2, -Math.PI / 2]) {
+    const lie = tippedFrame(0, angle);
+    assert.ok(lookDistance(standing, lookOf(lie.image, lie.people[0])) < 0.1, `lying (${angle > 0 ? "head right" : "head left"}) should match`);
+    const other = tippedFrame(0, angle, { top: GREEN, bottom: BLACK });
+    assert.ok(lookDistance(standing, lookOf(other.image, other.people[0])) > 0.5, "someone else lying there shouldn't");
+  }
+});
+
+test("falling over: it keeps you while you lie on the floor, even when the camera misses the fall", () => {
+  // A fall takes about a second; the detector misses three blurry frames in the middle.
+  const brain = newBrain();
+  const ms = 100; // 10 frames a second, like the phone
+  let t = 0;
+  let out = brain.update(tippedFrame(t, 0, { tap: { x: 0.5, y: 0.5 } }));
+  for (let i = 0; i < 15; i++) out = brain.update(tippedFrame((t += ms), 0));
+  for (let k = 1; k <= 10; k++) {
+    out = brain.update(tippedFrame((t += ms), (Math.PI / 2) * (k / 10) ** 2, { seen: k < 6 || k > 8 }));
+  }
+  // Then 4 seconds lying still on the floor.
+  for (let i = 0; i < 40; i++) {
+    out = brain.update(tippedFrame((t += ms), Math.PI / 2));
+    assert.equal(out.mode, "tracking", `${i * ms} ms after the fall: ${out.mode} (${out.note})`);
+    assert.ok(out.target && out.target.y > 0.6, "the box should be on you, on the floor");
+    assert.doesNotMatch(out.note, /Not sure/, `${i * ms} ms after the fall: ${out.note}`);
+  }
 });
