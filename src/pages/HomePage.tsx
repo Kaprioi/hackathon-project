@@ -15,6 +15,7 @@ import {
   UpdatesIcon,
 } from "../components/illustrations";
 import { useLanguage } from "../i18n/useLanguage";
+import { motionIsReduced } from "../lib/displaySettings";
 
 // The About Us page at "/", copied from the Lovable design.
 // "Get started" opens the login page on its "Create your account" form.
@@ -126,6 +127,8 @@ function Hero() {
           <div
             className="relative"
             onMouseMove={(e) => {
+              // "Reduce motion" keeps the picture still.
+              if (motionIsReduced()) return;
               const box = e.currentTarget.getBoundingClientRect();
               setTilt({ x: (e.clientX - box.left) / box.width - 0.5, y: (e.clientY - box.top) / box.height - 0.5 });
             }}
@@ -342,6 +345,8 @@ function TiltCard({ className, children }: { className: string; children: React.
   return (
     <div
       onMouseMove={(e) => {
+        // "Reduce motion" keeps the card still.
+        if (motionIsReduced()) return;
         const box = e.currentTarget.getBoundingClientRect();
         setAngle({
           x: ((e.clientY - box.top) / box.height - 0.5) * -10,

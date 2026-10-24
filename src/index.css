@@ -118,6 +118,17 @@
   }
 }
 
+/* The camera's see-through "scan" cone and the "ping" rings get their see-through
+   look from their animation. When the animation is stopped ("Reduce motion"), these
+   resting looks keep the cone faint and hide the rings, instead of showing solid
+   shapes that cover the picture (like the "Left side" and "Right side" labels). */
+.animate-scan {
+  opacity: 0.12;
+}
+.animate-pulse-ring {
+  opacity: 0;
+}
+
 /* The "Color" setting in the header (see displaySettings.ts) picks one of these
    themes. Each one swaps the purple for its own colour: buttons and links (brand),
    pale boxes and borders (lilac), the page background (cream) and the coloured glow
@@ -207,6 +218,18 @@ html[data-contrast="more"] .bg-peach,
 html[data-contrast="more"] .bg-sun {
   box-shadow: inset 0 0 0 3px var(--color-ink);
 }
+/* Pale borders turn white in high contrast, so boxes and buttons drawn with one
+   (the About Us demo, the language picker...) would lose their edge. Make it dark.
+   Kept as weak as a normal class, so a chosen or hovered border still wins. */
+@layer utilities {
+  :where(html[data-contrast="more"]) .border-lilac {
+    border-color: var(--color-ink);
+  }
+  /* A chosen option (in the Display panel) gets a double-thick edge, so it still stands out. */
+  :where(html[data-contrast="more"]) .border-lilac:has(> input[type="radio"]:checked) {
+    box-shadow: inset 0 0 0 3px var(--color-brand);
+  }
+}
 /* No see-through frosted header in high contrast. */
 html[data-contrast="more"] .glass {
   background-color: var(--color-surface);
@@ -290,9 +313,11 @@ html[data-text-size="large"] {
 html[data-text-size="extra"] {
   font-size: 150%; /* 24px */
 }
-/* Bigger text doesn't fit the header's row of links on a tablet or small laptop,
-   so the phone-style menu button is used there instead. */
-@media (max-width: 1023px) {
+/* The header's row of links only fits on one line when there is room for it. Where it
+   doesn't, the phone-style menu button is used instead: with bigger text on a laptop,
+   and always in Spanish, whose longer words never fit in the header's width.
+   (Measured with all six links, the language picker and the Display button.) */
+@media (max-width: 1535px) {
   html[data-text-size="large"] .site-nav {
     display: none;
   }
@@ -303,7 +328,7 @@ html[data-text-size="extra"] {
     display: block;
   }
 }
-@media (max-width: 1279px) {
+@media (max-width: 1679px) {
   html[data-text-size="extra"] .site-nav {
     display: none;
   }
@@ -314,18 +339,14 @@ html[data-text-size="extra"] {
     display: block;
   }
 }
-
-/* Spanish words are longer, so with extra large text the row of links needs more room. */
-@media (max-width: 1535px) {
-  html[lang="es"][data-text-size="extra"] .site-nav {
-    display: none;
-  }
-  html[lang="es"][data-text-size="extra"] .site-menu-button {
-    display: grid;
-  }
-  html[lang="es"][data-text-size="extra"] .site-mobile-menu {
-    display: block;
-  }
+html[lang="es"] .site-nav {
+  display: none;
+}
+html[lang="es"] .site-menu-button {
+  display: grid;
+}
+html[lang="es"] .site-mobile-menu {
+  display: block;
 }
 
 /* On a narrow phone with bigger text, the header shows just the heart (the name is
