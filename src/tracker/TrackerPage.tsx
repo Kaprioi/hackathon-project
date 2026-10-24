@@ -140,7 +140,9 @@ const EVENT_WORDS: Record<MovementEvent["kind"], string> = {
 };
 
 function describe(e: MovementEvent): string {
-  return [EVENT_WORDS[e.kind], e.zone && `${e.zone} side`, e.posture && e.posture !== "unknown" && e.posture]
+  // "middle", not "middle side"
+  const where = e.zone && (e.zone === "middle" ? "middle" : `${e.zone} side`);
+  return [EVENT_WORDS[e.kind], where, e.posture && e.posture !== "unknown" && e.posture]
     .filter(Boolean)
     .join(" - ");
 }
@@ -1474,6 +1476,7 @@ export default function TrackerPage() {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         aria-label="Camera view. Tap a person to follow them."
+        aria-hidden={!running}
       />
       {ripple && <span key={ripple.key} className="tracker-tap" style={{ left: ripple.x, top: ripple.y }} aria-hidden="true" />}
 
@@ -1485,7 +1488,8 @@ export default function TrackerPage() {
 
       {/* Top: the privacy sign (always on screen while the camera is on), then what it's
           doing on the left and readings on the right */}
-      <div className="pointer-events-none absolute inset-x-0 top-0">
+      {/* Before the camera starts, the start screen covers these: keep screen readers and the Tab key off them too */}
+      <div className="pointer-events-none absolute inset-x-0 top-0" inert={!running}>
         {running && (
           <div
             className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 bg-leaf px-3 py-1.5 text-center font-extrabold text-white"
@@ -1582,7 +1586,11 @@ export default function TrackerPage() {
       </div>
 
       {/* Bottom: messages, then the controls */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2" style={SAFE_BOTTOM}>
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2"
+        style={SAFE_BOTTOM}
+        inert={!running}
+      >
         {snap.portrait && running && connected && (
           <p className="rounded-xl bg-sun px-3 py-1.5 text-center text-sm font-bold text-ink">
             Turn the phone sideways for the stand, and switch off rotation lock.
@@ -1656,33 +1664,35 @@ export default function TrackerPage() {
         <div className="on-light absolute inset-0 z-10 overflow-y-auto bg-cream text-ink select-text" style={SAFE_ALL}>
           <div className="relative isolate flex min-h-full items-center justify-center p-4 sm:p-6">
             <Blobs fixed />
-            <div className="w-full max-w-lg animate-slide-in space-y-5 rounded-[40px] bg-surface p-7 text-center shadow-lift sm:p-10">
-              <div className="text-left">
+            <div className="flex w-full max-w-lg animate-slide-in flex-col items-center gap-2 [@media(max-height:599px)]:max-w-2xl rounded-[32px] bg-surface px-5 py-4 text-center shadow-lift [@media(min-height:600px)]:gap-4 [@media(min-height:600px)]:py-5 [@media(min-height:600px)]:sm:rounded-[40px] [@media(min-height:600px)]:sm:p-10">
+              {/* On a short screen (a phone turned sideways) the back button, logo and language picker
+                  are skipped, so "Start watching" stays in view */}
+              <div className="w-full text-left [@media(max-height:599px)]:hidden">
                 <BackButton />
               </div>
               <Link
                 to="/"
-                className="group mx-auto flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline"
+                className="group flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline [@media(max-height:599px)]:hidden"
               >
                 <LogoMark />
                 CareNest
               </Link>
-              <LanguagePicker className="justify-center" />
-              <h1 className="text-4xl font-extrabold">
+              <LanguagePicker className="justify-center [@media(max-height:599px)]:hidden" />
+              <h1 className="text-2xl font-extrabold [@media(min-height:600px)]:text-4xl">
                 <Highlight text={t("Phone *camera*")} />
               </h1>
-              <p className="text-xl font-bold text-muted">
+              <p className="text-base font-bold text-muted [@media(min-height:600px)]:text-xl">
                 {t(
                   "Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a few words, how things are going.",
                 )}
               </p>
-              <p className="rounded-2xl bg-mint px-4 py-3 text-lg font-bold text-ink">
+              <p className="rounded-2xl bg-mint px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
                 {t(
                   'Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or pictures ever leave it.',
                 )}
               </p>
               {stopNote && (
-                <p role="status" className="rounded-2xl bg-sun px-4 py-3 text-lg font-bold text-ink">
+                <p role="status" className="rounded-2xl bg-sun px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
                   {t(stopNote)}
                 </p>
               )}
@@ -1703,9 +1713,9 @@ export default function TrackerPage() {
                 </div>
               )}
               {account === "signed-out" ? (
-                <div className="space-y-3">
-                  <p className="text-xl font-bold">{t("Please sign in first, so your family can see the updates.")}</p>
-                  <Link to="/login?next=/tracker" className={`${buttonVariants.primary} min-h-16 w-full text-2xl`}>
+                <div className="w-full space-y-3">
+                  <p className="text-base font-bold [@media(min-height:600px)]:text-xl">{t("Please sign in first, so your family can see the updates.")}</p>
+                  <Link to="/login?next=/tracker" className={`${buttonVariants.primary} w-full text-xl [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}>
                     {t("Sign in")}
                   </Link>
                 </div>
@@ -1713,7 +1723,7 @@ export default function TrackerPage() {
                 <button
                   onClick={() => void startCamera()}
                   disabled={loading || account === "checking"}
-                  className={`${buttonVariants.primary} min-h-16 w-full text-2xl transition-transform active:scale-95 disabled:opacity-60`}
+                  className={`${buttonVariants.primary} w-full text-xl transition-transform active:scale-95 disabled:opacity-60 [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}
                 >
                   {loading ? t("Starting... (the first time takes a little longer)") : t("Start watching")}
                 </button>
@@ -1727,7 +1737,7 @@ export default function TrackerPage() {
                 </p>
               )}
               {account === "no-database" && (
-                <p className="rounded-2xl bg-sun px-4 py-3 text-lg font-bold text-ink">
+                <p className="rounded-2xl bg-sun px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
                   {t(
                     "The database isn't set up on this website yet, so you can try the camera but your family won't see anything.",
                   )}
