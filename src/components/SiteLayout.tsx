@@ -246,6 +246,9 @@ export function SiteFooter() {
       </span>
       <span>{t("Only the people you invite can see anything.")}</span>
       <nav aria-label="Footer" className="flex flex-wrap gap-x-5">
+        <Link to="/report" className="inline-flex min-h-12 items-center font-bold text-brand underline underline-offset-4">
+          {t("This week's report")}
+        </Link>
         <Link to="/help" className="inline-flex min-h-12 items-center font-bold text-brand underline underline-offset-4">
           {t("Need help?")}
         </Link>

@@ -20,6 +20,7 @@ const AccountPage = lazy(() => import("./pages/AccountPage"));
 const CareProfilePage = lazy(() => import("./pages/CareProfilePage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const GetStartedPage = lazy(() => import("./pages/GetStartedPage"));
+const ReportPage = lazy(() => import("./pages/ReportPage"));
 
 // Shown for a moment while a signed-in page loads; looks the same as their own "Loading…".
 function PageLoading() {
@@ -60,6 +61,14 @@ createRoot(document.getElementById("root")!).render(
             element={
               <Suspense fallback={<PageLoading />}>
                 <DashboardPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/report"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <ReportPage />
               </Suspense>
             }
           />

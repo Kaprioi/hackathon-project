@@ -364,6 +364,9 @@ function Family({
             </div>
             <div className="flex flex-wrap gap-3">
               <SimpleViewToggle on={simple} onChange={setSimple} />
+              <Link to="/report" className={smallButton}>
+                {t("This week's report")}
+              </Link>
               <Link to="/help" className={smallButton}>
                 {t("Need help?")}
               </Link>
