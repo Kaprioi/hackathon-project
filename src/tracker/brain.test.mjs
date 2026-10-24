@@ -17,6 +17,8 @@ const RED = [200, 30, 30];
 const BLUE = [30, 50, 180];
 const GREEN = [30, 160, 60];
 const BLACK = [15, 15, 15];
+const WHITE = [235, 235, 235];
+const GREY = [128, 128, 128]; // the same as the background
 const CENTER = { pan: LIMITS.center, tilt: LIMITS.center };
 
 /** A person standing at x (left edge), 15% of the frame wide and 60% tall. */
@@ -63,18 +65,23 @@ function paintBlanket(img, b) {
   }
 }
 
-/** Builds one frame for the brain from a list of people (and maybe a blanket). */
-function frame(t, people, { radar = null, tap = null, blanket = null, camera = CENTER } = {}) {
+/**
+ * Builds one frame for the brain from a list of people (and maybe a blanket).
+ * `front` people are drawn on top of the blanket (walking in front of it).
+ */
+function frame(t, people, { radar = null, tap = null, blanket = null, camera = CENTER, front = [] } = {}) {
   const img = { width: W, height: H, data: new Uint8ClampedArray(W * H * 4).fill(128) };
   const boxes = [];
-  for (const p of people) {
+  const draw = (p) => {
     const v = visible(p.box);
-    if (!v) continue;
+    if (!v) return;
     fillRect(img, { x: v.x, y: v.y, w: v.w, h: v.h / 2 }, p.top);
     fillRect(img, { x: v.x, y: v.y + v.h / 2, w: v.w, h: v.h / 2 }, p.bottom);
     boxes.push(v);
-  }
+  };
+  people.forEach(draw);
   if (blanket) paintBlanket(img, blanket);
+  front.forEach(draw);
   return { t, people: boxes, image: img, radar, camera, tap };
 }
 
@@ -222,6 +229,93 @@ test("coming out from under the blanket locks straight back on", () => {
   t += FRAME_MS;
   out = brain.update(frame(t, [person(0.44, RED, BLUE)], { radar: true }));
   assert.equal(out.mode, "tracking");
+});
+
+/** Taps the red-and-blue person at x, then they pull a blanket over themselves and vanish. */
+function hideUnderBlanket(brain, x, blanket, radar = true) {
+  let t = 0;
+  brain.update(frame(t, [person(x, RED, BLUE)], { tap: { x: x + 0.07, y: 0.5 }, radar }));
+  let out;
+  for (let i = 0; i < 12; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [], { blanket, radar }));
+  }
+  assert.equal(out.mode, "hidden");
+  return t;
+}
+
+test("walking around under a blanket: a person shape moving with the cover is still you", () => {
+  const brain = newBrain();
+  let blanket = { x: 0.28, y: 0.25, w: 0.19, h: 0.55 };
+  let t = hideUnderBlanket(brain, 0.3, blanket);
+  const startPan = brain.update(frame(t, [], { blanket, radar: true })).aim.pan;
+
+  // They walk right under it. The detector now sees a person shape there (legs below
+  // the blanket), coloured like the blanket, not like their clothes.
+  const shapeOn = (b) => ({ box: { x: b.x, y: 0.2, w: b.w, h: 0.62 }, top: GREY, bottom: GREY });
+  let out;
+  for (let i = 0; i < 25; i++) {
+    blanket = { ...blanket, x: blanket.x + 3 / W };
+    t += FRAME_MS;
+    out = brain.update(frame(t, [shapeOn(blanket)], { blanket, radar: true }));
+  }
+  assert.equal(out.mode, "tracking", `should follow the walking shape, but is ${out.mode}: ${out.note}`);
+  assert.ok(Math.abs(out.target.x - blanket.x) < 0.02, "the box should be on the walking blanket");
+
+  for (let i = 0; i < 15; i++) {
+    blanket = { ...blanket, x: blanket.x + 3 / W };
+    t += FRAME_MS;
+    out = brain.update(frame(t, [shapeOn(blanket)], { blanket, radar: true }));
+  }
+  assert.equal(out.mode, "tracking", "should keep following while they walk");
+  assert.ok(out.aim.pan > startPan + 5, "the stand should turn with them");
+});
+
+test("someone strolling past the blanket isn't taken for the person under it", () => {
+  const brain = newBrain();
+  const blanket = { x: 0.4, y: 0.25, w: 0.19, h: 0.55 };
+  let t = hideUnderBlanket(brain, 0.42, blanket);
+  let out;
+  for (let i = 0; i < 70; i++) {
+    const stranger = person(0.1 + i * 0.01, GREEN, WHITE); // slowly, right in front of the blanket
+    t += FRAME_MS;
+    out = brain.update(frame(t, [], { blanket, radar: true, front: [stranger] }));
+    assert.notEqual(out.mode, "tracking", `locked onto the stranger at x=${stranger.box.x.toFixed(2)}`);
+  }
+  assert.equal(out.mode, "hidden");
+});
+
+test("losing track of the blanket lets the radar steer, until the cover is found again", () => {
+  const brain = newBrain();
+  const blanket = { x: 0.28, y: 0.25, w: 0.19, h: 0.55 };
+  let t = hideUnderBlanket(brain, 0.3, blanket);
+
+  // They hurry off under it, faster than the cover tracker can follow.
+  const far = { ...blanket, x: blanket.x + 0.4 };
+  let out;
+  for (let i = 0; i < 20; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [], { blanket: far, radar: true }));
+  }
+  assert.equal(out.mode, "hidden");
+  assert.equal(out.aim, null, "the camera should stop steering, so the stand's radars can");
+  assert.match(out.note, /radar/i);
+
+  // The cover turns up where the tracker last had it: the camera steers again.
+  for (let i = 0; i < 3; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [], { blanket, radar: true }));
+  }
+  assert.ok(out.aim, "found the cover again: the camera should steer again");
+
+  // With no radar connected there's nothing to hand over to: keep pointing where they were.
+  const pcBrain = newBrain();
+  t = hideUnderBlanket(pcBrain, 0.3, blanket, null);
+  for (let i = 0; i < 20; i++) {
+    t += FRAME_MS;
+    out = pcBrain.update(frame(t, [], { blanket: far, radar: null }));
+  }
+  assert.ok(out.aim, "no radar: hold the aim");
 });
 
 test("a different person walking in while LOST is ignored", () => {

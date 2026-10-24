@@ -62,7 +62,7 @@ A motorized stand that holds an iPhone, keeps one chosen person in view and poin
 | Adafruit ESP32 Feather V2 | Moves the servos, reads the radar(s), switches the mist | USB-C to a PC for uploading; a phone charger for the demo |
 | Pan servo (HS-422) | Left and right | Signal to pin 27 |
 | Tilt servo (HS-422) | Up and down | Signal to pin 33 |
-| Radar, SightLine: 2 × LD2410C over serial | Presence and which side is stronger | Left on RX/TX (GPIO 7/8), right on 32/14 |
+| Radar, SightLine: 2 × LD2410C over serial | Presence and which side is stronger | Left on RX/TX (GPIO 7/8), right on 32/14. The team has one radar until the second arrives: the firmware detects that at startup (`RADAR_COUNT`), and the single left radar then only reports presence |
 | Radar, single-radar fallback: 1 × LD2410C | OUT pin HIGH while someone is there | OUT to pin 32 |
 | MOSFET module | Switches the mist maker and fan | Signal from pin A0 (GPIO 26) |
 | 5V ultrasonic mist maker + 5V fan, in a tank beside the base | Makes the mist; the fan pushes it up a tube to the nozzle on the head | 5V through the MOSFET |
@@ -75,13 +75,13 @@ A motorized stand that holds an iPhone, keeps one chosen person in view and poin
 **Bluetooth protocol** (website `../src/tracker/stand.ts` and `config.ts`; firmware `.ino`)
 - Service UUID `6e400001-b5a3-f393-e0a9-e50e24dcca9e`.
 - Move `…0002` (write): text `pan,tilt` such as `90,90`. Pan is limited to 10–170° and tilt to 45–135°, and the firmware eases toward each target by 15% every 20 ms. While the camera is steering, the website repeats the aim every 250 ms even if it hasn't changed. On a SightLine stand, the radars steer again once moves stop for about 0.7 s.
-- Radar `…0003` (notify): `1` or `0` from the single-radar stand. SightLine sends `presence,left,right,pan,tilt` such as `1,42,13,95.0,90.0`, so the website knows where the radars have turned the head.
+- Radar `…0003` (notify): `1` or `0` from the single-radar stand. SightLine sends `presence,left,right,pan,tilt` such as `1,42,13,95.0,90.0`, so the website knows where the radars have turned the head. With one radar, right is always 0; the website only reads presence, pan and tilt.
 - Mist `…0004` (write): `1` = on, `0` = off. The website repeats `1` every second. The firmware turns the mist off after 3 s of silence, and when the phone disconnects.
 
 **Website states** (`../src/tracker/brain.ts`)
 - TAP A PERSON: boxes around everyone in view; tap one to pick them.
 - TRACKING: follows that person's body, so it keeps working when they turn away. A missed frame or a quick pass behind something is bridged by predicting their motion for 0.6 s.
-- HIDDEN: they vanished in the middle of the picture. Holds on the cover and follows it if it moves (it matches a small grey picture of the lump each frame); the radar confirms someone's inside.
+- HIDDEN: they vanished in the middle of the picture. Holds on the cover and follows it if it moves (it matches a small grey picture of the lump each frame); the radar confirms someone's inside. A person shape that stays on the moving cover for 0.5 s (walking around under a blanket, legs showing) is taken as them, whatever its colours. If it loses the cover for 1 s while the radar still senses someone, it stops sending moves so a two-radar stand steers by radar.
 - FOLLOWING: they left through the edge of the picture. Keeps turning that way at their speed (25–90°/s).
 - SEARCHING: not found there. Sweeps across the whole range once.
 - LOST: the cover went still and the radar read empty for 4 s, or the sweep found nothing. Compares everyone in view with the saved look (clothing colours) and locks back on when one matches.

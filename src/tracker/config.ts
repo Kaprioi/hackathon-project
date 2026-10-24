@@ -102,6 +102,17 @@ export const TUNING = {
   latencyMs: 80,
   /** How sure the cover tracker must be (0-1) before the stand follows a moving blanket. */
   lumpMinScore: 0.55,
+  /**
+   * Walking around under a blanket: a person shape sitting on the moving cover for
+   * this long counts as them, whatever its colours...
+   */
+  coverPersonMs: 500,
+  /** ...if its box overlaps the cover this much (0-1)... */
+  coverPersonOverlap: 0.4,
+  /** ...and it stays put on the cover (moves less than this, as a fraction of the frame, relative to it). */
+  coverPersonDrift: 0.04,
+  /** Lost the cover for this long while the radar still senses someone: stop aiming and let the radars steer. */
+  coverLostMs: 1000,
 };
 
 /** Long side of the small copy of each frame used for colours and the cover tracker. */
@@ -120,6 +131,7 @@ export const MIST_FOLLOW_MODES = ["tracking", "hidden", "following"] as const;
 /**
  * Which tracking states let the camera steer the stand. In the others (TAP A PERSON
  * and LOST) the website stops sending moves, and a two-radar SightLine stand
- * steers by radar instead, which also works in the dark.
+ * steers by radar instead, which also works in the dark. HIDDEN also stops sending
+ * moves once it loses track of the cover while the radar still senses someone.
  */
 export const CAMERA_STEERS_IN = ["tracking", "hidden", "following", "searching"] as const;

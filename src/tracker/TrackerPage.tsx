@@ -630,6 +630,7 @@ export default function TrackerPage() {
     let lastUi = 0;
     let lastNote = "";
     let lastError = "";
+    let cameraSteering = false; // did the camera steer the stand last frame?
 
     // Runs once per animation frame. If anything inside throws, show it on screen
     // instead of silently freezing the boxes.
@@ -689,7 +690,6 @@ export default function TrackerPage() {
       // Where was the camera pointing when this frame was taken? Without a stand it never moves.
       const stand = standRef.current;
       const servo = servoRef.current;
-      const cameraSteering = (CAMERA_STEERS_IN as readonly string[]).includes(brainRef.current.currentMode);
       // When the radars are steering (SightLine stand), trust the angle the stand reports.
       if (stand.connected && !cameraSteering && stand.reported) servo.sync(stand.reported, t);
       servo.step(t);
@@ -719,7 +719,8 @@ export default function TrackerPage() {
       }
 
       if (out.mode !== "idle") testingRef.current = false; // tracking takes over from the test buttons
-      if (out.aim && (CAMERA_STEERS_IN as readonly string[]).includes(out.mode)) {
+      cameraSteering = !!out.aim && (CAMERA_STEERS_IN as readonly string[]).includes(out.mode);
+      if (out.aim && cameraSteering) {
         lastAimRef.current = out.aim;
         if (stand.connected) {
           servo.setTarget(out.aim);

@@ -15,7 +15,11 @@ Newest entry at the top. Add one entry at the end of every session.
   - The "turn the phone sideways" banner now shows only when a stand is connected (handheld upright is fine).
 - **Tested:** type check, 13/13 tests, and the page in Chrome at 390×844 and 844×390 with a fake two-camera feed (a street photo): locking on through the mirrored picture, Flip, camera choice in Settings, drags ignored, Settings sheet, log, the blocked-camera message. Chrome throttled its own window to about 1 fps during the test (it does the same with the page hidden), so speed wasn't measured.
 - **Not tested:** a real phone, Full screen, haptics, safe areas on a notched iPhone.
-- Next: the phone test through the tunnel (Samsung in Chrome, iPhone in Bluefy), then Apple's PC webcam retest of the wall fix.
+- **Pushed** the phone-friendly page to PR #6 (commit `2c60618`) and started the Cloudflare tunnel for the phone test.
+- **One-radar mode** for the SightLine firmware (asked by the 3D-mockup session; the team has one LD2410C, a second is ordered). `RADAR_COUNT` = 0 detects at startup, 1 or 2 forces it. With one (left) radar it only reports presence: the head holds still while it senses the person and sweeps after 2 s without. Before, it turned toward the single radar until it hit the end stop. Build-guide note added. Pushed to PR #7 (commit `2485210`); not compiled.
+- **Apple asked:** no face recognition; it goes by clothing colours (top 60%, bottom 40%). After a shirt comes off it keeps following while the box moves smoothly, but won't re-find them by colours later (tap again).
+- **Blanket tracking made stronger** (Apple's OK): in HIDDEN, a person shape that stays on the moving cover for 0.5 s is taken as them, whatever its colours (walking around under a blanket). Someone walking past in front slides across the cover and isn't taken. Losing the cover for 1 s while the radar still senses someone stops the camera steering, so a two-radar stand steers by radar; finding the cover again takes it back. The page now syncs its motor model with the stand's reported angle whenever the camera isn't steering. 3 new tests (16 total).
+- Next: the phone test through the tunnel (Samsung in Chrome, iPhone in Bluefy), then Apple's PC webcam retest of the wall fix. Apple is weighing a pivot toward elderly care (and maybe streaming) with face recognition.
 
 ## 2026-10-23 (evening) — Website, mist that follows you, SightLine merge
 

@@ -5,6 +5,8 @@
 //   TRACKING      following the person you picked (works from behind too).
 //   HIDDEN        they vanished where they stood (under a blanket or box). Hold on
 //                 the cover, follow it if it moves; the radar confirms they're inside.
+//                 A person shape that walks along with the cover is them. If the cover
+//                 is lost but the radar still senses them, let the radars steer.
 //   FOLLOWING     they ran out of the frame. Keep turning the way they went.
 //   SEARCHING     not found where expected: sweep across the room once.
 //   LOST          give up moving; watch for someone who looks like them.
@@ -97,6 +99,14 @@ export class Brain {
   private radarEmptySince: number | null = null;
   private lump = new LumpTracker();
   private coverBox: Box | null = null;
+  /** When the cover tracker last had a sure fix on the cover, and whether it ever had one this time. */
+  private coverSeenT = 0;
+  private coverEverSeen = false;
+  /** A person shape sitting on the cover: since when, and how far off its middle it sat then. */
+  private onCoverSince: number | null = null;
+  private onCoverOffset = 0;
+  /** True while the cover is lost and the stand's radars steer instead of the camera. */
+  private radarSteering = false;
 
   private followDir = 0; // +1 or -1, in servo degrees
   private followSpeed = 0;
@@ -361,6 +371,10 @@ export class Brain {
     if (f.image) this.lump.start(toGray(f.image), this.coverBox);
     this.aim = this.clampAim(this.bearing);
     this.radarEmptySince = null;
+    this.coverSeenT = f.t;
+    this.coverEverSeen = false;
+    this.onCoverSince = null;
+    this.radarSteering = false;
     this.setMode("hidden", f.t, "You vanished where you stood and nobody walked away. Watching the cover.");
   }
 
@@ -373,12 +387,16 @@ export class Brain {
     }
 
     // 2. Follow the cover if it moves.
+    let coverSure = false;
     if (f.image && this.lump.active) {
       const shift = this.cameraShift(f.camera);
       const r = this.lump.update(toGray(f.image), shift.x, shift.y);
       if (r) {
         this.coverBox = r.box;
         if (r.score > TUNING.lumpMinScore) {
+          coverSure = true;
+          this.coverSeenT = f.t;
+          this.coverEverSeen = true;
           const w = this.toWorld(r.box, f.camera);
           this.bearing = w;
           const dz = this.settings.deadZoneDeg;
@@ -389,10 +407,39 @@ export class Brain {
       }
     }
 
-    // 3. Ask the radar whether anyone is still there.
+    // 3. Walking around under it? The detector may see a person shape (legs below the
+    // blanket) in the blanket's colours. One that stays on the moving cover is them.
+    const under = coverSure ? this.personOnCover(f) : -1;
+    if (under >= 0) {
+      const offset = centerX(f.people[under]) - centerX(this.coverBox!);
+      // Someone walking past in front slides across the cover; the person under it moves with it.
+      if (this.onCoverSince === null || Math.abs(offset - this.onCoverOffset) > TUNING.coverPersonDrift) {
+        this.onCoverSince = f.t;
+        this.onCoverOffset = offset;
+      } else if (f.t - this.onCoverSince >= TUNING.coverPersonMs) {
+        this.lockOn(f, under, "Walking around under the cover. Following you.");
+        this.chainTrusted = true; // the colours are the blanket's: follow the shape as long as it moves smoothly
+        return f.people[under];
+      }
+    } else {
+      this.onCoverSince = null;
+    }
+
+    // 4. Lost the cover after following it (they moved off faster than it could keep up)?
+    // If the radar still senses someone, stop aiming, so a two-radar stand steers by radar.
+    if (coverSure) this.radarSteering = false;
+    else if (this.coverEverSeen && f.radar === true && f.t - this.coverSeenT > TUNING.coverLostMs) this.radarSteering = true;
+    if (this.radarSteering) {
+      this.aim = null;
+      this.bearing = { ...f.camera }; // the radars turn the head toward them
+    }
+
+    // 5. Ask the radar whether anyone is still there.
     if (f.radar === true) {
       this.radarEmptySince = null;
-      this.note = "Covered up. The radar says you're still there.";
+      this.note = this.radarSteering
+        ? "Lost track of the cover. The radar still senses you, so it's steering."
+        : "Covered up. The radar says you're still there.";
     } else if (f.radar === false) {
       this.radarEmptySince ??= f.t;
       if (f.t - this.radarEmptySince > TUNING.lostAfterMs) {
@@ -404,7 +451,23 @@ export class Brain {
       this.goLost(f, "Hidden for a long time and no radar to check. Waiting for you to come back.");
       return null;
     }
-    return this.coverBox;
+    return this.radarSteering ? null : this.coverBox;
+  }
+
+  /** The person whose box sits on the cover (overlapping it the most, and enough), or -1. */
+  private personOnCover(f: FrameInput): number {
+    const cover = this.coverBox;
+    if (!cover) return -1;
+    let best = -1;
+    let bestOverlap = TUNING.coverPersonOverlap;
+    f.people.forEach((p, i) => {
+      const o = iou(p, cover);
+      if (o > bestOverlap) {
+        bestOverlap = o;
+        best = i;
+      }
+    });
+    return best;
   }
 
   /** Someone near the cover who looks about right, or anyone anywhere who clearly looks like the target. */
