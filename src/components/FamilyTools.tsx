@@ -1,29 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { checkingLine, type AlertSettings } from "../family/alerts";
-import { speechParts } from "../family/readAloud";
-import { canSpeak } from "../family/speech";
+import { speak, stopVoice } from "../family/voice";
 import { useLanguage } from "../i18n/useLanguage";
-import { supabase } from "../lib/supabase";
+import { accessToken } from "../lib/supabase";
 
 // Small extras for the family page: the "Read aloud" speaker button, the simple
 // view switch, the spoken alerts switch, the alert settings panel and the
 // "I'm checking on it" button.
-
-// A tiny silent sound. Playing it straight from the button press "unlocks" the
-// player on iPhones, so the real voice can start once it has arrived.
-const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
-
-// One player for the whole page, so only one thing is read at a time.
-let player: HTMLAudioElement | null = null;
-// How to stop whichever button is reading right now.
-let stopCurrent: (() => void) | null = null;
-
-/** Stops anything being read. */
-function stopAll() {
-  const stop = stopCurrent;
-  stopCurrent = null;
-  stop?.();
-}
 
 function SpeakerIcon({ size }: { size: number }) {
   return (
@@ -68,7 +51,7 @@ export function ReadAloudButton({
   // Stop talking if the button disappears (e.g. leaving the page) or the language changes.
   useEffect(
     () => () => {
-      if (mine.current) stopAll();
+      if (mine.current) stopVoice();
       mine.current = null;
       setSpeaking(false);
       setLoading(false);
@@ -78,74 +61,23 @@ export function ReadAloudButton({
   );
 
   async function toggle() {
-    const wasMine = mine.current !== null;
-    stopAll();
-    if (wasMine) return;
-
-    const words = speechParts(text, lang).join(" ");
-    if (!words) return;
+    if (mine.current) {
+      stopVoice();
+      return;
+    }
     const reading = {};
     mine.current = reading;
     setNote("");
     setSpeaking(true);
     setLoading(true);
-
-    const controller = new AbortController();
-    let url = "";
-    const audio = (player ??= new Audio());
-    const done = () => {
-      if (mine.current !== reading) return;
-      mine.current = null;
-      stopCurrent = null;
-      setSpeaking(false);
-      setLoading(false);
-    };
-    const cleanUp = () => {
-      controller.abort();
-      audio.onended = null;
-      audio.onerror = null;
-      audio.pause();
-      if (url) URL.revokeObjectURL(url);
-    };
-    stopCurrent = () => {
-      cleanUp();
-      if (mine.current === reading) mine.current = null;
-      setSpeaking(false);
-      setLoading(false);
-    };
-
-    // Start the player now, while we're still inside the button press (iPhones need this).
-    audio.src = SILENCE;
-    audio.play().catch(() => {});
-
-    try {
-      const token = (await supabase?.auth.getSession())?.data.session?.access_token;
-      if (!token) throw new Error("not logged in");
-      if (mine.current !== reading) return;
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ text: words, lang }),
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const sound = await res.blob();
-      if (mine.current !== reading) return;
-      url = URL.createObjectURL(sound);
-      audio.onended = () => {
-        cleanUp();
-        done();
-      };
-      audio.onerror = null;
-      audio.src = url;
-      await audio.play();
+    const outcome = await speak(text, lang, accessToken, () => {
       if (mine.current === reading) setLoading(false);
-    } catch {
-      if (mine.current !== reading) return;
-      cleanUp();
-      setNote("Read aloud isn't available right now. Please try again in a moment.");
-      done();
-    }
+    });
+    if (mine.current !== reading) return;
+    mine.current = null;
+    setSpeaking(false);
+    setLoading(false);
+    if (outcome === "failed") setNote("Read aloud isn't available right now. Please try again in a moment.");
   }
 
   return (
@@ -186,23 +118,25 @@ export function SimpleViewToggle({ on, onChange }: { on: boolean; onChange: (on:
 
 /**
  * The on/off switch for spoken alerts. Turning it on is the tap browsers need
- * before they allow speech, so it speaks straight away to show it works.
+ * before they allow sound, so it speaks straight away to show it works.
  * After a reload, `needsTap` shows a big "tap to turn back on" button.
  */
 export function SpokenAlertsSwitch({
   on,
   needsTap,
+  note,
   onChange,
   onWake,
 }: {
   on: boolean;
   needsTap: boolean;
+  /** A short message when the voice couldn't be reached or played, if any. */
+  note: string;
   onChange: (on: boolean) => void;
   /** The "tap to turn back on" button was pressed. */
   onWake: () => void;
 }) {
   const { t } = useLanguage();
-  if (!canSpeak) return null;
   return (
     <section className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
       <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4">
@@ -228,7 +162,7 @@ export function SpokenAlertsSwitch({
         </span>
       </label>
       {needsTap && (
-        // Any tap on the page turns speech back on; this button also says so out loud.
+        // Any tap on the page turns sound back on; this button also says so out loud.
         <button
           type="button"
           onClick={onWake}
@@ -237,6 +171,11 @@ export function SpokenAlertsSwitch({
           <SpeakerIcon size={24} />
           {t("Tap to turn spoken alerts back on")}
         </button>
+      )}
+      {on && note && (
+        <p role="status" className="mt-3 text-lg font-bold text-muted">
+          {t(note)}
+        </p>
       )}
       {on && (
         <p className="mt-3 text-lg text-muted">

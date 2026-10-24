@@ -417,7 +417,7 @@ function Family({
             </p>
           </section>
 
-          <SpokenAlertsSwitch on={spokenOn} needsTap={spoken.needsTap} onChange={setSpokenOn} onWake={spoken.turnedOn} />
+          <SpokenAlertsSwitch on={spokenOn} needsTap={spoken.needsTap} note={spoken.note} onChange={setSpokenOn} onWake={spoken.turnedOn} />
 
           {/* Call buttons stay in simple view too: they matter most. */}
           <CallCard userId={userId} />

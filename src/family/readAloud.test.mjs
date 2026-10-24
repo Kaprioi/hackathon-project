@@ -1,4 +1,4 @@
-// Tests for how "Read aloud" picks a voice and builds what it says.
+// Tests for how "Read aloud" builds what it says.
 //
 // Run with:  npm test
 
@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { summarise } from "./status.ts";
 import { spokenEvent, spokenStatus } from "./alerts.ts";
-import { pickVoice, speechLocale, speechParts, splitSentences, spokenClock, tidyForSpeech } from "./readAloud.ts";
+import { speechParts, splitSentences, spokenClock, tidyForSpeech } from "./readAloud.ts";
 import { translate } from "../i18n/translate.ts";
 import es from "../i18n/es.ts";
 import zh from "../i18n/zh.ts";
@@ -17,40 +17,6 @@ const NOW = Date.parse("2026-10-24T12:00:00Z");
 // A time in the viewer's own time zone, like the page uses.
 const local = (h, m) => new Date(2026, 9, 24, h, m).toISOString();
 const ev = (kind, created_at, zone = "left", posture = null) => ({ id: 1, kind, zone, posture, created_at });
-
-test("each language asks for a full voice language code", () => {
-  assert.equal(speechLocale("es"), "es-ES");
-  assert.equal(speechLocale("zh"), "zh-CN");
-});
-
-test("picks a voice in the chosen language, closest accent first", () => {
-  const voices = [
-    { name: "English", lang: "en-US", default: true },
-    { name: "Mexico", lang: "es-MX" },
-    { name: "Spain online", lang: "es-ES", localService: false },
-    { name: "Spain", lang: "es_ES", localService: true },
-    { name: "Cantonese", lang: "zh-HK" },
-    { name: "Mandarin", lang: "zh-CN" },
-  ];
-  assert.equal(pickVoice(voices, "es").name, "Spain");
-  assert.equal(pickVoice(voices, "zh").name, "Mandarin");
-  assert.equal(pickVoice(voices.filter((v) => v.lang !== "zh-CN"), "zh").name, "Cantonese");
-  assert.equal(pickVoice([{ lang: "es-419" }], "es").lang, "es-419");
-  // Robotic character voices are listed first on Macs; the natural one wins.
-  const mac = [
-    { name: "Eddy (Chinese (China mainland))", lang: "zh-CN", localService: true },
-    { name: "Grandma (Chinese (China mainland))", lang: "zh-CN", localService: true },
-    { name: "Tingting", lang: "zh-CN", localService: true },
-  ];
-  assert.equal(pickVoice(mac, "zh").name, "Tingting");
-  assert.equal(pickVoice(mac.slice(0, 1), "zh").name, "Eddy (Chinese (China mainland))");
-});
-
-test("no voice for the language means none, not an English one", () => {
-  assert.equal(pickVoice([{ lang: "en-GB" }, { lang: "fr-FR" }], "es"), null);
-  assert.equal(pickVoice([{ lang: "en-GB" }], "zh"), null);
-  assert.equal(pickVoice([], "zh"), null);
-});
 
 test("times are said the way each language says them", () => {
   const page = () => "10:38 AM";
