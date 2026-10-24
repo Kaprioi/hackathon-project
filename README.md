@@ -100,7 +100,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
 3. Set up the database (once per Supabase project). The tables live in `supabase/migrations/`. Either:
 
-   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, then do the same with `supabase/migrations/20261024010000_family_fixes.sql` (it makes adding family members safer: people are found by the email they signed up with, nobody can change the email on their profile, and the answer never reveals whether an email has an account), then the same with `supabase/migrations/20261024020000_checking_on_it.sql` (it lets family press "I'm checking on it" on a possible fall so everyone else sees who is handling it), then the same with `supabase/migrations/20261024030000_no_movement.sql` (it lets the phone camera save a "No movement for a while" event when nobody has moved for 3 hours during the day), or
+   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, then do the same with `supabase/migrations/20261024010000_family_fixes.sql` (it makes adding family members safer: people are found by the email they signed up with, nobody can change the email on their profile, and the answer never reveals whether an email has an account), then the same with `supabase/migrations/20261024020000_checking_on_it.sql` (it lets family press "I'm checking on it" on a possible fall so everyone else sees who is handling it), then the same with `supabase/migrations/20261024030000_no_movement.sql` (it lets the phone camera save a "No movement for a while" event when nobody has moved for 3 hours during the day), then the same with `supabase/migrations/20261024041200_family_notes.sql` (it switches on the "Family notes" board, where the family can leave each other short notes like "I'll visit Saturday", tick them "Done" and react with 👍 ❤️ ✅), or
    - with the [Supabase CLI](https://supabase.com/docs/guides/cli): `supabase link --project-ref <your-ref>` (ours is `egraxwvpbqmjfybdbjsg`) then `supabase db push`.
 
    What it creates:
@@ -113,6 +113,8 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
    | `devices` | Each phone used as a camera |
    | `movement_events` | Small text events from the phone: what happened, left/middle/right, posture, time. Never video or pictures |
 | `event_acknowledgements` | Who pressed "I'm checking on it" on which possible fall |
+| `family_notes` | Short notes the family leave each other on the family page ("I'll visit Saturday"), and who ticked each one "Done". Everyone in the circle can read them; people can only delete their own |
+| `note_reactions` | Quick 👍 ❤️ ✅ reactions on family notes, one of each per person |
 
    Row Level Security is on for every table, so people only see their own circle's rows. `movement_events` and `event_acknowledgements` are added to Supabase Realtime so the family page can update live.
 
