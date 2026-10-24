@@ -11,7 +11,6 @@ const SIGN_UP = "/login?mode=sign-up";
 
 const sections = [
   { href: "#how", label: "How it works" },
-  { href: "#alert", label: "When there's an alert" },
   { href: "#costs", label: "What it costs" },
   { href: "#who", label: "Who we are" },
 ];

@@ -17,7 +17,7 @@ const HOW_MANY = 50;
 // How the "Right now" block looks for each mood: a plain rule when all is well,
 // a pale red notice for a possible fall, amber words when the phone is quiet.
 const moodStyles: Record<Mood, { box: string; square: string; label: string; words: string }> = {
-  ok: { box: "border-t-2 border-ink pt-6", square: "bg-ok", label: "text-ok", words: "No alerts" },
+  ok: { box: "border-t-2 border-ink pt-6", square: "bg-ok", label: "text-ok", words: "All is well" },
   alert: {
     box: "border-t-4 border-alert bg-alert-tint p-6",
     square: "bg-alert",
