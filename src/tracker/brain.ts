@@ -5,6 +5,8 @@
 //   TRACKING      following the person you picked (works from behind too).
 //   HIDDEN        they vanished where they stood (under a blanket or box). Hold on
 //                 the cover, follow it if it moves; the radar confirms they're inside.
+//                 A person shape that walks along with the cover is them. If the cover
+//                 is lost but the radar still senses them, let the radars steer.
 //   FOLLOWING     they ran out of the frame. Keep turning the way they went.
 //   SEARCHING     not found where expected: sweep across the room once.
 //   LOST          give up moving; watch for someone who looks like them.
@@ -44,6 +46,11 @@ export interface FrameInput {
   camera: Angles;
   /** Where the user tapped (0-1 image coordinates), if they tapped this frame. */
   tap?: { x: number; y: number } | null;
+  /**
+   * Shapes the detector is less sure are people (someone covering their face, an odd
+   * pose). Only used to keep following the target right where it already is.
+   */
+  weak?: Box[];
 }
 
 export interface BrainOutput {
@@ -56,6 +63,8 @@ export interface BrainOutput {
   note: string;
   /** While searching or lost: how close the best-matching person looks (for tuning matchLimit). */
   match: number | null;
+  /** For each person in `FrameInput.people`: how much they look like the target (0 = same), or null. */
+  matches: (number | null)[];
   /** -1 = left the picture on the left, 1 = on the right, 0 = not following. */
   exitSide: -1 | 0 | 1;
 }
@@ -67,8 +76,20 @@ export class Brain {
   private modeSince = 0;
   private note = "Tap a person to lock on.";
 
-  /** The target's saved look (clothes colours). */
+  /** The target's look at the moment they were tapped. Never changes, so it can't drift onto someone else. */
+  private anchor: Look | null = null;
+  /** The same look, slowly adapted to lighting, but only while we're sure it's them. */
   private look: Look | null = null;
+  /** When we started following someone who only looks "sort of" like the target. */
+  private doubtSince: number | null = null;
+  /** True once we've followed a doubtful match for too long: only clear matches count until we see a clear one. */
+  private doubtSpent = false;
+  /**
+   * True while the box we're following has moved smoothly, frame to frame, ever since
+   * the last clear match. Then a fading colour match is just the same person in
+   * different light, so we keep trusting it. A jump to another box breaks this.
+   */
+  private chainTrusted = true;
   /** Where the target was last seen, as a room direction in servo degrees. */
   private bearing: Angles = { pan: LIMITS.center, tilt: LIMITS.center };
   /** How fast the target was moving (degrees per second). */
@@ -83,6 +104,19 @@ export class Brain {
   private radarEmptySince: number | null = null;
   private lump = new LumpTracker();
   private coverBox: Box | null = null;
+  /** When the cover tracker last had a sure fix on the cover, and whether it ever had one this time. */
+  private coverSeenT = 0;
+  private coverEverSeen = false;
+  /** A person shape sitting on the cover: since when, and how far off its middle it sat then. */
+  private onCoverSince: number | null = null;
+  private onCoverOffset = 0;
+  /** True while the cover is lost and the stand's radars steer instead of the camera. */
+  private radarSteering = false;
+  /** Since when the target has only been seen as a weak detection (null = seen properly). */
+  private weakSince: number | null = null;
+  /** Someone who's been a steadily better match than the person we're on: since when, and their box. */
+  private betterSince: number | null = null;
+  private betterBox: Box | null = null;
 
   private followDir = 0; // +1 or -1, in servo degrees
   private followSpeed = 0;
@@ -101,14 +135,19 @@ export class Brain {
   /** Stop following anyone. */
   release(): void {
     this.mode = "idle";
+    this.anchor = null;
     this.look = null;
+    this.doubtSince = null;
+    this.doubtSpent = false;
     this.lastBox = null;
     this.aim = null;
     this.lump.stop();
     this.note = "Released. Tap a person to lock on.";
   }
 
-  update(f: FrameInput): BrainOutput {
+  update(frameIn: FrameInput): BrainOutput {
+    const strongCount = frameIn.people.length;
+    const f = this.withWeakTarget(frameIn);
     const looks = f.people.map((p) => (f.image ? lookOf(f.image, p) : null));
     let target: Box | null = null;
     let match: number | null = null;
@@ -136,11 +175,52 @@ export class Brain {
     }
     if (this.mode === "searching" || this.mode === "following") match = this.bestMatch(looks).d;
 
+    // Seen properly this frame (not only as a weak detection)? Then the weak-detection clock restarts.
+    const seenStrong = target !== null && f.people.indexOf(target) >= 0 && f.people.indexOf(target) < strongCount;
+    if (seenStrong || (this.mode !== "tracking" && this.mode !== "hidden")) this.weakSince = null;
+
     this.prevT = f.t;
     this.prevCamera = { ...f.camera };
     const exitSide =
       this.mode === "following" ? ((Math.sign(this.followDir * this.settings.panSign) || 0) as -1 | 0 | 1) : 0;
-    return { mode: this.mode, target, aim: this.aim, note: this.note, match, exitSide };
+    const matches = this.mode === "idle" ? looks.map(() => null) : looks.map((l) => this.dist(l));
+    return { mode: this.mode, target, aim: this.aim, note: this.note, match, matches, exitSide };
+  }
+
+  /**
+   * The detector is less sure about someone covering their face or in an odd pose. A weak
+   * detection right where the target is (and still dressed like them) counts as them for a
+   * few seconds, so they don't "vanish" in plain view. Weak shapes anywhere else are ignored.
+   */
+  private withWeakTarget(f: FrameInput): FrameInput {
+    const weak = f.weak ?? [];
+    if (!weak.length || !f.image) return f;
+    let where: Box | null = null;
+    let overlap = 0;
+    if (this.mode === "tracking" && this.lastBox && f.t - this.lastSeenT < TUNING.coastMs) {
+      where = this.lastBox;
+      overlap = 0.3;
+    } else if (this.mode === "hidden" && this.coverBox) {
+      where = this.coverBox;
+      overlap = 0.4;
+    }
+    if (!where) return f;
+    if (this.weakSince !== null && f.t - this.weakSince > TUNING.weakMaxMs) return f;
+    let best: Box | null = null;
+    let bestOverlap = overlap;
+    for (const w of weak) {
+      if (f.people.some((p) => iou(p, w) > 0.3)) continue; // the same shape as a proper detection
+      const o = iou(w, where);
+      if (o > bestOverlap) {
+        bestOverlap = o;
+        best = w;
+      }
+    }
+    if (!best) return f;
+    const d = this.dist(lookOf(f.image, best));
+    if (d !== null && d > this.settings.matchLimit * TUNING.trackLookSlack) return f; // dressed differently
+    this.weakSince ??= f.t;
+    return { ...f, people: [...f.people, best] };
   }
 
   // ---------- picking someone ----------
@@ -167,7 +247,11 @@ export class Brain {
       this.note = "Nobody there. Tap inside one of the boxes.";
       return;
     }
+    this.anchor = looks[chosen];
     this.look = looks[chosen];
+    this.doubtSince = null;
+    this.doubtSpent = false;
+    this.chainTrusted = true;
     this.vel = { pan: 0, tilt: 0 };
     this.lockOn(f, chosen, "Locked on. I'll keep you in view, even if you hide.");
   }
@@ -181,6 +265,7 @@ export class Brain {
     this.aim = this.clampAim(this.bearing);
     this.radarEmptySince = null;
     this.lump.stop();
+    this.chainTrusted = false; // until a clear colour match confirms it's them
     this.setMode("tracking", f.t, note);
   }
 
@@ -191,6 +276,32 @@ export class Brain {
     const predicted = this.predict(sinceSeen);
     const gate = TUNING.gateDeg + (Math.abs(this.vel.pan) * sinceSeen) / 2000;
     const i = this.closestCandidate(f, looks, predicted, gate);
+
+    // Someone who clearly looks like the target, somewhere else in the picture, while
+    // where we expected them there's nobody, only a "sort of" match, or someone who
+    // looks clearly less like them (a coat on a chair, a passer-by)? Go with the look.
+    const limit = this.settings.matchLimit;
+    const di = i >= 0 ? this.dist(looks[i]) : null;
+    const best = this.bestMatch(looks);
+    // Jumping away from where we expect them needs a stronger match than re-finding
+    // them after they're lost: in a crowd, a stranger often scores under matchLimit.
+    if (best.i >= 0 && best.i !== i && best.d !== null && best.d <= limit * TUNING.switchStrict) {
+      const muchBetter = i < 0 || (di !== null && (di > limit || best.d + TUNING.switchMargin < di));
+      // Better, but not by much (the one we're on also roughly matches)? Switch only if it
+      // stays that way for a moment, so a single lucky frame can't pull the box away.
+      const better = di !== null && best.d + TUNING.switchMarginSteady < di;
+      if (muchBetter || (better && this.steadilyBetter(f.t, f.people[best.i]))) {
+        this.vel = { pan: 0, tilt: 0 };
+        this.betterSince = null;
+        this.lockOn(f, best.i, i < 0 ? "Found you again." : "That's you over there. Switched back to you.");
+        this.judge(f.t, best.d);
+        return f.people[best.i];
+      }
+      if (!better) this.betterSince = null;
+    } else {
+      this.betterSince = null;
+    }
+
     if (i >= 0) {
       this.seen(f, i, looks[i]);
       return f.people[i];
@@ -215,11 +326,23 @@ export class Brain {
     return this.mode === "hidden" ? this.coverBox : null;
   }
 
+  /** True once the same person (followed by their box) has been the better match for switchSteadyMs. */
+  private steadilyBetter(t: number, box: Box): boolean {
+    if (this.betterSince === null || !this.betterBox || iou(box, this.betterBox) < 0.3) {
+      this.betterSince = t; // someone new: start counting
+    }
+    this.betterBox = box;
+    return t - this.betterSince >= TUNING.switchSteadyMs;
+  }
+
   /** Update everything we know after spotting the target (person `i`). */
   private seen(f: FrameInput, i: number, look: Look | null): void {
     const box = f.people[i];
     const w = this.toWorld(box, f.camera);
     const dt = (f.t - this.lastSeenT) / 1000;
+    // Same box moving smoothly from the last frame (not a jump to something else)?
+    const smooth = !!this.lastBox && dt < 0.4 && iou(box, this.lastBox) > 0.3;
+    if (!smooth) this.chainTrusted = false;
     if (dt > 0 && dt < 0.5) {
       const a = TUNING.velSmoothing;
       const vp = clamp((w.pan - this.bearing.pan) / dt, -TUNING.maxSpeed, TUNING.maxSpeed);
@@ -232,9 +355,17 @@ export class Brain {
     this.lastBox = box;
     this.lastSeenT = f.t;
 
-    // Let the saved look adapt slowly, but only when nobody else overlaps the target.
-    if (look && this.look && this.isAlone(f, i)) this.look = blendLook(this.look, look, TUNING.lookUpdate);
-    if (look && !this.look) this.look = look;
+    const d = this.dist(look);
+    this.judge(f.t, d);
+    // Let the saved look adapt slowly to lighting, but only when we're sure it's them
+    // and nobody else overlaps them. The anchor (the look at the tap) never changes.
+    if (look && d !== null && d <= this.settings.matchLimit * 0.8 && this.isAlone(f, i)) {
+      this.look = blendLook(this.look ?? look, look, TUNING.lookUpdate);
+    }
+    if (look && !this.anchor) {
+      this.anchor = look;
+      this.look = look;
+    }
 
     // Aim a little ahead to make up for the delay between camera and motor.
     const lead: Angles = {
@@ -245,7 +376,9 @@ export class Brain {
     if (!this.aim || Math.abs(lead.pan - this.aim.pan) > dz || Math.abs(lead.tilt - this.aim.tilt) > dz) {
       this.aim = this.clampAim(lead);
     }
-    this.setMode("tracking", f.t, this.mode === "tracking" ? "Tracking you." : this.note);
+    const unsure = d !== null && d > this.settings.matchLimit;
+    const note = unsure ? "Not sure that's you (the colours don't match). Checking..." : "Tracking you.";
+    this.setMode("tracking", f.t, this.mode === "tracking" ? note : this.note);
   }
 
   /**
@@ -260,8 +393,14 @@ export class Brain {
       const w = this.toWorld(p, f.camera);
       const dist = Math.hypot(w.pan - expected.pan, (w.tilt - expected.tilt) * 0.5);
       if (dist > gate) return;
-      const d = this.look && looks[i] ? lookDistance(this.look, looks[i]!) : null;
-      if (d !== null && d > limit * TUNING.trackLookSlack) return; // someone else walking past
+      const d = this.dist(looks[i]);
+      // The same box moving smoothly on from a trusted chain is them, whatever the colours say.
+      const smooth =
+        this.chainTrusted && !!this.lastBox && f.t - this.lastSeenT < 400 && iou(p, this.lastBox) > 0.3;
+      if (!smooth) {
+        if (d !== null && d > limit * TUNING.trackLookSlack) return; // someone else walking past
+        if (d !== null && d > limit && this.doubtSpent) return; // "sort of" matches have had their chance
+      }
       const score = dist / gate + (d ?? limit * 0.5) / limit;
       if (score < bestScore) {
         bestScore = score;
@@ -300,6 +439,10 @@ export class Brain {
     if (f.image) this.lump.start(toGray(f.image), this.coverBox);
     this.aim = this.clampAim(this.bearing);
     this.radarEmptySince = null;
+    this.coverSeenT = f.t;
+    this.coverEverSeen = false;
+    this.onCoverSince = null;
+    this.radarSteering = false;
     this.setMode("hidden", f.t, "You vanished where you stood and nobody walked away. Watching the cover.");
   }
 
@@ -312,12 +455,16 @@ export class Brain {
     }
 
     // 2. Follow the cover if it moves.
+    let coverSure = false;
     if (f.image && this.lump.active) {
       const shift = this.cameraShift(f.camera);
       const r = this.lump.update(toGray(f.image), shift.x, shift.y);
       if (r) {
         this.coverBox = r.box;
         if (r.score > TUNING.lumpMinScore) {
+          coverSure = true;
+          this.coverSeenT = f.t;
+          this.coverEverSeen = true;
           const w = this.toWorld(r.box, f.camera);
           this.bearing = w;
           const dz = this.settings.deadZoneDeg;
@@ -328,10 +475,39 @@ export class Brain {
       }
     }
 
-    // 3. Ask the radar whether anyone is still there.
+    // 3. Walking around under it? The detector may see a person shape (legs below the
+    // blanket) in the blanket's colours. One that stays on the moving cover is them.
+    const under = coverSure ? this.personOnCover(f) : -1;
+    if (under >= 0) {
+      const offset = centerX(f.people[under]) - centerX(this.coverBox!);
+      // Someone walking past in front slides across the cover; the person under it moves with it.
+      if (this.onCoverSince === null || Math.abs(offset - this.onCoverOffset) > TUNING.coverPersonDrift) {
+        this.onCoverSince = f.t;
+        this.onCoverOffset = offset;
+      } else if (f.t - this.onCoverSince >= TUNING.coverPersonMs) {
+        this.lockOn(f, under, "Walking around under the cover. Following you.");
+        this.chainTrusted = true; // the colours are the blanket's: follow the shape as long as it moves smoothly
+        return f.people[under];
+      }
+    } else {
+      this.onCoverSince = null;
+    }
+
+    // 4. Lost the cover after following it (they moved off faster than it could keep up)?
+    // If the radar still senses someone, stop aiming, so a two-radar stand steers by radar.
+    if (coverSure) this.radarSteering = false;
+    else if (this.coverEverSeen && f.radar === true && f.t - this.coverSeenT > TUNING.coverLostMs) this.radarSteering = true;
+    if (this.radarSteering) {
+      this.aim = null;
+      this.bearing = { ...f.camera }; // the radars turn the head toward them
+    }
+
+    // 5. Ask the radar whether anyone is still there.
     if (f.radar === true) {
       this.radarEmptySince = null;
-      this.note = "Covered up. The radar says you're still there.";
+      this.note = this.radarSteering
+        ? "Lost track of the cover. The radar still senses you, so it's steering."
+        : "Covered up. The radar says you're still there.";
     } else if (f.radar === false) {
       this.radarEmptySince ??= f.t;
       if (f.t - this.radarEmptySince > TUNING.lostAfterMs) {
@@ -343,7 +519,23 @@ export class Brain {
       this.goLost(f, "Hidden for a long time and no radar to check. Waiting for you to come back.");
       return null;
     }
-    return this.coverBox;
+    return this.radarSteering ? null : this.coverBox;
+  }
+
+  /** The person whose box sits on the cover (overlapping it the most, and enough), or -1. */
+  private personOnCover(f: FrameInput): number {
+    const cover = this.coverBox;
+    if (!cover) return -1;
+    let best = -1;
+    let bestOverlap = TUNING.coverPersonOverlap;
+    f.people.forEach((p, i) => {
+      const o = iou(p, cover);
+      if (o > bestOverlap) {
+        bestOverlap = o;
+        best = i;
+      }
+    });
+    return best;
   }
 
   /** Someone near the cover who looks about right, or anyone anywhere who clearly looks like the target. */
@@ -354,8 +546,8 @@ export class Brain {
     f.people.forEach((p, i) => {
       const w = this.toWorld(p, f.camera);
       const near = Math.abs(w.pan - this.bearing.pan) < TUNING.gateDeg * 2;
-      const d = this.look && looks[i] ? lookDistance(this.look, looks[i]!) : near ? 0 : Infinity;
-      const ok = (near && d < limit * TUNING.trackLookSlack) || d < limit;
+      const d = this.dist(looks[i]) ?? (near ? 0 : Infinity);
+      const ok = (near && !this.doubtSpent && d < limit * TUNING.trackLookSlack) || d < limit;
       if (ok && d < bestD) {
         bestD = d;
         best = i;
@@ -376,7 +568,21 @@ export class Brain {
   }
 
   private following(f: FrameInput, looks: (Look | null)[]): Box | null {
-    const found = this.recognised(looks, TUNING.followLookSlack);
+    // Someone coming back in at the edge they left by gets a looser match; anyone else must match clearly.
+    const exitImageSide = this.followDir * this.settings.panSign; // -1 = left edge, 1 = right edge
+    let found = -1;
+    let foundD = Infinity;
+    f.people.forEach((p, k) => {
+      const d = this.dist(looks[k]);
+      if (d === null) return;
+      const cx = centerX(p);
+      const atExitEdge = exitImageSide > 0 ? cx > 0.6 : cx < 0.4;
+      const limit = this.settings.matchLimit * (atExitEdge ? TUNING.followLookSlack : 1);
+      if (d <= limit && d < foundD) {
+        found = k;
+        foundD = d;
+      }
+    });
     if (found >= 0) {
       this.lockOn(f, found, "There you are. Locked back on.");
       return f.people[found];
@@ -449,16 +655,38 @@ export class Brain {
   private bestMatch(looks: (Look | null)[]): { i: number; d: number | null } {
     let i = -1;
     let d: number | null = null;
-    if (!this.look) return { i, d };
     looks.forEach((l, k) => {
-      if (!l) return;
-      const dk = lookDistance(this.look!, l);
+      const dk = this.dist(l);
+      if (dk === null) return;
       if (d === null || dk < d) {
         d = dk;
         i = k;
       }
     });
     return { i, d };
+  }
+
+  /** How much `l` looks like the target: 0 = same, 1 = nothing alike. Null if we can't tell. */
+  private dist(l: Look | null): number | null {
+    if (!l || !this.anchor) return null;
+    const fromAnchor = lookDistance(this.anchor, l);
+    return this.look ? Math.min(fromAnchor, lookDistance(this.look, l)) : fromAnchor;
+  }
+
+  /** Keeps count of how long we've been following someone who only "sort of" looks right. */
+  private judge(t: number, d: number | null): void {
+    if (d === null || d <= this.settings.matchLimit) {
+      this.doubtSince = null;
+      this.doubtSpent = false;
+      this.chainTrusted = true;
+      return;
+    }
+    if (this.chainTrusted) {
+      this.doubtSince = null; // the same person, smoothly followed, in different light: keep trusting
+      return;
+    }
+    this.doubtSince ??= t;
+    if (t - this.doubtSince > TUNING.doubtMs) this.doubtSpent = true;
   }
 
   private predict(ms: number): Angles {
