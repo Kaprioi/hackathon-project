@@ -43,7 +43,7 @@ function bluetooth(): BleBluetooth | undefined {
 
 export type StandStatus = "unsupported" | "disconnected" | "connecting" | "connected";
 
-const MOVE_EVERY_MS = 50; // at most 20 moves a second
+const MOVE_EVERY_MS = 25; // at most 40 moves a second (the page moves a walking person's aim on between camera frames)
 // While the camera is steering, repeat the aim this often even if it hasn't changed.
 // (Older SightLine firmware let its radars steer once these stopped for 700 ms; the
 // current one holds still while the page is connected.)
@@ -246,7 +246,7 @@ export class Stand {
 
     const m = this.wantMove;
     const changed =
-      m && (!this.sentMove || Math.abs(m.pan - this.sentMove.pan) > 0.3 || Math.abs(m.tilt - this.sentMove.tilt) > 0.3);
+      m && (!this.sentMove || Math.abs(m.pan - this.sentMove.pan) > 0.2 || Math.abs(m.tilt - this.sentMove.tilt) > 0.2);
     const repeatDue = m && now - this.lastMoveAt > MOVE_REPEAT_MS;
     if (m && (changed || repeatDue) && this.moveChar) {
       const wait = MOVE_EVERY_MS - (now - this.lastMoveAt);

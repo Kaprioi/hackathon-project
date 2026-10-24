@@ -94,9 +94,15 @@ const uint32_t FOUND_CONFIRM_MS = 1000;  // must be seen this long to count as "
 #define RADAR_UUID   "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  // we notify "presence,left,right,pan,tilt"
 #define MIST_UUID    "6e400004-b5a3-f393-e0a9-e50e24dcca9e"  // website writes "1" (on) or "0" (off)
 const uint32_t CAMERA_HOLD_MS = 700;     // the website's aims count as "person in view" (for alerts) this long
-const uint32_t CAMERA_TICK_MS = 20;      // website steering: move 25% of the way every 20 ms (was 15%),
-const float CAMERA_EASE = 0.25;          // but at most CAMERA_MAX_SPEED. The website's motor model
-const float CAMERA_MAX_SPEED = 240;      // assumes exactly these (SERVO_* in config.ts). Degrees/second.
+// Website steering: every 20 ms move 25% of the remaining way (glides to a stop, never
+// swings past), at most a top speed, and not at all for an aim within MOVE_DEADBAND (no
+// twitching). The website's copy of this assumes exactly these numbers (MOTION in
+// src/tracker/config.ts). The page sends aims up to 40 times a second, so it's smooth.
+const uint32_t CAMERA_TICK_MS = 20;
+const float CAMERA_EASE = 0.25;
+const float PAN_TOP_SPEED = 280;         // degrees/second (HS-422: about 285 unloaded; was 240)
+const float TILT_TOP_SPEED = 200;        // tilt lifts the phone: a little gentler
+const float MOVE_DEADBAND = 0.3;         // degrees
 const uint32_t MIST_TIMEOUT_MS = 3000;   // no "1" from the website for this long: mist off (safety)
 const uint32_t REPORT_MS = 100;          // send radar readings and the head angle 10 times a second
 
@@ -416,9 +422,10 @@ void loop() {
   bool cameraSteering = cameraAt != 0 && (int32_t)(now - cameraAt) < (int32_t)CAMERA_HOLD_MS;
   if (websiteSteers && now - lastCameraTick >= CAMERA_TICK_MS) {
     lastCameraTick = now;
-    const float maxStep = CAMERA_MAX_SPEED * CAMERA_TICK_MS / 1000.0;  // 4.8 degrees a tick
-    pan += constrain((cameraPan - pan) * CAMERA_EASE, -maxStep, maxStep);
-    tilt += constrain((cameraTilt - tilt) * CAMERA_EASE, -maxStep, maxStep);
+    const float panStep = PAN_TOP_SPEED * CAMERA_TICK_MS / 1000.0;    // 5.6 degrees a tick
+    const float tiltStep = TILT_TOP_SPEED * CAMERA_TICK_MS / 1000.0;  // 4 degrees a tick
+    if (fabs(cameraPan - pan) >= MOVE_DEADBAND) pan += constrain((cameraPan - pan) * CAMERA_EASE, -panStep, panStep);
+    if (fabs(cameraTilt - tilt) >= MOVE_DEADBAND) tilt += constrain((cameraTilt - tilt) * CAMERA_EASE, -tiltStep, tiltStep);
     panServo.writeMicroseconds(toMicros(pan));
     tiltServo.writeMicroseconds(toMicros(tilt));
   }

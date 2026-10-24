@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Brain, whereaboutsText } from "./brain.ts";
-import { CAMERA_STEERS_IN, DEFAULT_SETTINGS, LIMITS, RADAR, TUNING } from "./config.ts";
+import { CAMERA_STEERS_IN, DEFAULT_SETTINGS, LIMITS, MOTION, RADAR, TUNING } from "./config.ts";
 import { ListeningSweep, louderSide } from "./radarGuide.ts";
 import { ServoModel } from "./servoModel.ts";
 
@@ -460,7 +460,7 @@ for (const webcam of [null, "fixed"]) {
   });
 }
 
-test("turning to look at someone is quicker (25% a tick, was 15%) and doesn't overshoot", () => {
+test("turning to look at someone: quick (25% a tick, at most 280°/s), and it glides in without passing the target", () => {
   // The page's copy of the firmware's motor steering.
   const motor = new ServoModel();
   motor.step(0);
@@ -471,9 +471,8 @@ test("turning to look at someone is quicker (25% a tick, was 15%) and doesn't ov
     t += 20;
     motor.step(t);
     assert.ok(motor.current.pan >= last && motor.current.pan <= 150, `jumped back or past the target at ${t} ms`);
-    assert.ok(motor.current.pan - last <= (240 * 20) / 1000 + 1e-9, "never faster than 240°/s");
+    assert.ok(motor.current.pan - last <= (MOTION.panSpeed * 20) / 1000 + 1e-9, `never faster than ${MOTION.panSpeed}°/s`);
     last = motor.current.pan;
   }
-  assert.ok(t <= 360, `a 60° turn should take about a third of a second, took ${t} ms (was 460)`);
+  assert.ok(t <= 340, `a 60° turn should take about a third of a second, took ${t} ms (was 460)`);
 });
-

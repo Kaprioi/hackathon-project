@@ -12,7 +12,7 @@ import type { ButtonHTMLAttributes, CSSProperties, PointerEvent, ReactNode } fro
 import { Link } from "react-router";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
-import { Brain, MODE_LABEL, whereaboutsText } from "./brain.ts";
+import { Brain, MODE_LABEL, predictAim, whereaboutsText } from "./brain.ts";
 import type { Settings } from "./config.ts";
 import {
   ANALYSIS_WIDTH,
@@ -1037,6 +1037,8 @@ export default function TrackerPage() {
     let lastNote = "";
     let lastError = "";
     let cameraSteering = false; // did the camera steer the stand last frame?
+    // The last aim that's moving steadily (someone walking): moved on between camera frames.
+    let moving: { aim: Angles; vel: Angles; t: number } | null = null;
 
     // Runs once per animation frame. If anything inside throws, show it on screen
     // instead of silently freezing the boxes.
@@ -1044,6 +1046,7 @@ export default function TrackerPage() {
       raf = requestAnimationFrame(tick);
       try {
         step();
+        between();
       } catch (e) {
         const msg = `Tracker error: ${e instanceof Error ? e.message : String(e)}`;
         if (msg !== lastError) {
@@ -1052,6 +1055,17 @@ export default function TrackerPage() {
           setError(msg);
         }
       }
+    };
+
+    // The camera finds people about 15 times a second, but the screen refreshes 60 times. In
+    // between, move a moving aim on by its speed, so the stand turns smoothly, not in steps.
+    const between = () => {
+      const stand = standRef.current;
+      if (!moving || !stand.connected || testingRef.current) return;
+      const a = predictAim(moving.aim, moving.vel, performance.now() - moving.t);
+      servoRef.current.setTarget(a);
+      stand.move(a.pan, a.tilt);
+      lastAimRef.current = a;
     };
 
     const step = () => {
@@ -1177,6 +1191,7 @@ export default function TrackerPage() {
 
       if (out.mode !== "idle") testingRef.current = false; // tracking takes over from the test buttons
       cameraSteering = !!out.aim && (CAMERA_STEERS_IN as readonly string[]).includes(out.mode);
+      moving = cameraSteering && out.aim && out.aimVel ? { aim: out.aim, vel: out.aimVel, t } : null;
       if (out.aim && cameraSteering) {
         lastAimRef.current = out.aim;
         if (stand.connected) {

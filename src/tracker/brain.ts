@@ -85,6 +85,12 @@ export interface BrainOutput {
   target: Box | null;
   /** Where the stand should point, or null to leave it where it is. */
   aim: Angles | null;
+  /**
+   * How fast the aim is moving (degrees/second), when it moves steadily (following someone
+   * walking, turning after them, sweeping). The page moves the aim on by this between camera
+   * frames (predictAim), so the stand turns smoothly instead of in steps. Null = hold it.
+   */
+  aimVel: Angles | null;
   /** A plain-words reason for what it's doing, for the on-screen log. */
   note: string;
   /** While searching or lost: how close the best-matching person looks (for tuning matchLimit). */
@@ -124,6 +130,18 @@ export function whereaboutsText(w: Whereabouts, mirrored: boolean): string {
   if (w.side === 0) return `Out of view - not sure which side${radar}`;
   const left = mirrored ? w.side > 0 : w.side < 0;
   return `Out of view - to your ${left ? "left" : "right"}${radar}`;
+}
+
+/**
+ * Where to point `ms` after the brain's last answer, if its aim keeps moving at `vel`
+ * (degrees/second). At most TUNING.predictMaxMs ahead, so a stalled camera can't run it away.
+ */
+export function predictAim(aim: Angles, vel: Angles, ms: number): Angles {
+  const s = Math.max(0, Math.min(ms, TUNING.predictMaxMs)) / 1000;
+  return {
+    pan: clamp(aim.pan + vel.pan * s, LIMITS.panMin, LIMITS.panMax),
+    tilt: clamp(aim.tilt + vel.tilt * s, LIMITS.tiltMin, LIMITS.tiltMax),
+  };
 }
 
 /** The person whose box overlaps `box` the most, if more than `min`; else -1. */
@@ -168,6 +186,8 @@ export class Brain {
   private lastBox: Box | null = null;
   private lastSeenT = 0;
   private aim: Angles | null = null;
+  /** How fast the aim moves this frame (see BrainOutput.aimVel). */
+  private aimVel: Angles | null = null;
 
   private prevT = 0;
   private prevCamera: Angles | null = null;
@@ -229,6 +249,9 @@ export class Brain {
     this.settings = settings;
   }
 
+  /** The states whose aims move steadily enough to move on between frames. */
+  private readonly CAN_PREDICT = ["tracking", "following", "searching", "radar"] as const;
+
   get currentMode(): Mode {
     return this.mode;
   }
@@ -267,6 +290,7 @@ export class Brain {
 
     // A tap that picks someone starts afresh: what faces said, and who was "someone else",
     // was about the old target. (A tap that hits nobody changes nothing.)
+    this.aimVel = null; // each state sets it again if its aim moves steadily
     const picked = f.tap ? this.pick(f, allLooks) : false;
     if (picked) {
       this.faceNotes = [];
@@ -348,7 +372,8 @@ export class Brain {
     const whereabouts: Whereabouts | null = outOfView && !target ? { side: exitSide, radar: f.radar, checking } : null;
     const matches = this.mode === "idle" ? allLooks.map(() => null) : allLooks.map((l) => this.dist(l));
     const faces = this.mode === "idle" ? f.people.map(() => null) : faceOf;
-    return { mode: this.mode, target, aim: this.aim, note: this.note, match, matches, exitSide, whereabouts, faces, picked };
+    const aimVel = this.aim && this.aimVel && (this.CAN_PREDICT as readonly Mode[]).includes(this.mode) ? this.aimVel : null;
+    return { mode: this.mode, target, aim: this.aim, aimVel, note: this.note, match, matches, exitSide, whereabouts, faces, picked };
   }
 
   /**
@@ -597,9 +622,9 @@ export class Brain {
     const smooth = !!this.lastBox && dt < 0.4 && iou(box, this.lastBox) > 0.3;
     if (!smooth) this.chainTrusted = false;
     if (dt > 0 && dt < 0.5) {
-      const a = TUNING.velSmoothing;
       const vp = clamp((w.pan - this.bearing.pan) / dt, -TUNING.maxSpeed, TUNING.maxSpeed);
       const vt = clamp((w.tilt - this.bearing.tilt) / dt, -TUNING.maxSpeed, TUNING.maxSpeed);
+      const a = TUNING.velSmoothing;
       this.vel = { pan: this.vel.pan * (1 - a) + vp * a, tilt: this.vel.tilt * (1 - a) + vt * a };
     } else {
       this.vel = { pan: 0, tilt: 0 };
@@ -622,13 +647,17 @@ export class Brain {
 
     // Aim a little ahead to make up for the delay between camera and motor.
     const lead: Angles = {
-      pan: w.pan + (this.vel.pan * TUNING.latencyMs) / 1000,
-      tilt: w.tilt + (this.vel.tilt * TUNING.latencyMs) / 1000,
+      pan: w.pan + (this.vel.pan * TUNING.leadMs) / 1000,
+      tilt: w.tilt + (this.vel.tilt * TUNING.leadMs) / 1000,
     };
     const dz = this.settings.deadZoneDeg;
     if (!this.aim || Math.abs(lead.pan - this.aim.pan) > dz || Math.abs(lead.tilt - this.aim.tilt) > dz) {
       this.aim = this.clampAim(lead);
     }
+    // Walking: the page moves the aim on smoothly between camera frames. (Following every
+    // small move each frame, or trusting a sudden change of speed at once, made the stand
+    // hunt back and forth when the real motor is slower than the page thinks.)
+    if (Math.hypot(this.vel.pan, this.vel.tilt) > TUNING.stillSpeed) this.aimVel = { ...this.vel };
     const unsure = d !== null && d > this.settings.matchLimit;
     const note = this.faceKnown.has(i)
       ? "Tracking you. Recognised your face."
@@ -883,6 +912,7 @@ export class Brain {
     const elapsed = f.t - this.modeSince;
     const pan = this.followFrom.pan + (this.followDir * this.followSpeed * elapsed) / 1000;
     this.aim = this.clampAim({ pan, tilt: this.followFrom.tilt });
+    this.aimVel = { pan: this.followDir * this.followSpeed, tilt: 0 };
     const atLimit = this.aim.pan <= LIMITS.panMin || this.aim.pan >= LIMITS.panMax;
     if (atLimit) this.limitSince ??= f.t;
     if ((atLimit && f.t - this.limitSince! > TUNING.limitPauseMs) || elapsed > TUNING.followMaxMs) {
@@ -916,6 +946,7 @@ export class Brain {
     const next = Math.abs(goal - current) <= step ? goal : current + Math.sign(goal - current) * step;
     this.aim = this.clampAim({ pan: next, tilt: this.aim?.tilt ?? this.bearing.tilt });
     if (next === goal) this.sweepGoals.shift();
+    else this.aimVel = { pan: Math.sign(goal - current) * TUNING.sweepSpeed, tilt: 0 };
     if (this.sweepGoals.length === 0) {
       // The radar still senses someone: look again, a few times at most.
       if (f.radar === true && this.radarRounds < RADAR.rounds) {
@@ -998,6 +1029,7 @@ export class Brain {
       const stuck = (side < 0 && this.aim.pan <= LIMITS.panMin) || (side > 0 && this.aim.pan >= LIMITS.panMax);
       pointed = side === 0 || stuck;
       if (side !== 0) this.believedDir = side;
+      if (!pointed) this.aimVel = { pan: side * RADAR.turnSpeed, tilt: 0 };
       if (!pointed) {
         const words = side * this.settings.panSign < 0 ? "left" : "right";
         this.note = `The radar hears someone to the ${words}. Turning there.`;

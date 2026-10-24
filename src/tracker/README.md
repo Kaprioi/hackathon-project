@@ -10,7 +10,7 @@ Finds people with the phone's camera, follows the one you tap, and drives the st
 | `radarGuide.ts` | Turns the radar's loudness into "which way to turn" while you're out of the picture: left vs right with two radars, a stop-and-listen sweep with one. No camera or Bluetooth code. |
 | `appearance.ts` | The "look": clothing colours of the top and bottom half, used to tell people apart and re-find the target. |
 | `lump.ts` | Follows a blanket or box after someone hides under it, by matching a small grey picture of it. |
-| `servoModel.ts` | Guesses where the camera is pointing, by copying how the firmware moves the motors. |
+| `servoModel.ts` | Guesses where the camera is pointing, by copying how the firmware moves the motors (MOTION in `config.ts`). |
 | `stand.ts` | Web Bluetooth link to the ESP32: moves, radar readings (someone there, how loud, how many radars), and the mist switch (unused since the humidifier was dropped). |
 | `config.ts` | Every setting and tuning number, plus the Bluetooth IDs (must match the firmware). |
 | `events.ts` | Turns each frame's people into a few small text events for the family page (moving/still/nobody/fall, left/middle/right, posture, a heartbeat every minute). No camera code, so it's testable. |
@@ -27,6 +27,7 @@ Finds people with the phone's camera, follows the one you tap, and drives the st
 | `brain.test.mjs` | Tests with made-up frames, including a simulated room. Run `npm run test:tracker`. |
 | `radar.test.mjs` | Tests for the radar-guided search: a simulated room with a fake radar (walk out left, double back, someone else, radar quiet, Bluetooth drop, a laptop webcam beside the stand). |
 | `stand.test.mjs` | Tests how often aims are sent to the stand, with a fake Bluetooth stand and a fake clock. |
+| `motion.test.mjs` | Tests how smoothly and quickly the stand follows someone walking, stopping and standing still, including with a motor slower than the page thinks. |
 
 Each frame: camera → copy 640 on its long side → `detector.ts` → `brain.ts` (with a copy 320 on its long side for colours and the cover tracker) → `stand.ts`, and `detector.ts` → `events.ts` → `cloud.ts` for the family page. With the phone upright, the page swaps the camera's width and height angles before calling `brain.ts`.
 
@@ -52,4 +53,22 @@ Settings are in `RADAR` in `config.ts`. The switch for one or two radars is `RAD
 - On the page, the "Radar" chip shows the loudness number change as you walk around.
 - Walk out of the picture on each side and check the head turns that way. With two radars, wave on one side: the head must turn toward you. If it turns away, flip `RADAR.leftPan` in `config.ts`.
 - With the page connected but nobody tapped, the head must hold still (the serial monitor says `steer=website`). Close the page while someone is in front of the head: it should start wiggling (one radar) or turning toward the louder radar (two) on its own (`steer=radar`). Opening the serial monitor resets the board, which drops Bluetooth, so check this with the page reconnected afterwards.
+
+## How it works: who decides where the stand points
+
+**The camera finds people and says who they are.** About 15 times a second the AI finds every person in the picture, and the page tells them apart by their clothes' colours (and their face, if that's on). That gives an exact direction: "you're 12° right of where the stand points". It's the only thing that knows *who* someone is.
+
+**The radar only says "someone's there, this loud".** It doesn't know who, and with one radar it doesn't even know which way. It also hears through blankets and in the dark, when the camera can't see.
+
+| Situation | Who decides where to point |
+|---|---|
+| **You're in the picture** | The camera, alone. The page aims at your chest, a little ahead of you if you're walking (`leadMs`), and moves the aim on smoothly between camera pictures, up to 40 times a second. The radar is ignored. |
+| **You just left the picture** | The camera's last sighting: the stand turns toward the edge you left by. With radar loudness, the radar takes over the turning (RADAR SEARCH): one radar stops and listens every 40°, two radars turn toward the louder one. |
+| **Out of view, but the radar hears someone** | The radar points the way; the camera checks every face that comes into view. Only the camera can say "that's you" and lock back on, or "that's someone else" and keep looking. |
+| **Nobody (radar quiet, nobody in view)** | Nobody: after looking once (follow, sweep), LOST, and the stand holds still. If the radar hears someone again later, it turns to see who it is. |
+| **Bluetooth is gone** | The stand itself, by radar (the firmware's backup steering). |
+
+**Why both matter:** the camera is precise and knows who, but only sees about 65° of the room and nothing in the dark. The radar hears the whole room, through covers, but can't tell people (or a dog) apart. Together, the radar says where to look and the camera says who it is.
+
+**How the motor moves:** every 20 ms the firmware moves each motor a quarter of the remaining way to the page's aim, at most 280°/s left-right and 200°/s up-down, and ignores aims within 0.3° (no twitching). It never swings past the aim. A "speed up, slow down" motor with momentum was tried and made the stand hunt back and forth (the camera always sees a moment late), so `motion.test.mjs` checks for that.
 

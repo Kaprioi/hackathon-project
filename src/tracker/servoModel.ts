@@ -1,11 +1,12 @@
 // Guesses where the camera is pointing right now.
 //
-// The stand doesn't report its angle back, but we know exactly how the firmware
-// moves (25% of the remaining way every 20 ms, at most 240 degrees a second), so we copy that here. Knowing
-// where the camera was pointing when a frame was taken lets the brain turn
+// The stand doesn't report its angle back (older firmware), but we know exactly how the
+// firmware moves the motors (MOTION in config.ts: a quarter of the remaining way every
+// 20 ms, never faster than a top speed, and not at all for a tiny move), so we copy that
+// here. Knowing where the camera was pointing when a frame was taken lets the brain turn
 // "you're on the left of the picture" into "you're at 70 degrees in the room".
 
-import { LIMITS, SERVO_EASE, SERVO_MAX_SPEED, SERVO_TICK_MS } from "./config.ts";
+import { LIMITS, MOTION, SERVO_TICK_MS } from "./config.ts";
 import type { Angles } from "./geometry.ts";
 
 interface Sample {
@@ -38,9 +39,11 @@ export class ServoModel {
     if (this.lastT < 0) this.lastT = t;
     const dt = t - this.lastT;
     if (dt <= 0) return;
-    const keep = Math.pow(1 - SERVO_EASE, dt / SERVO_TICK_MS);
-    const maxMove = (SERVO_MAX_SPEED * dt) / 1000;
+    const keep = Math.pow(1 - MOTION.ease, dt / SERVO_TICK_MS);
+    const speed = { pan: MOTION.panSpeed, tilt: MOTION.tiltSpeed };
     for (const axis of ["pan", "tilt"] as const) {
+      if (Math.abs(this.target[axis] - this.now[axis]) < MOTION.deadband) continue; // a tiny move: the firmware holds still
+      const maxMove = (speed[axis] * dt) / 1000;
       const eased = this.target[axis] + (this.now[axis] - this.target[axis]) * keep;
       const move = Math.max(-maxMove, Math.min(maxMove, eased - this.now[axis]));
       this.now[axis] += move;

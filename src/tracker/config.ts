@@ -26,17 +26,26 @@ export const LIMITS = {
 };
 
 /**
- * The firmware moves each motor 25% of the remaining way every 20 ms (was 15%: quicker to
- * look at someone now), but never faster than SERVO_MAX_SPEED. Keep both in step with
- * CAMERA_EASE and CAMERA_MAX_SPEED in the firmware.
+ * How the firmware moves each motor toward the page's aim, every 20 ms: `ease` of the
+ * remaining way (so it glides to a stop and never swings past), never faster than the top
+ * speed, and not at all when the aim is within `deadband` (no twitching). Keep these the
+ * same as in the firmware (CAMERA_EASE, PAN_TOP_SPEED, TILT_TOP_SPEED, MOVE_DEADBAND).
+ *
+ * Why no "speed up gently, slow down gently" profile: a motor that carries momentum, in a
+ * loop where the camera always sees a moment late, swung back and forth in the tests (the
+ * stand hunting around someone standing still). This kind can't.
  */
-export const SERVO_EASE = 0.25;
+export const MOTION = {
+  /** Fraction of the remaining way per 20 ms (was 15%, then 25%). */
+  ease: 0.25,
+  /** Top speed, degrees per second. The HS-422 turns 60° in about 0.21 s at 5 V: about 285°/s (was 240). */
+  panSpeed: 280,
+  /** Tilt carries the phone against gravity: a little gentler. */
+  tiltSpeed: 200,
+  /** Ignore aims closer than this (degrees) to where it already points. */
+  deadband: 0.3,
+};
 export const SERVO_TICK_MS = 20;
-/**
- * The fastest the firmware turns a motor (degrees per second), a little under the HS-422's
- * own top speed (about 280 unloaded), so it doesn't overshoot carrying the phone.
- */
-export const SERVO_MAX_SPEED = 240;
 
 /** Settings you can change on the page (they're saved in the browser). */
 export interface Settings {
@@ -163,6 +172,18 @@ export const TUNING = {
   maxSpeed: 150,
   /** Delay between the camera seeing something and the motor reacting. An estimate. */
   latencyMs: 80,
+  /**
+   * Aim this far ahead of someone walking (milliseconds of their speed), to make up for that
+   * delay. Lower = less overshoot when they stop suddenly, but more lag while they walk.
+   */
+  leadMs: 100,
+  /**
+   * Below this speed (degrees/second) someone counts as standing still. Faster, the page
+   * moves the aim on smoothly between camera frames (predictAim in brain.ts).
+   */
+  stillSpeed: 6,
+  /** Between camera frames, move the aim on by the person's speed for at most this long. */
+  predictMaxMs: 150,
   /** How sure the cover tracker must be (0-1) before the stand follows a moving blanket. */
   lumpMinScore: 0.55,
   /**

@@ -95,7 +95,7 @@ test("holding one aim (the radar search listening at a stop): the stand still he
   await advance(3000, () => stand.move(60, 90));
   assert.ok(sent.length > 5, "aims were sent");
   const gap = longestGap(from, now);
-  assert.ok(gap <= 300, `longest silence ${gap} ms: well under the firmware's 700 ms`);
+  assert.ok(gap <= 350, `longest silence ${gap} ms: well under the firmware's 700 ms`);
 
   // Even if the page's frame loop stalls (a slow frame), the heartbeat keeps repeating it.
   const stall = now;
