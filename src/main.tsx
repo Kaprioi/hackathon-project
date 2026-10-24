@@ -2,6 +2,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router";
 import ErrorBoundary from "./components/ErrorBoundary";
+import ScrollToTop from "./components/ScrollToTop";
 import "./index.css";
 import { startDisplaySettings } from "./lib/displaySettings";
 import AccountPage from "./pages/AccountPage";
@@ -17,7 +18,7 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 // Phone Tracker: loaded only when someone opens /tracker, so the homepage stays fast.
 const TrackerPage = lazy(() => import("./tracker/TrackerPage.tsx"));
 
-// Text size, motion, colour theme and contrast, as this browser asked for them, before anything is drawn.
+// Text size, motion and contrast, as this browser asked for them, before anything is drawn.
 startDisplaySettings();
 
 createRoot(document.getElementById("root")!).render(
@@ -25,6 +26,7 @@ createRoot(document.getElementById("root")!).render(
     {/* Shows "Something went wrong" instead of a blank page if anything crashes. */}
     <ErrorBoundary>
       <BrowserRouter>
+        <ScrollToTop />
         <Routes>
           {/* HomePage is the About Us page. */}
           <Route path="/" element={<HomePage />} />
