@@ -31,8 +31,8 @@ export function TextField({
         id={id}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
-        className={`min-h-14 w-full rounded-2xl border-[3px] bg-white px-5 text-xl text-ink ${
-          error ? "border-[#a61b1b]" : "border-muted"
+        className={`min-h-14 w-full rounded-2xl border-[3px] bg-surface px-5 text-xl text-ink transition-colors ${
+          error ? "border-[#a61b1b]" : "border-muted hover:border-brand focus:border-brand"
         }`}
         {...inputProps}
       />
@@ -59,7 +59,7 @@ export function PasswordField(props: Omit<React.ComponentProps<typeof TextField>
       >
         <span
           aria-hidden="true"
-          className={`grid h-7 w-7 place-items-center rounded-md border-[3px] border-brand ${visible ? "bg-brand text-white" : "bg-white"}`}
+          className={`grid h-7 w-7 place-items-center rounded-md border-[3px] border-brand ${visible ? "bg-brand text-on-brand" : "bg-surface"}`}
         >
           {visible ? "✓" : ""}
         </span>

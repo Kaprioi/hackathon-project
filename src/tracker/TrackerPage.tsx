@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, PointerEvent, ReactNode } from "react";
 import { Link } from "react-router";
+import { buttonVariants } from "../components/ButtonLink";
+import { Blobs, LogoMark } from "../components/SiteLayout";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
 import { Brain, MODE_LABEL } from "./brain.ts";
@@ -180,7 +182,7 @@ function PanDial({ aim }: { aim: Angles | null }) {
 
 function Chip({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "good" | "warn" }) {
   const toneClass = tone === "good" ? "bg-leaf text-white" : tone === "warn" ? "bg-sun text-ink" : "bg-black/60 text-white";
-  return <span className={`rounded-full px-3 py-1 text-base font-semibold ${toneClass}`}>{children}</span>;
+  return <span className={`rounded-full px-3 py-1 text-base font-extrabold ${toneClass}`}>{children}</span>;
 }
 
 function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
@@ -188,8 +190,8 @@ function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { active?: bool
   return (
     <button
       {...rest}
-      className={`min-h-11 rounded-xl px-4 py-2 font-bold disabled:opacity-40 ${
-        active ? "bg-brand text-white" : "bg-white/90 text-ink"
+      className={`min-h-11 rounded-2xl px-4 py-2 font-extrabold transition-colors disabled:opacity-40 ${
+        active ? "bg-brand text-on-brand hover:bg-brand-dark" : "bg-surface text-brand hover:bg-lilac"
       } ${className}`}
     />
   );
@@ -531,7 +533,7 @@ export default function TrackerPage() {
 
       {/* The privacy sign: always on screen while the camera is on */}
       {running && (
-        <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 bg-leaf px-4 py-2 text-center text-lg font-extrabold text-white">
+        <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 bg-leaf px-4 py-2 text-center text-lg font-extrabold text-on-brand shadow-soft">
           <span>● Camera on - video stays on this phone</span>
           <span className="text-base font-bold">
             {sendError
@@ -629,48 +631,57 @@ export default function TrackerPage() {
       )}
 
       {!running && (
-        <div className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-black p-6">
-          <div className="max-w-lg space-y-5 text-center">
-            <h1 className="text-3xl font-extrabold">Phone camera</h1>
-            <p className="text-xl">
-              Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a
-              few words, how things are going.
-            </p>
-            <p className="rounded-2xl bg-white px-4 py-3 text-lg font-bold text-ink">
-              Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or
-              pictures ever leave it.
-            </p>
-            {account === "signed-out" ? (
-              <div className="space-y-3">
-                <p className="text-xl">Please sign in first, so your family can see the updates.</p>
-                <Link
-                  to="/login"
-                  className="inline-flex min-h-16 items-center justify-center rounded-2xl bg-white px-8 text-2xl font-extrabold text-brand no-underline"
-                >
-                  Sign in
-                </Link>
-              </div>
-            ) : (
-              <button
-                onClick={startCamera}
-                disabled={loading || account === "checking"}
-                className="min-h-16 w-full rounded-2xl bg-white px-8 text-2xl font-extrabold text-brand disabled:opacity-60"
+        <div className="on-light absolute inset-0 overflow-y-auto bg-cream text-ink select-text">
+          <div className="relative isolate flex min-h-full items-center justify-center p-4 sm:p-6">
+            <Blobs fixed />
+            <div className="w-full max-w-lg animate-slide-in space-y-5 rounded-[40px] bg-surface p-7 text-center shadow-lift sm:p-10">
+              <Link
+                to="/"
+                className="group mx-auto flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline"
               >
-                {loading ? "Starting... (the first time takes a little longer)" : "Start watching"}
-              </button>
-            )}
-            {account === "no-database" && (
-              <p className="text-lg text-sun">
-                The database isn't set up on this website yet, so you can try the camera but your family won't see
-                anything.
+                <LogoMark />
+                CareNest
+              </Link>
+              <h1 className="text-4xl font-extrabold">
+                Phone <span className="text-gradient-brand">camera</span>
+              </h1>
+              <p className="text-xl text-muted">
+                Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a
+                few words, how things are going.
               </p>
-            )}
-            {!Stand.supported() && (
-              <p className="text-base text-white/90">
-                Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this
-                page in the Bluefy app.
+              <p className="rounded-2xl bg-mint px-4 py-3 text-lg font-bold text-ink">
+                Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or
+                pictures ever leave it.
               </p>
-            )}
+              {account === "signed-out" ? (
+                <div className="space-y-3">
+                  <p className="text-xl">Please sign in first, so your family can see the updates.</p>
+                  <Link to="/login" className={`${buttonVariants.primary} min-h-16 w-full text-2xl`}>
+                    Sign in
+                  </Link>
+                </div>
+              ) : (
+                <button
+                  onClick={startCamera}
+                  disabled={loading || account === "checking"}
+                  className={`${buttonVariants.primary} min-h-16 w-full text-2xl disabled:opacity-60`}
+                >
+                  {loading ? "Starting... (the first time takes a little longer)" : "Start watching"}
+                </button>
+              )}
+              {account === "no-database" && (
+                <p className="rounded-2xl bg-sun px-4 py-3 text-lg text-ink">
+                  The database isn't set up on this website yet, so you can try the camera but your family won't see
+                  anything.
+                </p>
+              )}
+              {!Stand.supported() && (
+                <p className="text-base text-muted">
+                  Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this
+                  page in the Bluefy app.
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -716,7 +727,7 @@ function SettingsPanel(props: {
   );
 
   return (
-    <div className="absolute inset-y-0 right-0 w-full max-w-sm space-y-4 overflow-y-auto bg-ink/95 p-4 text-white">
+    <div className="absolute inset-y-0 right-0 w-full max-w-sm space-y-4 overflow-y-auto bg-ink/95 p-5 text-white shadow-lift sm:rounded-l-[32px]">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-extrabold">Settings</h2>
         <Button onClick={close}>Close</Button>
