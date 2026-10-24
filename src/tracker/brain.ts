@@ -46,6 +46,11 @@ export interface FrameInput {
   camera: Angles;
   /** Where the user tapped (0-1 image coordinates), if they tapped this frame. */
   tap?: { x: number; y: number } | null;
+  /**
+   * Shapes the detector is less sure are people (someone covering their face, an odd
+   * pose). Only used to keep following the target right where it already is.
+   */
+  weak?: Box[];
 }
 
 export interface BrainOutput {
@@ -107,6 +112,11 @@ export class Brain {
   private onCoverOffset = 0;
   /** True while the cover is lost and the stand's radars steer instead of the camera. */
   private radarSteering = false;
+  /** Since when the target has only been seen as a weak detection (null = seen properly). */
+  private weakSince: number | null = null;
+  /** Someone who's been a steadily better match than the person we're on: since when, and their box. */
+  private betterSince: number | null = null;
+  private betterBox: Box | null = null;
 
   private followDir = 0; // +1 or -1, in servo degrees
   private followSpeed = 0;
@@ -135,7 +145,9 @@ export class Brain {
     this.note = "Released. Tap a person to lock on.";
   }
 
-  update(f: FrameInput): BrainOutput {
+  update(frameIn: FrameInput): BrainOutput {
+    const strongCount = frameIn.people.length;
+    const f = this.withWeakTarget(frameIn);
     const looks = f.people.map((p) => (f.image ? lookOf(f.image, p) : null));
     let target: Box | null = null;
     let match: number | null = null;
@@ -163,12 +175,52 @@ export class Brain {
     }
     if (this.mode === "searching" || this.mode === "following") match = this.bestMatch(looks).d;
 
+    // Seen properly this frame (not only as a weak detection)? Then the weak-detection clock restarts.
+    const seenStrong = target !== null && f.people.indexOf(target) >= 0 && f.people.indexOf(target) < strongCount;
+    if (seenStrong || (this.mode !== "tracking" && this.mode !== "hidden")) this.weakSince = null;
+
     this.prevT = f.t;
     this.prevCamera = { ...f.camera };
     const exitSide =
       this.mode === "following" ? ((Math.sign(this.followDir * this.settings.panSign) || 0) as -1 | 0 | 1) : 0;
     const matches = this.mode === "idle" ? looks.map(() => null) : looks.map((l) => this.dist(l));
     return { mode: this.mode, target, aim: this.aim, note: this.note, match, matches, exitSide };
+  }
+
+  /**
+   * The detector is less sure about someone covering their face or in an odd pose. A weak
+   * detection right where the target is (and still dressed like them) counts as them for a
+   * few seconds, so they don't "vanish" in plain view. Weak shapes anywhere else are ignored.
+   */
+  private withWeakTarget(f: FrameInput): FrameInput {
+    const weak = f.weak ?? [];
+    if (!weak.length || !f.image) return f;
+    let where: Box | null = null;
+    let overlap = 0;
+    if (this.mode === "tracking" && this.lastBox && f.t - this.lastSeenT < TUNING.coastMs) {
+      where = this.lastBox;
+      overlap = 0.3;
+    } else if (this.mode === "hidden" && this.coverBox) {
+      where = this.coverBox;
+      overlap = 0.4;
+    }
+    if (!where) return f;
+    if (this.weakSince !== null && f.t - this.weakSince > TUNING.weakMaxMs) return f;
+    let best: Box | null = null;
+    let bestOverlap = overlap;
+    for (const w of weak) {
+      if (f.people.some((p) => iou(p, w) > 0.3)) continue; // the same shape as a proper detection
+      const o = iou(w, where);
+      if (o > bestOverlap) {
+        bestOverlap = o;
+        best = w;
+      }
+    }
+    if (!best) return f;
+    const d = this.dist(lookOf(f.image, best));
+    if (d !== null && d > this.settings.matchLimit * TUNING.trackLookSlack) return f; // dressed differently
+    this.weakSince ??= f.t;
+    return { ...f, people: [...f.people, best] };
   }
 
   // ---------- picking someone ----------
@@ -234,13 +286,20 @@ export class Brain {
     // Jumping away from where we expect them needs a stronger match than re-finding
     // them after they're lost: in a crowd, a stranger often scores under matchLimit.
     if (best.i >= 0 && best.i !== i && best.d !== null && best.d <= limit * TUNING.switchStrict) {
-      const better = i < 0 || (di !== null && (di > limit || best.d + TUNING.switchMargin < di));
-      if (better) {
+      const muchBetter = i < 0 || (di !== null && (di > limit || best.d + TUNING.switchMargin < di));
+      // Better, but not by much (the one we're on also roughly matches)? Switch only if it
+      // stays that way for a moment, so a single lucky frame can't pull the box away.
+      const better = di !== null && best.d + TUNING.switchMarginSteady < di;
+      if (muchBetter || (better && this.steadilyBetter(f.t, f.people[best.i]))) {
         this.vel = { pan: 0, tilt: 0 };
+        this.betterSince = null;
         this.lockOn(f, best.i, i < 0 ? "Found you again." : "That's you over there. Switched back to you.");
         this.judge(f.t, best.d);
         return f.people[best.i];
       }
+      if (!better) this.betterSince = null;
+    } else {
+      this.betterSince = null;
     }
 
     if (i >= 0) {
@@ -265,6 +324,15 @@ export class Brain {
     if (side !== 0) this.startFollowing(f, side);
     else this.startHidden(f);
     return this.mode === "hidden" ? this.coverBox : null;
+  }
+
+  /** True once the same person (followed by their box) has been the better match for switchSteadyMs. */
+  private steadilyBetter(t: number, box: Box): boolean {
+    if (this.betterSince === null || !this.betterBox || iou(box, this.betterBox) < 0.3) {
+      this.betterSince = t; // someone new: start counting
+    }
+    this.betterBox = box;
+    return t - this.betterSince >= TUNING.switchSteadyMs;
   }
 
   /** Update everything we know after spotting the target (person `i`). */

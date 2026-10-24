@@ -2,8 +2,14 @@
 // It runs entirely on the phone (or PC): no video ever leaves the device.
 
 import { FilesetResolver, ObjectDetector } from "@mediapipe/tasks-vision";
+import { TUNING } from "./config.ts";
 import type { Box } from "./geometry.ts";
 import { clampBox } from "./geometry.ts";
+
+/** A person the detector found, with how sure it is (0-1). */
+export interface Detection extends Box {
+  score: number;
+}
 
 // Keep this the same as the @mediapipe/tasks-vision version in package.json.
 const MEDIAPIPE_VERSION = "1.1.1";
@@ -15,8 +21,11 @@ const MODEL_URL =
 export interface PersonDetector {
   /** "GPU" or "CPU": which part of the phone runs the model. */
   delegate: string;
-  /** Everyone in this frame, as boxes in 0-1 image coordinates. */
-  detect(frame: HTMLCanvasElement, timeMs: number): Box[];
+  /**
+   * Everyone in this frame, as boxes in 0-1 image coordinates, down to TUNING.weakScore.
+   * Under TUNING.personScore the detector is unsure (the page passes those as "weak").
+   */
+  detect(frame: HTMLCanvasElement, timeMs: number): Detection[];
   close(): void;
 }
 
@@ -29,8 +38,8 @@ export async function createPersonDetector(): Promise<PersonDetector> {
       const detector = await ObjectDetector.createFromOptions(files, {
         baseOptions: { modelAssetPath: MODEL_URL, delegate },
         runningMode: "VIDEO",
-        scoreThreshold: 0.35,
-        maxResults: 6,
+        scoreThreshold: TUNING.weakScore,
+        maxResults: 8, // room for unsure shapes without crowding out the sure ones
         categoryAllowlist: ["person"],
       });
       let lastTime = 0;
@@ -46,7 +55,8 @@ export async function createPersonDetector(): Promise<PersonDetector> {
           return result.detections.flatMap((d) => {
             const b = d.boundingBox;
             if (!b) return [];
-            return [clampBox({ x: b.originX / w, y: b.originY / h, w: b.width / w, h: b.height / h })];
+            const box = clampBox({ x: b.originX / w, y: b.originY / h, w: b.width / w, h: b.height / h });
+            return [{ ...box, score: d.categories[0]?.score ?? 0 }];
           });
         },
         close() {

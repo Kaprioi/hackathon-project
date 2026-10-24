@@ -62,7 +62,7 @@ A motorized stand that holds an iPhone, keeps one chosen person in view and poin
 | Adafruit ESP32 Feather V2 | Moves the servos, reads the radar(s), switches the mist | USB-C to a PC for uploading; a phone charger for the demo |
 | Pan servo (HS-422) | Left and right | Signal to pin 27 |
 | Tilt servo (HS-422) | Up and down | Signal to pin 33 |
-| Radar, SightLine: 2 × LD2410C over serial | Presence and which side is stronger | Left on RX/TX (GPIO 7/8), right on 32/14. The team has one radar until the second arrives: the firmware detects that at startup (`RADAR_COUNT`), and the single left radar then only reports presence |
+| Radar, SightLine: 2 × LD2410C over serial | Presence and which side is stronger | Left on RX/TX (GPIO 7/8), right on 32/14. **The event build has one radar** (no second one arrives in time): wired as the "left" radar on GPIO 7/8, but mounted centered under the phone, facing straight ahead, in a one-radar head (`radar_phone_head_1radar.stl`, from the 3D-mockup session; not in the repo yet). The firmware sees one radar at startup (`RADAR_COUNT` = auto) and then only reports presence |
 | Radar, single-radar fallback: 1 × LD2410C | OUT pin HIGH while someone is there | OUT to pin 32 |
 | MOSFET module | Switches the mist maker and fan | Signal from pin A0 (GPIO 26) |
 | 5V ultrasonic mist maker + 5V fan, in a tank beside the base | Makes the mist; the fan pushes it up a tube to the nozzle on the head | 5V through the MOSFET |
@@ -80,7 +80,7 @@ A motorized stand that holds an iPhone, keeps one chosen person in view and poin
 
 **Website states** (`../src/tracker/brain.ts`)
 - TAP A PERSON: boxes around everyone in view; tap one to pick them.
-- TRACKING: follows that person's body, so it keeps working when they turn away. A missed frame or a quick pass behind something is bridged by predicting their motion for 0.6 s.
+- TRACKING: follows that person's body, so it keeps working when they turn away. A missed frame or a quick pass behind something is bridged by predicting their motion for 0.6 s. A shape the detector is unsure about (confidence 0.2–0.35, like someone covering their face) still counts right where the target is, for up to 5 s, if the colours roughly match. If it ends up on the wrong person, it switches to someone who matches clearly better (by 0.15 at once, or by 0.07 held for 0.6 s).
 - HIDDEN: they vanished in the middle of the picture. Holds on the cover and follows it if it moves (it matches a small grey picture of the lump each frame); the radar confirms someone's inside. A person shape that stays on the moving cover for 0.5 s (walking around under a blanket, legs showing) is taken as them, whatever its colours. If it loses the cover for 1 s while the radar still senses someone, it stops sending moves so a two-radar stand steers by radar.
 - FOLLOWING: they left through the edge of the picture. Keeps turning that way at their speed (25–90°/s).
 - SEARCHING: not found there. Sweeps across the whole range once.
@@ -90,7 +90,7 @@ A motorized stand that holds an iPhone, keeps one chosen person in view and poin
 
 Vision: Google MediaPipe's EfficientDet-Lite0 person detector (`@mediapipe/tasks-vision` 1.1.1, runs on the phone's GPU), plus the clothing-colour look and the cover tracker, both written in this repo.
 
-Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on the page's Settings panel (saved in the browser): camera side, flip left/right and up/down, match strictness (0.38), aim height (0.35 = chest), camera width (65°), dead zone (2.5°).
+Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on the page's Settings panel (saved in the browser): camera side, flip left/right and up/down, match strictness (0.38), aim height (0.35 = chest), camera width (65°), dead zone (2.5°), and "Keep people upright for the AI" (Auto by default: with the phone sideways and auto-rotate off, the motion sensor says which way is up and the picture is turned before detection; `orientation.ts`).
 
 **Keep firmware and website in sync.** If you change a pin, a UUID, the command format or the angle limits, change the firmware, `../src/tracker/config.ts` and this section in the same session.
 

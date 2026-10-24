@@ -23,10 +23,12 @@ import {
   TUNING,
 } from "./config.ts";
 import { Cloud } from "./cloud.ts";
-import type { PersonDetector } from "./detector.ts";
+import type { Detection, PersonDetector } from "./detector.ts";
 import { createPersonDetector } from "./detector.ts";
 import type { MovementEvent } from "./events.ts";
 import { Reporter } from "./events.ts";
+import type { Turn } from "./orientation.ts";
+import { boxFromUpright, deviceTurn, fromUpright, pictureTurn, screenAngle, toUpright } from "./orientation.ts";
 import type { Angles, Box } from "./geometry.ts";
 import { centerX, centerY, contains } from "./geometry.ts";
 import { ServoModel } from "./servoModel.ts";
@@ -45,6 +47,8 @@ interface Snapshot {
   people: number;
   mistOn: boolean;
   portrait: boolean;
+  /** How far the camera picture is being turned for the AI (degrees counterclockwise). */
+  turn: Turn;
 }
 
 interface LogLine {
@@ -194,6 +198,10 @@ function contentRect(cw: number, ch: number, vw: number, vh: number) {
   return { x: (cw - w) / 2, y: (ch - h) / 2, w, h };
 }
 
+/**
+ * Draws the boxes over the video. Boxes come in the upright picture the AI saw; `turn`
+ * says how that picture was turned from the camera's, so they're turned back here.
+ */
 function drawOverlay(
   canvas: HTMLCanvasElement,
   video: HTMLVideoElement,
@@ -201,6 +209,7 @@ function drawOverlay(
   out: BrainOutput,
   matchLimit: number,
   mirrored: boolean,
+  turn: Turn,
 ): void {
   const dpr = window.devicePixelRatio || 1;
   const cw = canvas.clientWidth;
@@ -214,13 +223,15 @@ function drawOverlay(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cw, ch);
   const r = contentRect(cw, ch, video.videoWidth, video.videoHeight);
-  // A mirrored (selfie) picture is flipped left to right on screen, so flip the boxes too.
-  const toScreen = (b: Box) => ({
-    x: r.x + (mirrored ? 1 - b.x - b.w : b.x) * r.w,
-    y: r.y + b.y * r.h,
-    w: b.w * r.w,
-    h: b.h * r.h,
-  });
+  // Back to the camera's own picture, then flipped left to right if it's shown mirrored (selfie).
+  const toScreen = (upright: Box) => {
+    const b = boxFromUpright(upright, turn);
+    return { x: r.x + (mirrored ? 1 - b.x - b.w : b.x) * r.w, y: r.y + b.y * r.h, w: b.w * r.w, h: b.h * r.h };
+  };
+  const pointToScreen = (x: number, y: number) => {
+    const p = fromUpright(x, y, turn);
+    return { x: r.x + (mirrored ? 1 - p.x : p.x) * r.w, y: r.y + p.y * r.h };
+  };
 
   // Everyone the detector sees: thin white boxes, each labelled with how much they
   // look like the target (0.00 = same clothes colours; under "Match strictness" = counts as them).
@@ -252,17 +263,17 @@ function drawOverlay(
     ctx.setLineDash([]);
   }
 
-  // Ran out of the picture: a big arrow on that side.
-  const side = mirrored ? -out.exitSide : out.exitSide;
-  if (out.mode === "following" && side !== 0) {
-    const x = side < 0 ? r.x + 40 : r.x + r.w - 40;
-    const y = r.y + r.h / 2;
-    const d = side < 0 ? -1 : 1;
+  // Ran out of the picture: a big arrow on that side (left/right of the upright picture).
+  if (out.mode === "following" && out.exitSide !== 0) {
+    const left = out.exitSide < 0;
+    const tip = pointToScreen(left ? 0.02 : 0.98, 0.5);
+    const a = pointToScreen(left ? 0.1 : 0.9, 0.42);
+    const b = pointToScreen(left ? 0.1 : 0.9, 0.58);
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(x + d * 24, y);
-    ctx.lineTo(x - d * 16, y - 34);
-    ctx.lineTo(x - d * 16, y + 34);
+    ctx.moveTo(tip.x, tip.y);
+    ctx.lineTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
     ctx.closePath();
     ctx.fill();
   }
@@ -437,6 +448,8 @@ export default function TrackerPage() {
   const lastAimRef = useRef<Angles | null>(null);
   const testingRef = useRef(false); // true while the motor test buttons are in charge
   const mirroredRef = useRef(settingsRef.current.camera === "front");
+  const deviceTurnRef = useRef<Turn | null>(null); // which way the phone is turned, from its motion sensor
+  const turnRef = useRef<Turn>(0); // how far the camera picture is turned for the AI right now
   const reporterRef = useRef<Reporter>(new Reporter());
   const cloudRef = useRef<Cloud | null>(null);
   const sendChainRef = useRef<Promise<void>>(Promise.resolve());
@@ -469,6 +482,7 @@ export default function TrackerPage() {
     people: 0,
     mistOn: false,
     portrait: false,
+    turn: 0,
   });
 
   const canFullscreen = !!document.fullscreenEnabled; // Android and PCs; not iPhone
@@ -484,6 +498,19 @@ export default function TrackerPage() {
     return () => {
       stand.onChange = () => {};
     };
+  }, []);
+
+  // Which way the phone is really turned, from its motion sensor. Then a sideways picture
+  // (phone sideways, auto-rotate off) can be turned upright for the AI. Android only:
+  // iPhones ask permission first, so there the picture only turns with auto-rotate on.
+  useEffect(() => {
+    const onMotion = (e: DeviceMotionEvent) => {
+      const g = e.accelerationIncludingGravity;
+      if (g?.x == null || g.y == null) return;
+      deviceTurnRef.current = deviceTurn(g.x, g.y, deviceTurnRef.current);
+    };
+    window.addEventListener("devicemotion", onMotion);
+    return () => window.removeEventListener("devicemotion", onMotion);
   }, []);
 
   // Check whether someone is signed in (the family page only works for signed-in people).
@@ -743,29 +770,53 @@ export default function TrackerPage() {
       const t = performance.now();
       const vw = video.videoWidth;
       const vh = video.videoHeight;
-      const longSide = Math.max(vw, vh);
+      const s = settingsRef.current;
+
+      // Turn the picture so people stand upright for the AI. With the phone sideways and
+      // auto-rotate off, the camera picture arrives on its side; turned, the AI finds
+      // people it would otherwise miss. Everything after this works in the upright picture.
+      const turn: Turn = s.turn === "auto" ? pictureTurn(deviceTurnRef.current, screenAngle()) : (Number(s.turn) as Turn);
+      turnRef.current = turn;
+      const sideways = turn === 90 || turn === 270;
+      const uw = sideways ? vh : vw; // the upright picture's size
+      const uh = sideways ? vw : vh;
+      const longSide = Math.max(uw, uh);
 
       // The detector gets a smaller copy, 640 on its long side (faster than the full-size
       // frame). Measuring the long side keeps an upright phone as fast as a sideways one.
       const dScale = Math.min(1, DETECT_WIDTH / longSide);
-      const dw = Math.max(1, Math.round(vw * dScale));
-      const dh = Math.max(1, Math.round(vh * dScale));
+      const dw = Math.max(1, Math.round(uw * dScale));
+      const dh = Math.max(1, Math.round(uh * dScale));
       if (detectCanvas.width !== dw || detectCanvas.height !== dh) {
         detectCanvas.width = dw;
         detectCanvas.height = dh;
       }
-      dctx.drawImage(video, 0, 0, dw, dh);
-      let people: Box[] = [];
+      if (turn === 0) {
+        dctx.drawImage(video, 0, 0, dw, dh);
+      } else {
+        dctx.save();
+        dctx.translate(dw / 2, dh / 2);
+        dctx.rotate((-turn * Math.PI) / 180); // counterclockwise
+        const cw = sideways ? dh : dw; // the camera picture's size before turning
+        const ch = sideways ? dw : dh;
+        dctx.drawImage(video, -cw / 2, -ch / 2, cw, ch);
+        dctx.restore();
+      }
+      let found: Detection[] = [];
       try {
-        people = detector.detect(detectCanvas, t);
+        found = detector.detect(detectCanvas, t);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
+      // Sure detections are people. Unsure ones (covering their face, an odd pose) only
+      // help the brain keep the target it already has; they aren't drawn or reported.
+      const people: Box[] = found.filter((d) => d.score >= TUNING.personScore);
+      const weak: Box[] = found.filter((d) => d.score < TUNING.personScore);
 
       // A smaller copy again (320 on its long side) for clothes colours and the cover tracker.
       const aScale = ANALYSIS_WIDTH / longSide;
-      const aw = Math.max(1, Math.round(vw * aScale));
-      const ah = Math.max(1, Math.round(vh * aScale));
+      const aw = Math.max(1, Math.round(uw * aScale));
+      const ah = Math.max(1, Math.round(uh * aScale));
       if (analysis.width !== aw || analysis.height !== ah) {
         analysis.width = aw;
         analysis.height = ah;
@@ -783,8 +834,7 @@ export default function TrackerPage() {
 
       // Held upright, the picture's width is the camera's narrow side, so swap the two
       // camera angles. Then a step to the side counts the same either way up.
-      const s = settingsRef.current;
-      const portrait = vh > vw;
+      const portrait = uh > uw;
       brainRef.current.settings = portrait ? { ...s, fovH: s.fovV, fovV: s.fovH } : s;
 
       const tap = tapRef.current;
@@ -796,9 +846,10 @@ export default function TrackerPage() {
         radar: stand.connected ? stand.radar : null,
         camera,
         tap,
+        weak,
       });
 
-      for (const event of reporterRef.current.update(t, people, vw / vh)) report(event);
+      for (const event of reporterRef.current.update(t, people, uw / uh)) report(event);
 
       // A short buzz when a tap locks on (Android phones; iPhones can't vibrate from a web page).
       if (tap && out.mode === "tracking" && out.target) {
@@ -825,7 +876,7 @@ export default function TrackerPage() {
       stand.setMist(mistOn);
 
       if (overlayRef.current)
-        drawOverlay(overlayRef.current, video, people, out, settingsRef.current.matchLimit, mirroredRef.current);
+        drawOverlay(overlayRef.current, video, people, out, s.matchLimit, mirroredRef.current, turn);
 
       frames++;
       if (t - fpsStart > 1000) {
@@ -849,6 +900,7 @@ export default function TrackerPage() {
           people: people.length,
           mistOn,
           portrait,
+          turn,
         });
       }
     };
@@ -872,11 +924,11 @@ export default function TrackerPage() {
     if (!video?.videoWidth) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const r = contentRect(rect.width, rect.height, video.videoWidth, video.videoHeight);
-    const sx = (down.x - rect.left - r.x) / r.w;
-    const y = (down.y - rect.top - r.y) / r.h;
-    const x = mirroredRef.current ? 1 - sx : sx;
-    if (x < 0 || x > 1 || y < 0 || y > 1) return;
-    tapRef.current = { x, y };
+    const sx = (down.x - rect.left - r.x) / r.w; // in the picture as shown on screen
+    const sy = (down.y - rect.top - r.y) / r.h;
+    if (sx < 0 || sx > 1 || sy < 0 || sy > 1) return;
+    // Undo the mirroring to get the camera's own picture, then turn it like the AI's picture.
+    tapRef.current = toUpright(mirroredRef.current ? 1 - sx : sx, sy, turnRef.current);
     setRipple({ x: down.x - rect.left, y: down.y - rect.top, key: performance.now() });
   };
 
@@ -1093,6 +1145,7 @@ export default function TrackerPage() {
           cameraBusy={loading}
           mirrored={mirrored}
           fullscreen={canFullscreen ? { on: fullscreen, toggle: toggleFullscreen } : null}
+          turnNow={snap.turn}
         />
       )}
 
@@ -1171,8 +1224,10 @@ function SettingsPanel(props: {
   mirrored: boolean;
   /** Full screen on/off, where the browser allows it (Android and PCs, not iPhone). */
   fullscreen: { on: boolean; toggle: () => void } | null;
+  /** How far the picture is turned for the AI right now. */
+  turnNow: Turn;
 }) {
-  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen } = props;
+  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow } = props;
   // The test buttons go by the screen. On a mirrored picture the screen's left is the camera's right.
   const side = mirrored ? -1 : 1;
 
@@ -1239,6 +1294,27 @@ function SettingsPanel(props: {
             <p className="text-base text-white/90">
               Front for the SightLine stand, where the screen faces the person. The front camera is shown mirrored, like
               a selfie.
+            </p>
+          </fieldset>
+
+          <fieldset className="space-y-2">
+            <legend className="font-semibold">Keep people upright for the AI</legend>
+            <Choice
+              label="Turn the picture"
+              options={[
+                ["auto", "Auto"],
+                ["0", "0°"],
+                ["90", "90°"],
+                ["180", "180°"],
+                ["270", "270°"],
+              ]}
+              value={s.turn}
+              onChange={(turn) => update({ turn })}
+            />
+            <p className="text-base text-white/90">
+              {s.turn === "auto"
+                ? `Auto uses the phone's motion sensor, so a phone held sideways with auto-rotate off still works. Now: ${turnNow === 0 ? "not turned" : `turned ${turnNow}°`}.`
+                : "Turned by hand. Pick the turn that finds people best, or go back to Auto."}
             </p>
           </fieldset>
 

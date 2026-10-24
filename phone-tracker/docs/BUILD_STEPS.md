@@ -90,7 +90,7 @@ On the PC (testing):
 
 On a phone, held in your hand (a quick test before the stand):
 
-- Either way up works. Pick **Front** or **Back** on the start screen; while it runs, **Flip** in the bottom bar switches cameras (and lets go of the person, since the picture changes).
+- Either way up works, also sideways with auto-rotate off on Android: the page reads the motion sensor and turns the picture upright for the AI (Settings → "Keep people upright for the AI" shows what it's doing; pick a turn by hand if Auto gets it wrong). On an iPhone, turn auto-rotate on instead. Pick **Front** or **Back** on the start screen; while it runs, **Flip** in the bottom bar switches cameras (and lets go of the person, since the picture changes).
 - Tap a person with a quick tap. A thumb resting on the screen or a drag is ignored. Android phones buzz briefly when it locks on.
 - **Release** sits next to the state at the top left. **Show log** there lists the last decisions.
 - **Full screen** (Android and PCs) hides the browser bars. iPhones don't allow it from a web page.
@@ -132,6 +132,7 @@ Only if the website can't be used on the iPhone. It has no mist control and no F
 | "The camera is blocked for this page" | Camera permission was refused once | Chrome: tap the icon left of the address → Permissions → Camera → Allow; reload. Bluefy: as above |
 | "The camera stopped" | Another app took the camera (FaceTime, the Camera app) | Close that app, then **Restart camera** |
 | "Turn the phone sideways" banner | Rotation lock on | Turn it off in Control Center |
+| Misses people, or one big box around several, with the phone sideways | The picture reaches the AI on its side (auto-rotate off, and no motion sensor reading: iPhone, or Auto turned off) | Turn auto-rotate on, or Settings → "Keep people upright for the AI" → pick 90° or 270° |
 | Very low fps | Slow graphics, or the phone is hot | Close other apps; check the fps chip |
 | Motors twitch or buzz | ESP32 GND not on the – rail | Add the GND wire |
 | ESP32 restarts when a motor moves | Motors powered from the ESP32 | Move both red wires to the 5V rail |

@@ -45,6 +45,11 @@ export interface Settings {
   deadZoneDeg: number;
   /** How alike two people must look to count as the same person (lower = stricter). Tune it with the on-screen number. */
   matchLimit: number;
+  /**
+   * How far to turn the camera picture (counterclockwise) so people stand upright for the AI.
+   * "auto" uses the phone's motion sensor (needed when the phone is sideways with auto-rotate off).
+   */
+  turn: "auto" | "0" | "90" | "180" | "270";
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -56,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   aimHeight: 0.35,
   deadZoneDeg: 2.5,
   matchLimit: 0.38,
+  turn: "auto",
 };
 
 /** Timing and behaviour of the tracking brain. */
@@ -87,8 +93,22 @@ export const TUNING = {
   lookUpdate: 0.02,
   /** Follow someone who only "sort of" looks like the target (over matchLimit) for at most this long. */
   doubtMs: 1500,
-  /** Switch to another person if they look this much more like the target than the one we're on. */
+  /** Switch to another person straight away if they look this much more like the target than the one we're on. */
   switchMargin: 0.15,
+  /**
+   * ...or if they look at least this much more like them, steadily, for switchSteadyMs. On
+   * Apple's phone test the wrong person matched 0.37 and the right one 0.23: only 0.14 apart.
+   */
+  switchMarginSteady: 0.07,
+  switchSteadyMs: 600,
+  /**
+   * The detector's confidence (0-1) needed to count as a person. Between `weak` and `person`
+   * (someone covering their face, an odd pose) only keeps following the target where it is.
+   */
+  personScore: 0.35,
+  weakScore: 0.2,
+  /** Follow the target on weak detections alone for at most this long. */
+  weakMaxMs: 5000,
   /**
    * ...and only if their match is under matchLimit x this. Measured on a busy street video:
    * strangers scored under 0.38 in 9% of pairs but under 0.30 in only 1.4%.
