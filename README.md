@@ -96,7 +96,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
 3. Set up the database (once per Supabase project). The tables live in `supabase/migrations/`. Either:
 
-   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, or
+   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, then do the same with `supabase/migrations/20261024010000_family_fixes.sql` (it makes adding family members safer: people are found by the email they signed up with, nobody can change the email on their profile, and the answer never reveals whether an email has an account), or
    - with the [Supabase CLI](https://supabase.com/docs/guides/cli): `supabase link --project-ref <your-ref>` (ours is `egraxwvpbqmjfybdbjsg`) then `supabase db push`.
 
    What it creates:
@@ -154,6 +154,6 @@ Where family members see how things are. After logging in, the login page brings
 
 - **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns peach with a "please call or visit" note if the phone thinks someone may have fallen, and warns you if the phone has not checked in for over 3 minutes (it normally sends a heartbeat every minute).
 - **Recent news**: the last 10 events with their times.
-- **Add a family member** (only for the circle's owner): type the email of someone who already has a CareNest account, and they will see the same page.
+- **Add a family member** (only for the circle's owner): type the email of someone who already has a CareNest account, and they will see the same page. For privacy the page gives the same answer whether or not that email has an account. A family member's page shows the circle with the newest news, so they see the phone of the person they were added for.
 
 It updates by itself through Supabase Realtime, so there is no need to reload. To try the whole flow: sign in on a phone, open `/tracker` and press **Start watching**; sign in with the same account on a computer and open `/dashboard`. The plain-words logic is in `src/family/status.ts` and is tested by `npm test`.

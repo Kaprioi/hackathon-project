@@ -93,20 +93,24 @@ function Family({
     return () => clearInterval(t);
   }, []);
 
-  // Find the care circle: the one you own first, otherwise the first one you were added to.
+  // Find the care circle: the one with the newest news (so family members see the
+  // circle they were added to), otherwise the one you own.
   useEffect(() => {
     let cancelled = false;
-    supabase!
-      .from("care_circles")
-      .select("id, name, owner_id")
-      .order("created_at", { ascending: true })
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) return setProblem("We couldn't reach the database. Please check your internet and reload the page.");
-        const mine = data?.find((c) => c.owner_id === userId) ?? data?.[0];
-        if (!mine) return setProblem("Your account has no care circle yet. Has the database been set up? See the README.");
-        setCircle(mine as Circle);
-      });
+    const db = supabase!;
+    Promise.all([
+      db.from("care_circles").select("id, name, owner_id").order("created_at", { ascending: true }),
+      db.from("movement_events").select("circle_id").order("created_at", { ascending: false }).limit(1),
+    ]).then(([circles, newest]) => {
+      if (cancelled) return;
+      if (circles.error || newest.error)
+        return setProblem("We couldn't reach the database. Please check your internet and reload the page.");
+      const data = circles.data ?? [];
+      const withNews = data.find((c) => c.id === newest.data?.[0]?.circle_id);
+      const chosen = withNews ?? data.find((c) => c.owner_id === userId) ?? data[0];
+      if (!chosen) return setProblem("Your account has no care circle yet. Has the database been set up? See the README.");
+      setCircle(chosen as Circle);
+    });
     return () => {
       cancelled = true;
     };
@@ -284,13 +288,11 @@ function AddFamily({ circleId }: { circleId: string }) {
     e.preventDefault();
     setBusy(true);
     setMessage(null);
-    const { data, error } = await supabase!.rpc("add_family_member", { target_circle: circleId, member_email: email });
+    const { error } = await supabase!.rpc("add_family_member", { target_circle: circleId, member_email: email });
     setBusy(false);
     if (error) setMessage({ ok: false, text: "Sorry, that didn't work. Please try again." });
-    else if (!data)
-      setMessage({ ok: false, text: "We couldn't find an account with that email. Ask them to create one on the Sign in page first." });
     else {
-      setMessage({ ok: true, text: `Done! ${email} can now see this family page.` });
+      setMessage({ ok: true, text: "If that person has a CareNest account, they can now see this family page." });
       setEmail("");
     }
   }
