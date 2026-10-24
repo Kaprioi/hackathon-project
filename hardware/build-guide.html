@@ -133,7 +133,18 @@ dl.trouble { display: grid; gap: 12px; margin: 0; }
 dl.trouble dt { font-weight: 700; }
 dl.trouble dd { margin: 2px 0 0; color: var(--muted); }
 .files li { margin-bottom: 4px; }
-@media (prefers-reduced-motion: reduce) { .status::before { animation: none !important; } }
+.asm { position: absolute; left: 12px; right: 12px; bottom: 12px; display: grid; gap: 6px; max-height: 50%; overflow: auto; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 6px 24px rgb(0 0 0 / 0.14); }
+.asm-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.asm h3 { font-size: 1.05rem; }
+.asm p { font-size: 0.92rem; }
+.asm-bar { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.asm-bar i { display: block; height: 100%; background: var(--accent); transition: width 0.25s; }
+.asm-nav { display: flex; gap: 8px; justify-content: flex-end; }
+.asm-nav .btn:disabled { opacity: 0.4; cursor: default; }
+.asm-list { margin: 0; padding-left: 1.5em; display: grid; gap: 10px; }
+.asm-list li::marker { font-family: var(--font-display); font-weight: 800; color: var(--accent); }
+.linkbtn { font: inherit; font-size: 0.88rem; font-weight: 700; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .status::before { animation: none !important; } .asm-bar i { transition: none; } }
 </style>
 
 <div class="wrap">
@@ -199,6 +210,13 @@ dl.trouble dd { margin: 2px 0 0; color: var(--muted); }
         </ul>
       </section>
 
+      <section aria-labelledby="assemble">
+        <h2 id="assemble">How the pieces go together</h2>
+        <p class="eyebrow">3D-printed build</p>
+        <p>The physical build order, from the box floor up to the phone. The full steps after this also cover loading the program, alerts and testing.</p>
+        <ol class="asm-list" id="asmList"></ol>
+      </section>
+
       <section aria-labelledby="build">
         <h2 id="build">Build it, step by step</h2>
         <p class="lede" style="font-size:1rem">About 3 hours of hands-on work. Pick your version below; the steps and the 3D model change to match. Tick each step off as you go; your progress saves in this browser. Use <b>Show in 3D</b> to highlight the parts each step uses.</p>
@@ -232,16 +250,25 @@ dl.trouble dd { margin: 2px 0 0; color: var(--muted); }
           </li>
 
           <li class="step" data-parts="feather">
-            <header><h3>Load the program onto the Feather</h3><span class="time">15 min</span></header>
-            <p>Do this before wiring anything, so you know the brain works. Your Mac already has the Arduino tools installed. Plug the Feather into your laptop with the USB-C cable, then type in a terminal:</p>
+            <header><h3>Load the program onto the Feather</h3><span class="time">20 min</span></header>
+            <p>Do this before wiring anything, so you know the brain works. Plug the Feather in <b>on its own</b>: out of the breadboard, nothing attached, not resting on anything metal. Use a USB-C cable that carries data; many only charge.</p>
+            <div class="warn"><b>Keep pin 12 clear.</b> If anything pulls the pin labeled <b>12</b> high while the board powers on, its memory runs at the wrong voltage and every upload fails with "MD5 of file does not match data in flash". Never put a wire in pin 12's breadboard row, now or later.</div>
+            <p><b>First time on a Mac: install the USB driver.</b> The Feather talks over USB through a WCH chip, and the Mac's built-in driver for it garbles uploads.</p>
+            <ol>
+              <li>On <a href="https://learn.adafruit.com/how-to-install-drivers-for-wch-usb-to-serial-chips-ch9102f-ch9102/mac-driver-installation" target="_blank" rel="noopener">Adafruit's driver page</a>, download <b>CH341SER_MAC.ZIP</b>. It must say MAC; <code>CH343SER.zip</code> is the Windows driver.</li>
+              <li>Unzip it, open <b>CH34xVCPDriver.dmg</b>, and drag the CH34xVCPDriver app into <b>Applications</b>. Installing straight from the disk image doesn't work.</li>
+              <li>Open CH34xVCPDriver from Applications and click <b>Install</b>.</li>
+              <li>System Settings → General → Login Items &amp; Extensions → <b>Driver Extensions</b>: switch <b>CH34xVCPDriver</b> on. Then unplug the Feather and plug it back in.</li>
+            </ol>
+            <p>Then in a terminal, run these one line at a time. The second line finds the Feather's port by itself:</p>
             <div class="codeblock"><pre>cd ~/github/hackathon-project/hardware/firmware/sightline
-cp secrets.example.h secrets.h
-arduino-cli board list</pre><button class="copy">Copy</button></div>
-            <p>Note the port that appears (something like <code>/dev/cu.usbserial-110</code>) and use it here:</p>
-            <div class="codeblock"><pre>arduino-cli compile --upload -p /dev/cu.usbserial-110 --fqbn esp32:esp32:adafruit_feather_esp32_v2 .
-arduino-cli monitor -p /dev/cu.usbserial-110 -c baudrate=115200</pre><button class="copy">Copy</button></div>
+PORT=/dev/$(ls /dev | grep -m1 wchusbserial) && echo "Feather is on $PORT" || echo "Feather not found: check the driver, the cable, and replug it"
+cp -n secrets.example.h secrets.h
+arduino-cli compile --upload -p $PORT --fqbn esp32:esp32:adafruit_feather_esp32_v2 .
+arduino-cli monitor -p $PORT -c baudrate=115200</pre><button class="copy">Copy</button></div>
+            <p><code>PORT</code> only lasts in that terminal window, so in a new window run the first two lines again. If you only ever see <code>/dev/cu.usbserial-…</code> and never <code>wchusbserial</code>, the driver isn't switched on yet.</p>
             <p>Teammates without the tools can use the Arduino IDE instead: add the ESP32 boards, install the <b>ESP32Servo</b> and <b>ld2410</b> libraries, pick <b>Adafruit Feather ESP32 V2</b>, then click Upload. Or just ask Claude in herdr to "flash the SightLine firmware".</p>
-            <div class="check"><b>Check:</b> the monitor prints "Left radar NOT found" and "Right radar NOT found". That's expected for now, and it means the program is running.</div>
+            <div class="check"><b>Check:</b> the upload ends with "Hash of data verified", and the monitor prints lines like <code>L=  0 R=  0 pan= 61 … SEARCHING WiFi=off</code>. With no radars connected that's expected, and it means the program is running. Press the Feather's <b>Reset</b> button to also see the "Left radar NOT found" startup lines.</div>
             <div class="step-foot"><button class="btn show3d">Show in 3D</button><label class="done-toggle"><input type="checkbox"> Done</label></div>
           </li>
 
@@ -419,7 +446,8 @@ arduino-cli monitor -p /dev/cu.usbserial-110 -c baudrate=115200</pre><button cla
         <dl class="trouble">
           <div><dt>"Radar NOT found" after wiring</dt><dd>TX and RX are probably swapped, or VCC isn't on the 5V rail. Check the labels printed on the radar itself.</dd></div>
           <div><dt>Servos twitch or the Feather restarts</dt><dd>The grounds aren't shared. The Feather GND must connect to the blue rail.</dd></div>
-          <div><dt>No port shows up in <code>board list</code></dt><dd>Try a different USB-C cable; many are charge-only.</dd></div>
+          <div><dt>"Feather not found", or no port shows up</dt><dd>Try a different USB-C cable, since many are charge-only, and plug straight into the Mac, not a hub. If only <code>/dev/cu.usbserial-…</code> appears, switch the CH34xVCPDriver driver extension on.</dd></div>
+          <div><dt>Upload fails with "MD5 of file does not match data in flash"</dt><dd>Something is pulling pin 12 high. Take the Feather out of the breadboard, plug in only USB-C, and upload again. If it still fails, install the Mac USB driver from the upload step.</dd></div>
           <div><dt>Head points the wrong way when centered</dt><dd>Take the servo horn off, rotate it one spline, and put it back on.</dd></div>
           <div><dt>Head droops or servos buzz with the phone on</dt><dd>The phone's weight isn't over the tilt joint. Re-center it front to back, or make sure the shelf holds it close to the backplate.</dd></div>
           <div><dt>FaceTime doesn't pick up</dt><dd>Check that Auto-Answer Calls is on, that the caregiver is saved as a contact on the turret phone, and that the turret phone is online.</dd></div>
@@ -455,6 +483,52 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 
+// ---------- assembly order for the 3D-printed build (bottom up) ----------
+// add: parts that appear at this step; focus: parts to light up (defaults to add);
+// lift: hold the lid assembly up off the box while it's being built.
+const ASSEMBLY = [
+  { title: "Nut into the floor", add: ["box", "nut"],
+    text: "Drop one 1/4\"-20 hex nut into the six-sided pocket in the middle of the box floor. The breadboard goes on top and holds it in; later a tripod or carriage bolt screws up into it." },
+  { title: "Breadboard on the floor", add: ["breadboard"],
+    text: "Peel the backing off the breadboard and press it flat onto the box floor, long side running left to right." },
+  { title: "Feather onto the breadboard", add: ["feather"],
+    text: "Line the Feather's pins up so it straddles the breadboard's middle gap, with its USB-C end toward the slot in the box wall. Press down evenly on both ends until it's fully seated." },
+  { title: "Power jack in the wall", add: ["jack"],
+    text: "Screw a red wire into the barrel adapter's + terminal and a black wire into −. Push the adapter into the round hole in the end wall from inside, and hot glue it if it's loose." },
+  { title: "Plug in the wires", add: [], focus: ["breadboard", "feather", "jack"], xray: true,
+    text: "Do all the breadboard wiring now, while it's easy to reach. Follow the Full wiring table further down this page. Leave the servo and radar wires loose and long; they go up through the lid later." },
+  { title: "Center both servos", add: [], focus: ["feather"], xray: true,
+    text: "Before any bracket goes on, plug both servos into their jumpers, then power on the Feather (USB-C) and the 5V supply. The self-test ends with both servos at center. Unplug the power, and from now on don't twist the servo shafts by hand." },
+  { title: "Pan servo into the lid", add: ["lid", "panServo"], lift: 1,
+    text: "With the lid off the box, lower the pan servo into the rectangular cutout from the top. The body hangs below, the four tabs rest on the lid, and the round shaft sits toward the middle. Screw the tabs down with the kit's servo screws." },
+  { title: "Pan bracket onto the shaft", add: ["panBracket"], lift: 1,
+    text: "Press the round servo horn onto the pan shaft so the bracket will face straight forward, and fix it with the small screw in its center. Bolt the kit's U-shaped bracket onto the horn with its arms pointing up; the kit's instruction sheet shows which holes." },
+  { title: "Tilt servo into the bracket", add: ["tiltServo"], lift: 1,
+    text: "Set the tilt servo between the U-bracket's two arms, lying on its side with its shaft pointing left or right, and screw its tabs to the bracket." },
+  { title: "Tilt bracket over the top", add: ["tiltBracket"], lift: 1,
+    text: "Fit the C-shaped bracket over the tilt servo: one side onto the tilt servo's horn (horn screw in the center), the other onto the pivot on the opposite side. Its flat top should face up and sit level." },
+  { title: "Radars into the head", add: ["head", "radarL", "radarR"], lift: 1,
+    text: "Slide each radar down into its slot in the printed head, antenna pattern facing out through the window and pins at the bottom. Push the female ends of the radar jumpers onto the pins." },
+  { title: "Head onto the bracket", add: [], focus: ["head", "tiltBracket"], lift: 1,
+    text: "Set the head on the C-bracket's top plate with its windows facing forward, and fix it with two M3 screws through the slots or with foam tape." },
+  { title: "Feed the wires and close the lid", add: [], focus: ["lid"], lift: 0,
+    text: "Thread the radar and tilt-servo wires down through the round hole in the lid, check every jumper is still seated, then press the lid on. Its lip drops inside the box walls." },
+  { title: "Phone into its case", add: ["phone"],
+    text: "Once the glued case has cured for at least an hour, snap the iPhone in. Run its Lightning cable down through the wire hole with a loose loop, so the head can turn fully both ways." },
+  { title: "Mount it and power on", add: [], focus: [], fans: true,
+    text: "Screw the box onto a camera tripod, or onto a carriage bolt pushed up through a hole in a wooden board. Plug in the 5V supply and USB-C: the head looks left, right, nods, then settles facing forward." },
+];
+
+function renderAssemblyList() {
+  const list = document.getElementById("asmList");
+  if (!list || list.childElementCount) return;
+  ASSEMBLY.forEach((s, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<b>${s.title}.</b> ${s.text} `;
+    list.appendChild(li);
+  });
+}
+
 // Copy buttons
 document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", () => {
   const text = b.previousElementSibling.textContent;
@@ -470,6 +544,7 @@ function setMode(m) {
   store.set("sightline-mode", m);
   document.querySelectorAll("[data-mode]").forEach((el) => (el.hidden = el.dataset.mode !== m));
   document.querySelectorAll(".mode button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.set === m)));
+  renderAssemblyList();
   onModeChange(m);
 }
 document.querySelectorAll(".mode button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.set)));
