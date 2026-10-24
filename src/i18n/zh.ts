@@ -360,6 +360,19 @@ const zh: Record<string, string> = {
   Until: "到",
   'A possible fall always shows in "Right now", even in quiet hours.': "即使在安静时段，可能跌倒也总会显示在“现在”里。",
   "Alerts by phone message or email are coming later.": "短信或邮件提醒以后会推出。",
+  "Spoken alerts": "语音提醒",
+  "Say new alerts out loud on this device.": "在这台设备上把新的提醒读出来。",
+  "Tap to turn spoken alerts back on": "点一下，重新打开语音提醒",
+  'A possible fall is always said out loud, even in quiet hours, and again after 30 seconds unless someone presses "I\'m checking on it". Keep this page open and the volume up.':
+    "可能跌倒总会读出来，即使在安静时段也一样；如果30秒内没有人点“我来确认”，会再读一遍。请保持这个页面打开，并把音量调高。",
+  "Spoken alerts are on.": "语音提醒已打开。",
+  "CareNest alert.": "CareNest 提醒。",
+  "Reminder from CareNest.": "CareNest 再次提醒。",
+  "Please check on {who}.": "请看看{who}是否安好。",
+  "Play today's summary": "播放今天的总结",
+  Stop: "停止",
+  "Here is today so far for {who}.": "这是{who}今天到目前为止的情况。",
+  "There is no news from the phone camera yet today.": "今天手机摄像头还没有任何消息。",
 
   // ----- Care profile -----
   "About {name}": "关于{name}",

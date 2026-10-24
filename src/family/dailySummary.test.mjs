@@ -4,7 +4,10 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { summariseDay } from "./dailySummary.ts";
+import { spokenDay, summariseDay } from "./dailySummary.ts";
+import { speechParts } from "./readAloud.ts";
+import { translate } from "../i18n/translate.ts";
+import es from "../i18n/es.ts";
 
 // Everything in UTC so the tests give the same answer on any computer.
 const DAY = Date.parse("2026-10-24T00:00:00Z");
@@ -64,4 +67,31 @@ test("events can arrive in any order", () => {
   const s = summariseDay([ev("moving", "19:00"), ev("moving", "18:30"), ev("moving", "06:10")], at("19:05"), opts);
   assert.equal(s.lines[0], "Up and moving at 6:10 am.");
   assert.equal(s.lines[1], "Most active in the evening.");
+});
+
+test("'Play today's summary' says the whole card as short sentences", () => {
+  const events = [ev("moving", "07:40"), ev("moving", "08:15"), ev("fall", "09:30")];
+  const day = summariseDay(events, at("12:00"), opts);
+  const spoken = spokenDay(day, "Mum");
+  assert.deepEqual(speechParts(spoken, "en"), [
+    "Here is today so far for Mum.",
+    "Up and moving at 7:40 am.",
+    "Most active in the morning.",
+    "One possible fall, at 9:30 am.",
+    "Please check they are okay.",
+    "Quiet since 9:30 am.",
+  ]);
+  assert.equal(spokenDay(summariseDay([], at("12:00"), opts), "Mum"), "There is no news from the phone camera yet today.");
+});
+
+test("today's summary is spoken in Spanish, with times a voice can read", () => {
+  const inEs = (text, vars) => translate(es, text, vars);
+  const spokenTime = (ms) => new Date(ms).toISOString().slice(11, 16).replace(/^0/, "");
+  const day = summariseDay([ev("moving", "07:40"), ev("still", "13:05")], at("13:10"), { ...opts, timeOf: spokenTime, t: inEs });
+  assert.deepEqual(speechParts(spokenDay(day, "Mamá", inEs), "es"), [
+    "Así va el día de Mamá hasta ahora.",
+    "En movimiento desde las 7:40.",
+    "Hoy no ha habido posibles caídas.",
+    "Última novedad: sentado, sin moverse a las 13:05.",
+  ]);
 });

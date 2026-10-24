@@ -385,6 +385,19 @@ const es: Record<string, string> = {
   'A possible fall always shows in "Right now", even in quiet hours.':
     "Una posible caída siempre aparece en «Ahora mismo», también en las horas de descanso.",
   "Alerts by phone message or email are coming later.": "Los avisos por mensaje o correo electrónico llegarán más adelante.",
+  "Spoken alerts": "Avisos hablados",
+  "Say new alerts out loud on this device.": "Decir en voz alta los avisos nuevos en este dispositivo.",
+  "Tap to turn spoken alerts back on": "Toque para volver a activar los avisos hablados",
+  'A possible fall is always said out loud, even in quiet hours, and again after 30 seconds unless someone presses "I\'m checking on it". Keep this page open and the volume up.':
+    "Una posible caída siempre se dice en voz alta, también en las horas de descanso, y otra vez a los 30 segundos si nadie pulsa «Yo me encargo de comprobarlo». Deje esta página abierta y el volumen alto.",
+  "Spoken alerts are on.": "Los avisos hablados están activados.",
+  "CareNest alert.": "Aviso de CareNest.",
+  "Reminder from CareNest.": "Recordatorio de CareNest.",
+  "Please check on {who}.": "Compruebe que {who} está bien, por favor.",
+  "Play today's summary": "Escuchar el resumen de hoy",
+  Stop: "Parar",
+  "Here is today so far for {who}.": "Así va el día de {who} hasta ahora.",
+  "There is no news from the phone camera yet today.": "Todavía no hay novedades de la cámara del teléfono hoy.",
 
   // ----- Care profile -----
   "About {name}": "Sobre {name}",

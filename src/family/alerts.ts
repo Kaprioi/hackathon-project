@@ -163,3 +163,46 @@ export function checkingLine(names: string[], t: Translate = english): string {
   const list = t("{first} and {last}", { first: shown.slice(0, -1).join(", "), last: shown[shown.length - 1] });
   return t("{names} are checking on it", { names: list });
 }
+
+// ---------------------------------------------------------------------------
+// Spoken alerts (the page says new alerts out loud by itself)
+// ---------------------------------------------------------------------------
+
+/** Only news this fresh is spoken, so old alerts are never replayed. */
+export const SPEAK_FRESH_MS = 2 * 60_000;
+/** A possible fall is said again after this long, unless someone is checking on it. */
+export const REPEAT_FALL_AFTER_MS = 30_000;
+
+/**
+ * Should spoken alerts say this news out loud? Only for news that has just
+ * arrived live (`now` minus a little) and hasn't been said yet. Possible falls are
+ * always spoken, even in quiet hours; other alerts (nobody in view) follow the
+ * Alert settings and quiet hours, like the highlights in Recent news.
+ */
+export function shouldSpeak(e: EventRow, settings: AlertSettings, now: number, spoken: ReadonlySet<number>): boolean {
+  if (spoken.has(e.id)) return false;
+  if (now - Date.parse(e.created_at) > SPEAK_FRESH_MS) return false;
+  if (e.kind === "fall") return true;
+  return highlightFor(e, settings) === "highlight";
+}
+
+/**
+ * What spoken alerts say, e.g. "CareNest alert. Possible fall, left side, at 3:42 pm.
+ * Please check on Mum." `again` is for the reminder said 30 seconds later.
+ */
+export function spokenAlert(
+  e: EventRow,
+  who: string,
+  clock: (iso: string) => string,
+  t: Translate = english,
+  again = false,
+): string {
+  const parts = [again ? t("Reminder from CareNest.") : t("CareNest alert."), spokenEvent(e, clock, t)];
+  if (e.kind === "fall") parts.push(t("Please check on {who}.", { who }));
+  return parts.join(" ");
+}
+
+/** Reads the saved on/off for spoken alerts. Off unless it was turned on. */
+export function cleanSpokenAlerts(saved: unknown): boolean {
+  return saved === true;
+}
