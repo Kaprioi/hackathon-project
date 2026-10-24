@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { describe, summarise, timeAgo } from "./status.ts";
+import { PHONE_SILENT_MS, describe, headline, summarise, timeAgo } from "./status.ts";
 
 const NOW = Date.parse("2026-10-24T12:00:00Z");
 const at = (minutesAgo) => new Date(NOW - minutesAgo * 60_000).toISOString();
@@ -56,4 +56,56 @@ test("no events yet", () => {
   assert.equal(s.latest, null);
   assert.equal(s.mood, "quiet");
   assert.equal(s.phoneSilent, false);
+  assert.equal(s.cameraOn, false);
+  assert.equal(s.stoppedAt, null);
+  assert.equal(headline(s, NOW, clock), null);
+});
+
+// The camera on or off, for the "Right now" card and its Live badge.
+const clock = (iso) => iso.slice(11, 16); // "11:42" (UTC, so the test doesn't depend on the time zone)
+
+test("a camera that is sending news or heartbeats counts as on", () => {
+  const s = summarise([ev("heartbeat", 1.5), ev("still", 10, "left", "sitting")], NOW);
+  assert.equal(s.cameraOn, true);
+  assert.equal(s.stoppedAt, null);
+  assert.equal(headline(s, NOW, clock), "Sitting still - left side - 10 minutes ago");
+});
+
+test("pressing Stop (or a tab that said goodbye) turns the camera off straight away", () => {
+  const stopped = ev("stopped", 0.1);
+  const s = summarise([ev("moving", 1, "left"), stopped], NOW);
+  assert.equal(s.cameraOn, false);
+  assert.equal(s.stoppedAt, stopped.created_at);
+  assert.equal(s.mood, "quiet");
+  assert.equal(headline(s, NOW, clock), "The phone stopped watching at 11:59.");
+});
+
+test("a closed tab or flat battery (no goodbye) counts as off after 2 minutes of silence", () => {
+  const last = ev("heartbeat", 1.9);
+  const events = [ev("moving", 5, "left"), last];
+  // Still within the window: on.
+  assert.equal(summarise(events, NOW).cameraOn, true);
+  // The page re-checks on a timer, so time passing alone turns it off.
+  const later = NOW + 60_000;
+  const s = summarise(events, later);
+  assert.equal(s.phoneSilent, true);
+  assert.equal(s.cameraOn, false);
+  assert.equal(s.stoppedAt, last.created_at);
+  assert.equal(s.mood, "quiet");
+  assert.equal(headline(s, later, clock), "The phone stopped watching at 11:58.");
+  assert.equal(PHONE_SILENT_MS, 2 * 60_000);
+});
+
+test("the camera coming back (started, then heartbeats) counts as on again", () => {
+  const s = summarise([ev("moving", 30), ev("stopped", 20), ev("started", 1), ev("heartbeat", 0.5)], NOW);
+  assert.equal(s.cameraOn, true);
+  assert.equal(s.stoppedAt, null);
+  assert.equal(s.mood, "ok");
+});
+
+test("a possible fall stays on screen even if the camera then goes quiet", () => {
+  const s = summarise([ev("fall", 10, "middle", "lying")], NOW);
+  assert.equal(s.cameraOn, false);
+  assert.equal(s.mood, "alert");
+  assert.equal(headline(s, NOW, clock), "Possible fall - middle of the room - 10 minutes ago");
 });

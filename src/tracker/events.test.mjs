@@ -38,7 +38,7 @@ test("a person sitting still is reported once, then only heartbeats", () => {
   assert.deepEqual(events[0], { kind: "still", zone: "left", posture: "sitting" });
   assert.deepEqual(
     events.slice(1).map((e) => e.kind),
-    ["heartbeat", "heartbeat"],
+    ["heartbeat", "heartbeat", "heartbeat", "heartbeat"],
   );
   assert.equal(events[1].zone, "left");
 });

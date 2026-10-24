@@ -6,13 +6,19 @@
 // localStorage) and then adds `movement_events` rows.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { supabaseAnonKey, supabaseUrl } from "../lib/supabase";
 import type { MovementEvent } from "./events.ts";
 
 const DEVICE_KEY = "carenest.deviceId.v1";
 
 export class Cloud {
+  /** The signed-in person's access key, kept for sendOnClose (which can't wait to look it up). */
+  private token = "";
+
   private constructor(
     private db: SupabaseClient,
+    /** Who was signed in when this connected. */
+    readonly userId: string,
     private circleId: string,
     private deviceId: string,
   ) {}
@@ -46,21 +52,47 @@ export class Cloud {
       deviceId = data.id as string;
       saveDeviceId(circleId, deviceId);
     }
-    return new Cloud(db, circleId, deviceId);
+    const cloud = new Cloud(db, auth.user.id, circleId, deviceId);
+    await cloud.refreshToken();
+    return cloud;
   }
 
   /** Sends one event. Throws a plain-words error if it didn't go through. */
   async send(event: MovementEvent): Promise<void> {
-    const { error } = await this.db.from("movement_events").insert({
-      circle_id: this.circleId,
-      device_id: this.deviceId,
-      kind: event.kind,
-      zone: event.zone,
-      posture: event.posture,
-    });
+    const { error } = await this.db.from("movement_events").insert(this.row(event));
     if (error) throw new Error(`Couldn't send an update: ${error.message}`);
     // Let the family page know the phone is alive (best effort).
     await this.db.from("devices").update({ last_seen_at: new Date().toISOString() }).eq("id", this.deviceId);
+    await this.refreshToken();
+  }
+
+  /**
+   * Sends one event while the page is closing (best effort, never throws). A normal
+   * request is cancelled when a tab closes, so this uses a "keepalive" request,
+   * which the browser finishes sending even after the page is gone.
+   */
+  sendOnClose(event: MovementEvent): void {
+    if (!supabaseUrl || !supabaseAnonKey || !this.token) return;
+    fetch(`${supabaseUrl}/rest/v1/movement_events`, {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify(this.row(event)),
+    }).catch(() => {});
+  }
+
+  private row(event: MovementEvent) {
+    return { circle_id: this.circleId, device_id: this.deviceId, kind: event.kind, zone: event.zone, posture: event.posture };
+  }
+
+  private async refreshToken(): Promise<void> {
+    const { data } = await this.db.auth.getSession();
+    this.token = data.session?.access_token ?? "";
   }
 }
 

@@ -67,13 +67,15 @@ export function whoToSpeakOf(savedName: unknown, t: Translate = english): string
 // ---------------------------------------------------------------------------
 
 /** The kinds of worrying news a person can choose to have highlighted. */
-export type AlertType = "fall" | "outOfSight";
+export type AlertType = "fall" | "outOfSight" | "cameraOff";
 
 export interface AlertSettings {
   /** Highlight possible falls. */
   falls: boolean;
   /** Highlight "Nobody in view" (out of sight / no movement seen). */
   outOfSight: boolean;
+  /** Highlight (and say, with spoken alerts) when the phone camera stops watching. */
+  cameraOff: boolean;
   /** Quiet hours: highlights are toned down between `quietFrom` and `quietTo`. */
   quietHours: boolean;
   /** "22:00" style times. */
@@ -84,6 +86,7 @@ export interface AlertSettings {
 export const DEFAULT_ALERT_SETTINGS: AlertSettings = {
   falls: true,
   outOfSight: true,
+  cameraOff: true,
   quietHours: false,
   quietFrom: "22:00",
   quietTo: "07:00",
@@ -101,6 +104,7 @@ export function cleanAlertSettings(saved: unknown): AlertSettings {
   return {
     falls: bool("falls"),
     outOfSight: bool("outOfSight"),
+    cameraOff: bool("cameraOff"),
     quietHours: bool("quietHours"),
     quietFrom: time("quietFrom"),
     quietTo: time("quietTo"),
@@ -111,6 +115,7 @@ export function cleanAlertSettings(saved: unknown): AlertSettings {
 export function alertType(e: Pick<EventRow, "kind">): AlertType | null {
   if (e.kind === "fall") return "fall";
   if (e.kind === "nobody") return "outOfSight";
+  if (e.kind === "stopped") return "cameraOff";
   return null;
 }
 
@@ -130,7 +135,7 @@ export function isQuietTime(settings: AlertSettings, when: Date): boolean {
 export function highlightFor(e: EventRow, settings: AlertSettings): "highlight" | "quiet" | "none" {
   const type = alertType(e);
   if (!type) return "none";
-  const wanted = type === "fall" ? settings.falls : settings.outOfSight;
+  const wanted = type === "fall" ? settings.falls : type === "outOfSight" ? settings.outOfSight : settings.cameraOff;
   if (!wanted) return "none";
   return isQuietTime(settings, new Date(e.created_at)) ? "quiet" : "highlight";
 }
@@ -184,6 +189,15 @@ export function shouldSpeak(e: EventRow, settings: AlertSettings, now: number, s
   if (now - Date.parse(e.created_at) > SPEAK_FRESH_MS) return false;
   if (e.kind === "fall") return true;
   return highlightFor(e, settings) === "highlight";
+}
+
+/**
+ * Should spoken alerts say that the phone went quiet (no news, not even a
+ * heartbeat, for a while)? Like other non-fall alerts, it follows the Alert
+ * settings and quiet hours, checked at the moment it is noticed (`now`).
+ */
+export function shouldSpeakSilence(settings: AlertSettings, now: number): boolean {
+  return settings.cameraOff && !isQuietTime(settings, new Date(now));
 }
 
 /**

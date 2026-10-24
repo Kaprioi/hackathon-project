@@ -26,6 +26,7 @@ const es: Record<string, string> = {
   "Skip to main content": "Ir al contenido principal",
   "Only the people you invite can see anything.": "Solo las personas que usted invite pueden ver algo.",
   Live: "En directo",
+  "Camera off": "Cámara apagada",
   "Loading…": "Cargando…",
   "Page not found": "Página no encontrada",
   "Family page": "Página familiar",
@@ -378,6 +379,7 @@ const es: Record<string, string> = {
   "Highlight these": "Destacar estas",
   "Possible falls": "Posibles caídas",
   "Out of sight (nobody in view of the phone)": "Fuera de la vista (el teléfono no ve a nadie)",
+  "The phone camera stopped watching": "La cámara del teléfono dejó de vigilar",
   "Quiet hours": "Horas de descanso",
   "Tone down highlights at night": "Suavizar los avisos por la noche",
   From: "Desde",
@@ -502,6 +504,10 @@ const es: Record<string, string> = {
   "Please sign in first, so your family can see the updates.":
     "Primero inicie sesión, para que su familia pueda ver los avisos.",
   "Start watching": "Empezar a vigilar",
+  "The camera stopped because this page was hidden or the screen turned off. Keep this page open on the screen while it watches.":
+    "La cámara se detuvo porque esta página quedó oculta o la pantalla se apagó. Mantenga esta página abierta en la pantalla mientras vigila.",
+  "The camera is now watching in another tab, so it stopped here.":
+    "La cámara ahora vigila en otra pestaña, así que se detuvo aquí.",
   "Starting... (the first time takes a little longer)": "Empezando... (la primera vez tarda un poco más)",
   "The database isn't set up on this website yet, so you can try the camera but your family won't see anything.":
     "La base de datos de esta web todavía no está preparada: puede probar la cámara, pero su familia no verá nada.",

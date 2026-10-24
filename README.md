@@ -144,7 +144,9 @@ Logging in: `/login` has log in, create an account, and "forgot your password". 
 
 ## Phone Tracker page (`/tracker`)
 
-The phone camera page. Stand a phone on a table, sign in, open `/tracker` and press **Start watching**. A green "Camera on - video stays on this phone" sign stays on screen while it watches. The phone finds people with its camera (all on the phone) and sends only short text notes to the `movement_events` table: what happened (moving, still, nobody, possible fall), which side of the room (left/middle/right), posture (standing/sitting/lying) and the time, plus a "still watching" heartbeat every minute. No video or pictures ever leave the phone. If nobody is signed in it asks you to sign in first; without Supabase keys you can still try the camera, but nothing is sent.
+The phone camera page. Stand a phone on a table, sign in, open `/tracker` and press **Start watching**. A green "Camera on - video stays on this phone" sign stays on screen while it watches. The phone finds people with its camera (all on the phone) and sends only short text notes to the `movement_events` table: what happened (moving, still, nobody, possible fall), which side of the room (left/middle/right), posture (standing/sitting/lying) and the time, plus a "still watching" heartbeat every 30 seconds. No video or pictures ever leave the phone. If nobody is signed in it asks you to sign in first; without Supabase keys you can still try the camera, but nothing is sent.
+
+When it stops watching it tells the family page: when you press **Stop watching**, close the tab, or leave the page hidden (another tab, another app, or the screen turned off) for 15 seconds, because a hidden page can't watch. Only one tab watches at a time: starting the camera in a new tab stops it in the old one.
 
 It also still drives the optional Phone Tracker stand: it follows the person you tap and aims the stand and its humidifier mist at them. The code is in `src/tracker/` (see `src/tracker/README.md`); the hardware, firmware and build guide are in `phone-tracker/`.
 
@@ -157,7 +159,7 @@ It also still drives the optional Phone Tracker stand: it follows the person you
 
 Where family members see how things are. After logging in, the login page brings you here; if nobody is logged in it sends you to `/login`. It shows:
 
-- **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns red with a "please call or visit" note if the phone thinks someone may have fallen, and warns you if the phone has not checked in for over 3 minutes (it normally sends a heartbeat every minute).
+- **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns red with a "please call or visit" note if the phone thinks someone may have fallen, Once the camera stops (Stop watching, a closed tab, or nothing heard from it for 2 minutes, for example a flat battery or no internet; it normally sends a heartbeat every 30 seconds) it says "The phone stopped watching at 3:42 pm." and the **Live** badge changes to **Camera off**.
 - **Recent news**: the last 10 events with their times.
 - **Add a family member** (only for the circle's owner): type the email of someone who already has a CareNest account, and they will see the same page. For privacy the page gives the same answer whether or not that email has an account. A family member's page shows the circle with the newest news, so they see the phone of the person they were added for.
 

@@ -19,6 +19,7 @@ import {
   isQuietTime,
   shortName,
   shouldSpeak,
+  shouldSpeakSilence,
   spokenAlert,
   spokenEvent,
   spokenStatus,
@@ -59,6 +60,9 @@ test("the spoken name comes from the Care profile, or a kind default", () => {
 test("broken saved alert settings fall back to the defaults", () => {
   assert.deepEqual(cleanAlertSettings(null), DEFAULT_ALERT_SETTINGS);
   assert.deepEqual(cleanAlertSettings("nonsense"), DEFAULT_ALERT_SETTINGS);
+  // Settings saved before "camera stopped" existed keep it switched on.
+  assert.equal(cleanAlertSettings({ falls: true, outOfSight: false }).cameraOff, true);
+  assert.equal(cleanAlertSettings({ cameraOff: false }).cameraOff, false);
   assert.deepEqual(cleanAlertSettings({ falls: false, quietFrom: "25:00", quietTo: "06:30", quietHours: "yes" }), {
     ...DEFAULT_ALERT_SETTINGS,
     falls: false,
@@ -84,6 +88,9 @@ test("alert settings decide what is highlighted", () => {
   assert.equal(highlightFor(e("nobody", 12), DEFAULT_ALERT_SETTINGS), "highlight");
   assert.equal(highlightFor(e("moving", 12), DEFAULT_ALERT_SETTINGS), "none");
   assert.equal(highlightFor(e("nobody", 12), { ...DEFAULT_ALERT_SETTINGS, outOfSight: false }), "none");
+  assert.equal(highlightFor(e("stopped", 12), DEFAULT_ALERT_SETTINGS), "highlight");
+  assert.equal(highlightFor(e("stopped", 12), { ...DEFAULT_ALERT_SETTINGS, cameraOff: false }), "none");
+  assert.equal(highlightFor(e("started", 12), DEFAULT_ALERT_SETTINGS), "none");
   assert.equal(highlightFor(e("fall", 23), { ...DEFAULT_ALERT_SETTINGS, quietHours: true }), "quiet");
 });
 
@@ -115,8 +122,26 @@ test("spoken alerts say new alerts only, never old ones or the same one twice", 
   assert.equal(shouldSpeak(ev("fall", 10), settings, NOW, none), false);
   assert.equal(shouldSpeak(fresh, settings, NOW, new Set([fresh.id])), false);
   // Ordinary news is never spoken.
-  for (const kind of ["moving", "still", "started", "stopped", "heartbeat"])
+  for (const kind of ["moving", "still", "started", "heartbeat"])
     assert.equal(shouldSpeak(ev(kind, 0), settings, NOW, none), false, kind);
+});
+
+test("the camera stopping is an alert that follows the Alert settings and quiet hours", () => {
+  const none = new Set();
+  const stopped = { ...evAt("stopped", local(12)), zone: null }; // the phone sends "stopped" without a side
+  const noon = local(12).getTime();
+  assert.equal(highlightFor(stopped, DEFAULT_ALERT_SETTINGS), "highlight");
+  assert.equal(shouldSpeak(stopped, DEFAULT_ALERT_SETTINGS, noon, none), true);
+  assert.equal(shouldSpeak(stopped, { ...DEFAULT_ALERT_SETTINGS, cameraOff: false }, noon, none), false);
+  assert.equal(canCheckOn(stopped), false);
+  assert.match(spokenAlert(stopped, "Mum", clock), /^CareNest alert\. Phone stopped watching, at 10:38\.$/);
+
+  // No "stopped" message (closed tab, flat battery): said once it goes quiet, unless switched off or in quiet hours.
+  const quiet = { ...DEFAULT_ALERT_SETTINGS, quietHours: true, quietFrom: "22:00", quietTo: "07:00" };
+  assert.equal(shouldSpeakSilence(DEFAULT_ALERT_SETTINGS, local(23, 30).getTime()), true);
+  assert.equal(shouldSpeakSilence(quiet, local(23, 30).getTime()), false);
+  assert.equal(shouldSpeakSilence(quiet, local(12).getTime()), true);
+  assert.equal(shouldSpeakSilence({ ...DEFAULT_ALERT_SETTINGS, cameraOff: false }, local(12).getTime()), false);
 });
 
 test("possible falls are always spoken; other alerts follow the Alert settings and quiet hours", () => {

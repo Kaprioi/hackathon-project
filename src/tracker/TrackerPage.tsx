@@ -78,6 +78,14 @@ interface LogLine {
 
 const SETTINGS_KEY = "phoneTracker.settings.v1";
 
+/** A hidden page can't watch (the browser pauses it), so after this long the camera stops and tells the family. */
+const HIDDEN_STOP_MS = 15_000;
+/** Tabs in this browser tell each other when one starts watching, so only one watches at a time. */
+const TABS_CHANNEL = "carenest-camera";
+const HIDDEN_NOTE =
+  "The camera stopped because this page was hidden or the screen turned off. Keep this page open on the screen while it watches.";
+const OTHER_TAB_NOTE = "The camera is now watching in another tab, so it stopped here.";
+
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -221,6 +229,8 @@ export default function TrackerPage() {
   const reporterRef = useRef<Reporter>(new Reporter());
   const cloudRef = useRef<Cloud | null>(null);
   const sendChainRef = useRef<Promise<void>>(Promise.resolve());
+  const watchingRef = useRef(false); // true from "started" until "stopped" is sent
+  const tabsRef = useRef<BroadcastChannel | null>(null);
 
   const [running, setRunning] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -234,6 +244,8 @@ export default function TrackerPage() {
   const [account, setAccount] = useState<Account>(supabase ? "checking" : "no-database");
   const [lastSent, setLastSent] = useState("");
   const [sendError, setSendError] = useState("");
+  /** Why the camera stopped by itself, shown on the start screen (English; translated when shown). */
+  const [stopNote, setStopNote] = useState("");
   const [snap, setSnap] = useState<Snapshot>({
     mode: "idle",
     note: "Tap a person to lock on.",
@@ -266,14 +278,6 @@ export default function TrackerPage() {
     };
   }, []);
 
-  // Check whether someone is signed in (the family page only works for signed-in people).
-  useEffect(() => {
-    if (!supabase) return;
-    void supabase.auth.getSession().then(({ data }) => setAccount(data.session ? "signed-in" : "signed-out"));
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => setAccount(session ? "signed-in" : "signed-out"));
-    return () => data.subscription.unsubscribe();
-  }, []);
-
   /** Queue one small text event for the family page. Sent in order; failures are shown, not thrown. */
   const report = useCallback((event: MovementEvent) => {
     const cloud = cloudRef.current;
@@ -288,6 +292,33 @@ export default function TrackerPage() {
       ),
     );
   }, []);
+
+  // Check whether someone is signed in (the family page only works for signed-in people).
+  useEffect(() => {
+    const db = supabase;
+    if (!db) return;
+    void db.auth.getSession().then(({ data }) => setAccount(data.session ? "signed-in" : "signed-out"));
+    const { data } = db.auth.onAuthStateChange((_event, session) => {
+      setAccount(session ? "signed-in" : "signed-out");
+      // Signed out, or someone else signed in (maybe in another tab): forget the old
+      // care circle, and if the camera is on, carry on in the new person's circle.
+      if (!cloudRef.current || cloudRef.current.userId === session?.user.id) return;
+      cloudRef.current = null;
+      if (!session || !watchingRef.current) return;
+      // Later, not inside this callback: Supabase asks not to call it from here.
+      setTimeout(() => {
+        Cloud.connect(db).then(
+          (cloud) => {
+            if (cloudRef.current || !watchingRef.current) return;
+            cloudRef.current = cloud;
+            report(reporterRef.current.start(performance.now()));
+          },
+          (e: unknown) => setSendError(e instanceof Error ? e.message : String(e)),
+        );
+      }, 0);
+    });
+    return () => data.subscription.unsubscribe();
+  }, [report]);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     const next = { ...settingsRef.current, ...patch };
@@ -304,6 +335,7 @@ export default function TrackerPage() {
 
   const startCamera = useCallback(async () => {
     setError("");
+    setStopNote("");
     if (!navigator.mediaDevices?.getUserMedia) {
       setError("This browser can't open the camera. The page must be opened over https (or on localhost).");
       return;
@@ -333,7 +365,12 @@ export default function TrackerPage() {
           setError(`Your family won't see updates: ${msg}`);
         }
       }
-      report(reporterRef.current.start(performance.now()));
+      // Switching between the front and back camera restarts it, but it never stopped watching.
+      if (!watchingRef.current) {
+        watchingRef.current = true;
+        report(reporterRef.current.start(performance.now()));
+        tabsRef.current?.postMessage("started");
+      }
       try {
         wakeLockRef.current = (await navigator.wakeLock?.request("screen")) ?? null;
       } catch {
@@ -347,19 +384,84 @@ export default function TrackerPage() {
     }
   }, [stopCamera, report]);
 
-  const stopWatching = useCallback(() => {
-    report(reporterRef.current.stop());
-    stopCamera();
-    setRunning(false);
-    void wakeLockRef.current?.release();
-    wakeLockRef.current = null;
-  }, [stopCamera, report]);
+  /**
+   * Stops watching: turns the camera off and (unless `tellFamily` is false) tells the
+   * family page. `note` says why, when it stopped by itself. Safe to call twice.
+   */
+  const finishWatching = useCallback(
+    (note: string, tellFamily: boolean) => {
+      if (!watchingRef.current) return;
+      watchingRef.current = false;
+      if (tellFamily) report(reporterRef.current.stop());
+      stopCamera();
+      setRunning(false);
+      setStopNote(note);
+      void wakeLockRef.current?.release();
+      wakeLockRef.current = null;
+    },
+    [stopCamera, report],
+  );
+
+  const stopWatching = useCallback(() => finishWatching("", true), [finishWatching]);
+
+  // Closing the tab (or the browser) doesn't run the clean-up below, so say
+  // "stopped" here. The page is going away, so it is sent the keepalive way.
+  useEffect(() => {
+    const onPageHide = () => {
+      if (!watchingRef.current) return;
+      watchingRef.current = false;
+      cloudRef.current?.sendOnClose(reporterRef.current.stop());
+      stopCamera();
+      setRunning(false);
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [stopCamera]);
+
+  // A hidden page (another tab, another app, screen off) is paused by the browser,
+  // so it isn't really watching. After a short while, stop and tell the family.
+  useEffect(() => {
+    let hiddenAt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onVisibility = () => {
+      clearTimeout(timer);
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        timer = setTimeout(() => finishWatching(HIDDEN_NOTE, true), HIDDEN_STOP_MS);
+        return;
+      }
+      // A sleeping phone doesn't run timers, so check again when it wakes up.
+      if (hiddenAt && Date.now() - hiddenAt >= HIDDEN_STOP_MS) finishWatching(HIDDEN_NOTE, true);
+      hiddenAt = 0;
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [finishWatching]);
+
+  // Only one tab watches: when another tab starts, this one stops quietly
+  // (the new tab has already told the family it started).
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const tabs = new BroadcastChannel(TABS_CHANNEL);
+    tabs.onmessage = (e) => {
+      if (e.data === "started") finishWatching(OTHER_TAB_NOTE, false);
+    };
+    tabsRef.current = tabs;
+    return () => {
+      tabs.close();
+      tabsRef.current = null;
+    };
+  }, [finishWatching]);
 
   // Clean up when leaving the page.
   useEffect(() => {
     const stand = standRef.current;
     return () => {
-      if (streamRef.current) report(reporterRef.current.stop());
+      if (watchingRef.current) report(reporterRef.current.stop());
+      watchingRef.current = false;
       stopCamera();
       detectorRef.current?.close();
       detectorRef.current = null;
@@ -674,6 +776,11 @@ export default function TrackerPage() {
                   'Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or pictures ever leave it.',
                 )}
               </p>
+              {stopNote && (
+                <p role="status" className="rounded-2xl bg-sun px-4 py-3 text-lg font-bold text-ink">
+                  {t(stopNote)}
+                </p>
+              )}
               {account === "signed-out" ? (
                 <div className="space-y-3">
                   <p className="text-xl font-bold">{t("Please sign in first, so your family can see the updates.")}</p>
