@@ -28,7 +28,6 @@ import {
   TUNING,
 } from "./config.ts";
 import type { PersonDetector } from "./detector.ts";
-import { createPersonDetector } from "./detector.ts";
 import { Cloud } from "./cloud.ts";
 import type { MovementEvent } from "./events.ts";
 import { Reporter } from "./events.ts";
@@ -355,7 +354,11 @@ export default function TrackerPage() {
       const video = videoRef.current!;
       video.srcObject = stream;
       await video.play();
-      if (!detectorRef.current) detectorRef.current = await createPersonDetector();
+      if (!detectorRef.current) {
+        // The person-finding code is big, so it only downloads once someone starts the camera.
+        const { createPersonDetector } = await import("./detector.ts");
+        detectorRef.current = await createPersonDetector();
+      }
       if (supabase && !cloudRef.current) {
         try {
           cloudRef.current = await Cloud.connect(supabase);

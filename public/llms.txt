@@ -1,0 +1,18 @@
+# CareNest
+
+> CareNest turns a spare phone standing on a table into a gentle helper. The phone's camera watches the room (all on the phone), and family see in plain words how their loved one is doing. No video or pictures ever leave the phone.
+
+The site is in English, Spanish and Chinese.
+
+## Pages
+
+- [About Us](https://carenest-eight-bay.vercel.app/): what CareNest is and how it works
+- [Help](https://carenest-eight-bay.vercel.app/help): picture steps for getting started, what the Family page means, privacy, and common questions
+- [Sign in](https://carenest-eight-bay.vercel.app/login): sign in or create an account
+- [Phone camera](https://carenest-eight-bay.vercel.app/tracker): open this on the phone on the table and press Start watching
+
+## Signed-in pages
+
+- [Family](https://carenest-eight-bay.vercel.app/dashboard): what is happening right now, recent news, and adding family
+- [Care profile](https://carenest-eight-bay.vercel.app/profile): a few questions about the person being cared for
+- [Your account](https://carenest-eight-bay.vercel.app/account): your email, your name, your password and your family circles
