@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/family/status.test.mjs src/family/careProfile.test.mjs src/family/dailySummary.test.mjs src/family/weeklyReport.test.mjs src/family/contacts.test.mjs src/lib/account.test.mjs src/family/alerts.test.mjs src/family/noMovement.test.mjs src/family/readAloud.test.mjs src/family/voice.test.mjs src/family/notes.test.mjs src/i18n/translate.test.mjs src/lib/displaySettings.test.mjs src/lib/guide.test.mjs src/lib/inviteName.test.mjs api/_tts.test.mjs",
+    "test": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/family/status.test.mjs src/family/careProfile.test.mjs src/family/dailySummary.test.mjs src/family/weeklyReport.test.mjs src/family/contacts.test.mjs src/lib/account.test.mjs src/family/alerts.test.mjs src/family/noMovement.test.mjs src/family/readAloud.test.mjs src/family/voice.test.mjs src/family/notes.test.mjs src/i18n/translate.test.mjs src/lib/displaySettings.test.mjs src/lib/guide.test.mjs src/lib/inviteName.test.mjs src/family/push.test.mjs api/_tts.test.mjs api/_notify.test.mjs",
     "test:tracker": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs"
   },
   "dependencies": {
@@ -17,13 +17,15 @@
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-router": "^8.5.0"
+    "react-router": "^8.5.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "^6.1.2",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",

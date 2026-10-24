@@ -37,6 +37,7 @@ import {
   SimpleViewToggle,
   SpokenAlertsSwitch,
 } from "../components/FamilyTools";
+import PushAlerts from "../components/PushAlerts";
 
 // The family page: the latest news from the phone camera in big words, a short
 // timeline, and live updates through Supabase Realtime.
@@ -463,6 +464,11 @@ function Family({
           </section>
 
           <SpokenAlertsSwitch on={spokenOn} needsTap={spoken.needsTap} note={spoken.note} onChange={setSpokenOn} onWake={spoken.turnedOn} />
+
+          {/* Phone notifications, so family hear about a fall even with this page closed. */}
+          {!simple && circle && (
+            <PushAlerts circleId={circle.id} userId={userId} who={typeof savedName === "string" ? savedName.trim() : ""} />
+          )}
 
           {/* Call buttons stay in simple view too: they matter most. */}
           <CallCard userId={userId} />
