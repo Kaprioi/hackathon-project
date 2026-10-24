@@ -8,13 +8,15 @@ import { useLanguage } from "../i18n/useLanguage";
 import { supabase } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
 import { cleanContacts, cleanPhone, telHref, type Contact, type Contacts } from "../family/contacts";
-import { startOfLocalDay, summariseDay } from "../family/dailySummary";
+import { localTime, spokenDay, startOfLocalDay, summariseDay } from "../family/dailySummary";
 import { describe, summarise, timeAgo, whatHappened, whereInRoom, type EventRow, type Mood } from "../family/status";
 import {
   alertType,
   canCheckOn,
   cleanAlertSettings,
+  cleanSpokenAlerts,
   highlightFor,
+  spokenAlert,
   spokenEvent,
   spokenStatus,
   whoToSpeakOf,
@@ -22,7 +24,14 @@ import {
 } from "../family/alerts";
 import { spokenClock } from "../family/readAloud";
 import { useCheckingOnIt } from "../family/useCheckingOnIt";
-import { AlertSettingsPanel, CheckingOnIt, ReadAloudButton, SimpleViewToggle } from "../components/FamilyTools";
+import { useSpokenAlerts } from "../family/useSpokenAlerts";
+import {
+  AlertSettingsPanel,
+  CheckingOnIt,
+  ReadAloudButton,
+  SimpleViewToggle,
+  SpokenAlertsSwitch,
+} from "../components/FamilyTools";
 
 // The family page: the latest news from the phone camera in big words, a short
 // timeline, and live updates through Supabase Realtime.
@@ -57,6 +66,7 @@ const smallButton =
 
 // Saved in this browser only. Private browsing can block saving; the page still works.
 const SIMPLE_VIEW_KEY = "carenest-simple-view";
+const SPOKEN_ALERTS_KEY = "carenest-spoken-alerts";
 const alertSettingsKey = (userId: string) => `carenest-alert-settings-${userId}`;
 
 function readSaved<T>(key: string, clean: (saved: unknown) => T): T {
@@ -142,6 +152,21 @@ function Family({
   const [savedName] = useState(() => readSaved(careProfileKey(userId), (v) => (v as { name?: unknown } | null)?.name));
   const who = whoToSpeakOf(savedName, t);
   const checking = useCheckingOnIt(circle?.id, userId);
+  // Spoken alerts: say new alerts out loud by themselves (off until switched on).
+  const [spokenOn, setSpokenOnState] = useState(() => readSaved(SPOKEN_ALERTS_KEY, cleanSpokenAlerts));
+  const spoken = useSpokenAlerts({
+    on: spokenOn,
+    settings: alertSettings,
+    words: (e, again, lang, t) =>
+      spokenAlert(e, whoToSpeakOf(savedName, t), spokenClock(lang, (iso) => localTime(Date.parse(iso), t)), t, again),
+    isBeingChecked: (id) => checking.whoIsChecking(id).length > 0,
+  });
+
+  function setSpokenOn(on: boolean) {
+    setSpokenOnState(on);
+    save(SPOKEN_ALERTS_KEY, on);
+    if (on) spoken.turnedOn();
+  }
 
   function setSimple(on: boolean) {
     setSimpleState(on);
@@ -221,6 +246,7 @@ function Family({
         { event: "INSERT", schema: "public", table: "movement_events", filter: `circle_id=eq.${circle.id}` },
         (payload) => {
           const row = payload.new as EventRow;
+          spoken.heard(row);
           setEvents((old) => merge(old, [row]));
           if (row.kind !== "heartbeat") setTodayEvents((old) => merge(old, [row], TODAY_MAX));
           setNow(Date.now());
@@ -253,6 +279,9 @@ function Family({
 
   const summary = summarise(events, now);
   const day = summariseDay(todayEvents, now, { t });
+  // The same summary for "Play today's summary", with times said the way each language says them.
+  const sayTime = (ms: number) => (lang === "en" ? localTime(ms, t) : spokenClock(lang, clock)(new Date(ms).toISOString()));
+  const daySpoken = spokenDay(summariseDay(todayEvents, now, { t, timeOf: sayTime }), who, t);
   const { latest } = summary;
 
   return (
@@ -365,10 +394,12 @@ function Family({
             </p>
           </section>
 
+          <SpokenAlertsSwitch on={spokenOn} needsTap={spoken.needsTap} onChange={setSpokenOn} onWake={spoken.turnedOn} />
+
           {/* Call buttons stay in simple view too: they matter most. */}
           <CallCard userId={userId} />
 
-          {!simple && circle && <TodaySoFar lines={day.lines} hasNews={day.hasNews} fallLine={day.fallLine} />}
+          {!simple && circle && <TodaySoFar lines={day.lines} hasNews={day.hasNews} fallLine={day.fallLine} spoken={daySpoken} />}
 
           {!simple && summary.timeline.length > 0 && (
             <section aria-labelledby="timeline-title">
@@ -493,13 +524,29 @@ function AddFamily({ circleId }: { circleId: string }) {
 }
 
 /** A calm, plain-words summary of today, from the same news as the timeline. */
-function TodaySoFar({ lines, hasNews, fallLine }: { lines: string[]; hasNews: boolean; fallLine: string | null }) {
+function TodaySoFar({
+  lines,
+  hasNews,
+  fallLine,
+  spoken,
+}: {
+  lines: string[];
+  hasNews: boolean;
+  fallLine: string | null;
+  /** The whole summary as one short spoken update. */
+  spoken: string;
+}) {
   const { t } = useLanguage();
   return (
     <section aria-labelledby="today-title" className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
       <h2 id="today-title" className="text-2xl font-extrabold">
         <Highlight text={t("Today so *far*")} />
       </h2>
+      {hasNews && (
+        <div className="mt-4">
+          <ReadAloudButton text={spoken} label="Play today's summary" stopLabel="Stop" />
+        </div>
+      )}
       {hasNews ? (
         <ul className="mt-4 flex flex-col gap-3">
           {lines.map((line) => (

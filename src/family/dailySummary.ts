@@ -127,3 +127,12 @@ export function summariseDay(
 
   return { hasNews: true, lines, falls: falls.length, fallLine };
 }
+
+/**
+ * The whole "Today so far" card as one short spoken update, e.g.
+ * "Here is today so far for Mum. Up and moving at 7:40 am. ..."
+ */
+export function spokenDay(day: DaySummary, who: string, t: Translate = english): string {
+  if (!day.hasNews) return t("There is no news from the phone camera yet today.");
+  return [t("Here is today so far for {who}.", { who }), ...day.lines].join(" ");
+}

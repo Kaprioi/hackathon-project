@@ -1,14 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { checkingLine, type AlertSettings } from "../family/alerts";
-import { pickVoice, speechLocale, speechParts } from "../family/readAloud";
+import { pickVoice } from "../family/readAloud";
+import { canSpeak, loadVoices, utterancesFor } from "../family/speech";
 import { useLanguage } from "../i18n/useLanguage";
 
 // Small extras for the family page: the "Read aloud" speaker button, the simple
-// view switch, the alert settings panel and the "I'm checking on it" button.
-
-/** True when this browser can read text out loud (most can; some older ones can't). */
-export const canSpeak =
-  typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+// view switch, the spoken alerts switch, the alert settings panel and the
+// "I'm checking on it" button.
 
 function SpeakerIcon({ size }: { size: number }) {
   return (
@@ -25,22 +23,6 @@ function SpeakerIcon({ size }: { size: number }) {
   );
 }
 
-/** The browser's voices. Chrome loads them a moment after the page, so wait briefly for them. */
-function loadVoices(): Promise<SpeechSynthesisVoice[]> {
-  const synth = window.speechSynthesis;
-  const now = synth.getVoices();
-  if (now.length > 0) return Promise.resolve(now);
-  return new Promise((resolve) => {
-    const done = () => {
-      synth.removeEventListener("voiceschanged", done);
-      clearTimeout(timer);
-      resolve(synth.getVoices());
-    };
-    const timer = setTimeout(done, 1500);
-    synth.addEventListener("voiceschanged", done);
-  });
-}
-
 /**
  * A speaker button that reads `text` out loud with the browser's own voice.
  * Shows nothing at all in browsers that can't speak. Press again to stop.
@@ -50,11 +32,14 @@ function loadVoices(): Promise<SpeechSynthesisVoice[]> {
 export function ReadAloudButton({
   text,
   label = "Read aloud",
+  stopLabel = "Stop reading",
   big = false,
 }: {
   text: string;
   /** Visible words on the button. Also tells screen readers what will be read. */
   label?: string;
+  /** The words on the button while it is speaking. */
+  stopLabel?: string;
   big?: boolean;
 }) {
   const [speaking, setSpeaking] = useState(false);
@@ -99,15 +84,7 @@ export function ReadAloudButton({
     }
     setNoVoice(false);
 
-    const parts = speechParts(text, lang).map((sentence) => {
-      const u = new SpeechSynthesisUtterance(sentence);
-      u.lang = lang === "en" ? document.documentElement.lang || "en" : speechLocale(lang);
-      if (voice && lang !== "en") u.voice = voice;
-      // A little slower is easier to follow in English. Other voices can sound
-      // stretched when slowed, so they keep their natural speed.
-      if (lang === "en") u.rate = 0.9;
-      return u;
-    });
+    const parts = utterancesFor(text, lang, voice);
     if (parts.length === 0) return;
     const finish = () => {
       if (mine.current === parts) {
@@ -136,7 +113,7 @@ export function ReadAloudButton({
         className={`inline-flex items-center justify-center gap-2 rounded-2xl border-[3px] border-current bg-surface font-extrabold text-brand transition-colors hover:bg-lilac ${big ? "min-h-16 px-6 text-2xl" : "min-h-12 px-4 text-lg"}`}
       >
         <SpeakerIcon size={big ? 30 : 22} />
-        {speaking ? t("Stop reading") : t(label)}
+        {speaking ? t(stopLabel) : t(label)}
       </button>
       {noVoice && (
         <span role="status" className="text-lg font-bold text-muted">
@@ -159,6 +136,71 @@ export function SimpleViewToggle({ on, onChange }: { on: boolean; onChange: (on:
     >
       {on ? t("Show everything") : t("Simple view")}
     </button>
+  );
+}
+
+/**
+ * The on/off switch for spoken alerts. Turning it on is the tap browsers need
+ * before they allow speech, so it speaks straight away to show it works.
+ * After a reload, `needsTap` shows a big "tap to turn back on" button.
+ */
+export function SpokenAlertsSwitch({
+  on,
+  needsTap,
+  onChange,
+  onWake,
+}: {
+  on: boolean;
+  needsTap: boolean;
+  onChange: (on: boolean) => void;
+  /** The "tap to turn back on" button was pressed. */
+  onWake: () => void;
+}) {
+  const { t } = useLanguage();
+  if (!canSpeak) return null;
+  return (
+    <section className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
+      <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4">
+        <span>
+          <span className="block text-2xl font-extrabold">{t("Spoken alerts")}</span>
+          <span className="block text-lg text-muted">
+            {t("Say new alerts out loud on this device.")}{" "}
+            <strong className="text-ink">{on ? t("On") : t("Off")}</strong>
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={on}
+          onChange={(e) => onChange(e.target.checked)}
+          className="peer sr-only"
+        />
+        <span
+          aria-hidden="true"
+          className="relative h-9 w-16 shrink-0 rounded-full border-[3px] border-brand bg-lilac transition-colors peer-checked:bg-brand peer-focus-visible:outline-4 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-ink peer-checked:[&>span]:translate-x-7 peer-checked:[&>span]:bg-surface"
+        >
+          <span className="absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-brand transition-transform" />
+        </span>
+      </label>
+      {needsTap && (
+        // Any tap on the page turns speech back on; this button also says so out loud.
+        <button
+          type="button"
+          onClick={onWake}
+          className="mt-4 inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border-[3px] border-brand bg-brand px-5 text-xl font-extrabold text-on-brand transition-colors hover:bg-brand-dark"
+        >
+          <SpeakerIcon size={24} />
+          {t("Tap to turn spoken alerts back on")}
+        </button>
+      )}
+      {on && (
+        <p className="mt-3 text-lg text-muted">
+          {t(
+            "A possible fall is always said out loud, even in quiet hours, and again after 30 seconds unless someone presses \"I'm checking on it\". Keep this page open and the volume up.",
+          )}
+        </p>
+      )}
+    </section>
   );
 }
 
