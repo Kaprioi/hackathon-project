@@ -165,3 +165,74 @@ test("Twilio unreachable: a clear error, not a crash", async () => {
   assert.equal(r.body.result, "failed");
   assert.match(r.body.error, /Couldn't reach Twilio/);
 });
+
+// ---- Only signed-in CareNest accounts can call (when the server has Supabase settings) ----
+
+const SUPA = { VITE_SUPABASE_URL: "https://proj.supabase.co/", VITE_SUPABASE_ANON_KEY: "anon-key" };
+const withToken = (body, token) => {
+  const r = post(body);
+  return token ? { ...r, headers: { ...r.headers, authorization: `Bearer ${token}` } } : r;
+};
+/** A pretend Supabase (which knows the token "good") in front of a pretend Twilio. */
+function fakeSupabaseAndTwilio({ supabaseDown = false } = {}) {
+  const twilio = fakeTwilio();
+  const checks = [];
+  const fetch = async (url, init) => {
+    if (String(url).includes("/auth/v1/user")) {
+      checks.push({ url, init });
+      if (supabaseDown) throw new TypeError("fetch failed");
+      const ok = init.headers.Authorization === "Bearer good" && init.headers.apikey === "anon-key";
+      return new Response(JSON.stringify(ok ? { id: "user-1" } : { msg: "bad jwt" }), { status: ok ? 200 : 401 });
+    }
+    return twilio.fetch(url, init);
+  };
+  return { fetch, checks, twilio };
+}
+
+test("with accounts on the server: no sign-in, no call", async () => {
+  const f = fakeSupabaseAndTwilio();
+  const r = await handleEmergencyCall(withToken({ kind: "fall" }), { ...ENV, ...SUPA }, { fetch: f.fetch });
+  assert.deepEqual([r.status, r.body.result], [200, "failed"]);
+  assert.match(r.body.error, /sign in/i);
+  assert.equal(f.twilio.calls.length, 0);
+});
+
+test("a made-up or expired login token doesn't call either", async () => {
+  const f = fakeSupabaseAndTwilio();
+  const r = await handleEmergencyCall(withToken({ kind: "fall" }, "made-up"), { ...ENV, ...SUPA }, { fetch: f.fetch });
+  assert.equal(r.body.result, "failed");
+  assert.equal(f.checks.length, 1);
+  assert.equal(f.twilio.calls.length, 0);
+});
+
+test("signed in: the token is checked with Supabase, then Twilio calls", async () => {
+  const f = fakeSupabaseAndTwilio();
+  const r = await handleEmergencyCall(withToken({ kind: "fall" }, "good"), { ...ENV, ...SUPA }, { fetch: f.fetch });
+  assert.equal(r.body.result, "sent");
+  assert.equal(f.checks[0].url, "https://proj.supabase.co/auth/v1/user");
+  assert.equal(f.twilio.calls.length, 1);
+});
+
+test("Supabase unreachable: a clear error, and no call", async () => {
+  const f = fakeSupabaseAndTwilio({ supabaseDown: true });
+  const r = await handleEmergencyCall(withToken({ kind: "fall" }, "good"), { ...ENV, ...SUPA }, { fetch: f.fetch });
+  assert.equal(r.body.result, "failed");
+  assert.match(r.body.error, /Couldn't check the sign-in/);
+  assert.equal(f.twilio.calls.length, 0);
+});
+
+test("with accounts on the server: the number's digits and the last call only for a signed-in page", async () => {
+  const f = fakeSupabaseAndTwilio();
+  const env = { ...ENV, ...SUPA };
+  const out = await handleEmergencyCall({ method: "GET", headers: {} }, env, { fetch: f.fetch });
+  assert.deepEqual(out.body, { ready: true, to: null, problem: null, last: null, needsSignIn: true });
+  const inside = await handleEmergencyCall({ method: "GET", headers: { authorization: "Bearer good" } }, env, { fetch: f.fetch });
+  assert.equal(inside.body.to, "4567");
+  assert.equal(inside.body.needsSignIn, undefined);
+});
+
+test("Twilio fetching the words needs no sign-in", async () => {
+  const r = await handleEmergencyCall({ method: "POST", url: "/?say=fall", body: null }, { ...ENV, ...SUPA });
+  assert.equal(r.status, 200);
+  assert.match(r.xml, /may have fallen/);
+});
