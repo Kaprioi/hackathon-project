@@ -56,6 +56,11 @@ export interface Settings {
   faces: boolean;
   /** Watch the tracked person for a fall or seizure and raise the emergency alert (emergency.ts). */
   emergency: boolean;
+  /**
+   * Who the emergency alert calls, shown on screen (like "Sam"). Empty = "your emergency
+   * contact". Their number is a server setting (api/emergency-call.ts), not saved here.
+   */
+  contactName: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -70,6 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
   turn: "auto",
   faces: true, // the page starts with false on iPhones (see TrackerPage loadSettings)
   emergency: true,
+  contactName: "",
 };
 
 /** Timing and behaviour of the tracking brain. */

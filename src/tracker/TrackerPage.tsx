@@ -24,6 +24,8 @@ import {
   LIMITS,
   TUNING,
 } from "./config.ts";
+import type { CallOutcome, CallSetup } from "./call.ts";
+import { callSetup, requestCall } from "./call.ts";
 import { Cloud } from "./cloud.ts";
 import type { Detection, PersonDetector } from "./detector.ts";
 import { createPersonDetector, isIPhone, preferredDelegate } from "./detector.ts";
@@ -67,12 +69,28 @@ interface Snapshot {
 /** Face recognition: not wanted, still loading its AI, ready, or couldn't load. */
 type FaceStatus = "off" | "loading" | "ready" | "failed";
 
-/** The emergency alert on screen: "Are you OK?" until `endsAt`, then a pretend call from `callStart`. */
+/** The emergency alert on screen: "Are you OK?" until `endsAt`, then the call from `callStart`. */
 interface Alarm {
   kind: EmergencyKind;
   phase: "ask" | "calling";
   endsAt: number;
   callStart: number;
+  /** The real call through the server: on its way, how it went, or "pretend" when calling isn't set up. */
+  call: "pretend" | "sending" | "sent" | "failed";
+  /** Why the call failed, in words (from Twilio or the server). */
+  callError?: string;
+}
+
+/** "just now", "5 min ago", "2 h ago". */
+function agoText(seconds: number): string {
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
+  return `${Math.round(seconds / 3600)} h ago`;
+}
+
+/** The emergency contact's name for the screen. */
+function contactLabel(s: Settings): string {
+  return s.contactName.trim() || "your emergency contact";
 }
 
 /** Plays tones (the sound is unlocked by the Start watching tap; without it, it stays silent). */
@@ -507,9 +525,17 @@ function Choice<T extends string>(props: {
   );
 }
 
-/** The emergency alert: "Are you OK?" with a countdown, then a pretend emergency call. */
-function EmergencyScreen(props: { alarm: Alarm; familyAlerted: boolean; onOk: () => void; onCallNow: () => void; onEnd: () => void }) {
-  const { alarm, familyAlerted, onOk, onCallNow, onEnd } = props;
+/** The emergency alert: "Are you OK?" with a countdown, then a call to the emergency contact. */
+function EmergencyScreen(props: {
+  alarm: Alarm;
+  contact: string;
+  familyAlerted: boolean;
+  onOk: () => void;
+  onCallNow: () => void;
+  onRetry: () => void;
+  onEnd: () => void;
+}) {
+  const { alarm, contact, familyAlerted, onOk, onCallNow, onRetry, onEnd } = props;
   const what = alarm.kind === "fall" ? "Possible fall" : "Possible seizure";
   if (alarm.phase === "ask") {
     const left = Math.max(0, Math.ceil((alarm.endsAt - Date.now()) / 1000));
@@ -524,7 +550,9 @@ function EmergencyScreen(props: { alarm: Alarm; familyAlerted: boolean; onOk: ()
         <p className="text-xl font-extrabold tracking-wide uppercase">{what} detected</p>
         <h2 className="text-4xl font-extrabold">Are you OK?</h2>
         <p className="text-7xl font-extrabold tabular-nums">{left}</p>
-        <p className="px-4 text-lg">Calling emergency services in {left} s unless you press I'm OK.</p>
+        <p className="px-4 text-lg">
+          Calling {contact} in {left} s unless you press I'm OK.
+        </p>
         <button
           onClick={onOk}
           className="min-h-16 w-full max-w-sm rounded-2xl bg-white px-8 text-3xl font-extrabold text-red-700 transition-transform active:scale-95"
@@ -538,25 +566,47 @@ function EmergencyScreen(props: { alarm: Alarm; familyAlerted: boolean; onOk: ()
     );
   }
   const secs = Math.max(0, Math.floor((Date.now() - alarm.callStart) / 1000));
+  const real = alarm.call !== "pretend";
+  const status: Record<Alarm["call"], string> = {
+    pretend: "Demo: no real call (calling isn't set up on the server)",
+    sending: "Starting the call…",
+    sent: "Calling now. Their phone should ring in a few seconds.",
+    failed: `The call didn't go through. ${alarm.callError ?? ""}`,
+  };
   return (
     <div
       role="alertdialog"
       aria-modal="true"
-      aria-label="Calling emergency services"
+      aria-label={`Calling ${contact}`}
       className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 overflow-y-auto bg-black/95 px-4 py-6 text-center text-white"
       style={SAFE_ALL}
     >
-      <p className="rounded-full bg-sun px-4 py-1 text-base font-extrabold text-ink">Demo: no real call is made</p>
-      <h2 className="px-4 text-3xl font-extrabold">Calling emergency services…</h2>
+      <p
+        role="status"
+        className={`rounded-2xl px-4 py-1 text-base font-extrabold ${
+          alarm.call === "failed" ? "bg-red-600 text-white" : alarm.call === "sent" ? "bg-leaf text-white" : "bg-sun text-ink"
+        }`}
+      >
+        {status[alarm.call]}
+      </p>
+      <h2 className="px-4 text-3xl font-extrabold">Calling {contact}…</h2>
       <p className="text-lg text-white/90">
         {what} detected · {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}
       </p>
       {familyAlerted && <p className="text-base text-white/90">The family page has been alerted.</p>}
+      {alarm.call === "failed" && (
+        <button
+          onClick={onRetry}
+          className="min-h-14 w-full max-w-sm rounded-2xl bg-white px-8 text-xl font-extrabold text-ink transition-transform active:scale-95"
+        >
+          Try again
+        </button>
+      )}
       <button
         onClick={onEnd}
         className="min-h-16 w-full max-w-sm rounded-2xl bg-red-600 px-8 text-2xl font-extrabold text-white transition-transform active:scale-95"
       >
-        End call
+        {real ? "Close" : "End call"}
       </button>
     </div>
   );
@@ -773,25 +823,65 @@ export default function TrackerPage() {
 
   const raiseAlarm = useCallback((kind: EmergencyKind) => {
     if (alarmRef.current) return;
-    const a: Alarm = { kind, phase: "ask", endsAt: Date.now() + EMERGENCY.countdownS * 1000, callStart: 0 };
+    const a: Alarm = { kind, phase: "ask", endsAt: Date.now() + EMERGENCY.countdownS * 1000, callStart: 0, call: "pretend" };
     alarmRef.current = a;
     setAlarm(a);
     navigator.vibrate?.([400, 200, 400]);
     beep(audioRef.current);
   }, []);
 
-  /** The pretend emergency call (never dials anything), and the alert on the family page. */
+  /** Changes the alert on screen, if it's still the same one (not closed or replaced meanwhile). */
+  const patchAlarm = useCallback((callStart: number, patch: Partial<Alarm>) => {
+    const a = alarmRef.current;
+    if (!a || a.callStart !== callStart) return;
+    const next = { ...a, ...patch };
+    alarmRef.current = next;
+    setAlarm(next);
+  }, []);
+
+  /**
+   * Asks the server to phone the emergency contact (Twilio). If calling isn't set up there,
+   * it becomes a pretend call with a ringing sound.
+   */
+  const placeCall = useCallback(
+    (callStart: number, kind: EmergencyKind) => {
+      patchAlarm(callStart, { call: "sending", callError: undefined });
+      void requestCall(kind).then((out: CallOutcome) => {
+        if (alarmRef.current?.callStart !== callStart) return; // closed meanwhile
+        if (out.result === "off") {
+          patchAlarm(callStart, { call: "pretend" });
+          ringRef.current?.();
+          ringRef.current = ring(audioRef.current);
+        } else if (out.result === "sent") {
+          patchAlarm(callStart, { call: "sent" });
+        } else {
+          patchAlarm(callStart, { call: "failed", callError: out.error });
+          beep(audioRef.current);
+        }
+      });
+    },
+    [patchAlarm],
+  );
+
+  /** The call (once per alert), and the alert on the family page. */
   const startCall = useCallback(() => {
     const a = alarmRef.current;
     if (!a || a.phase === "calling") return;
-    const next: Alarm = { ...a, phase: "calling", callStart: Date.now() };
+    const next: Alarm = { ...a, phase: "calling", callStart: Date.now(), call: "sending" };
     alarmRef.current = next;
     setAlarm(next);
     ringRef.current?.();
-    ringRef.current = ring(audioRef.current);
+    ringRef.current = null;
+    placeCall(next.callStart, next.kind);
     // The family page only knows "fall" so far; a seizure shows there as "Possible fall".
     report({ kind: "fall", zone: null, posture: "lying" });
-  }, [report]);
+  }, [report, placeCall]);
+
+  /** The call didn't go through: try once more (only when asked, so it never calls twice by itself). */
+  const retryCall = useCallback(() => {
+    const a = alarmRef.current;
+    if (a?.phase === "calling" && a.call === "failed") placeCall(a.callStart, a.kind);
+  }, [placeCall]);
 
   const endAlarm = useCallback(() => {
     ringRef.current?.();
@@ -1534,9 +1624,11 @@ export default function TrackerPage() {
       {alarm && (
         <EmergencyScreen
           alarm={alarm}
+          contact={contactLabel(settings)}
           familyAlerted={!!cloudRef.current && !sendError}
           onOk={endAlarm}
           onCallNow={startCall}
+          onRetry={retryCall}
           onEnd={endAlarm}
         />
       )}
@@ -1561,6 +1653,17 @@ function SettingsPanel(props: {
   testAlarm: () => void;
 }) {
   const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow, testAlarm } = props;
+  // Real emergency calls: are they set up on the server? (Checked each time the panel opens.)
+  const [setup, setSetup] = useState<CallSetup | null | "checking">("checking");
+  const [callTest, setCallTest] = useState<"idle" | "sending" | CallOutcome>("idle");
+  useEffect(() => {
+    let live = true;
+    void callSetup().then((r) => live && setSetup(r));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const callsReady = setup !== null && setup !== "checking" && setup.ready;
   // The test buttons go by the screen. On a mirrored picture the screen's left is the camera's right.
   const side = mirrored ? -1 : 1;
 
@@ -1644,8 +1747,61 @@ function SettingsPanel(props: {
             <Button onClick={testAlarm}>Test the alert</Button>
             <p className="text-base text-white/90">
               Watches the person you follow for a fall (on the floor and not getting up) or a seizure (shaking while lying
-              down). Then it asks "Are you OK?" for {EMERGENCY.countdownS} seconds before a pretend emergency call. No
-              real number is ever dialled. A rough guess from the camera, not a medical device.
+              down). Then it asks "Are you OK?" for {EMERGENCY.countdownS} seconds before calling the emergency contact
+              below. If real calls aren't set up, it's a pretend call. A rough guess from the camera, not a medical device.
+            </p>
+            <label className="block space-y-1">
+              <span className="font-semibold">Emergency contact's name</span>
+              <input
+                type="text"
+                value={s.contactName}
+                maxLength={40}
+                placeholder="Sam"
+                autoComplete="off"
+                onChange={(e) => update({ contactName: e.target.value })}
+                className="min-h-11 w-full rounded-xl bg-white/90 px-3 text-ink"
+              />
+            </label>
+            <p role="status" className="text-base font-semibold">
+              {setup === "checking"
+                ? "Checking whether real calls are set up…"
+                : setup === null
+                  ? "Couldn't check whether real calls are set up. No internet?"
+                  : setup.ready
+                    ? `Real calls are on: it calls the number ending ${setup.to}.`
+                    : setup.problem
+                      ? `Calling is half set up: ${setup.problem}`
+                      : "Real calls aren't set up, so the alert makes a pretend call."}
+            </p>
+            {setup !== null && setup !== "checking" && setup.last && (
+              <p className="text-base text-white/90">
+                Last call ({setup.last.kind}, {agoText(setup.last.secondsAgo)}):{" "}
+                {setup.last.ok ? "Twilio placed it." : `didn't go through. ${setup.last.error ?? ""}`}
+              </p>
+            )}
+            <Button
+              disabled={!callsReady || callTest === "sending"}
+              onClick={() => {
+                setCallTest("sending");
+                void requestCall("test").then(setCallTest);
+              }}
+            >
+              Test the call (rings them now)
+            </Button>
+            {callTest !== "idle" && (
+              <p role="status" className="text-base font-semibold">
+                {callTest === "sending"
+                  ? "Calling…"
+                  : callTest.result === "sent"
+                    ? "Calling now. Their phone should ring in a few seconds."
+                    : callTest.result === "off"
+                      ? "Real calls aren't set up."
+                      : `Didn't go through: ${callTest.error}`}
+              </p>
+            )}
+            <p className="text-base text-white/90">
+              The number and the Twilio keys are set on the server (for the test link: the .env.local file on the PC
+              running it), never on this phone. "Test the alert" calls too, once its countdown ends.
             </p>
           </fieldset>
 
