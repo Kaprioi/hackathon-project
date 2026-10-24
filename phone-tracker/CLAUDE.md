@@ -130,7 +130,7 @@ Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on
 
 1. Which iPhone goes on the rig (Apple's friend's), and in which case? SightLine assumes an iPhone 14 in a case.
 2. Does Bluefy on that iPhone allow the camera? Test: open https://webrtc.github.io/samples/src/content/getusermedia/gum/ in Bluefy.
-3. Who connects the repo to Vercel, so the phone has an https link to `/tracker`?
+3. How does the phone get an https link to `/tracker`? The repo is already connected to Vercel (project `carenest` in the team's "Hackathon project" Vercel account). Vercel blocks preview builds of dennisliang07's commits because that account isn't a team member, so PR #6 has no preview link. The owner merging with a normal merge commit (not squash) should deploy it from `main`; likely, not yet confirmed. Alternatives: the owner adds Apple to the Vercel team (needs Pro), or a tunnel from the PC.
 4. Will Kris accept the firmware merge PR (Bluetooth + mist added to SightLine, pan range widened to 10–170°)?
 5. Which orders were placed? Tick them in `docs/SHOPPING_LIST.md`. The humidifier parts need approval before buying.
 6. What are the event's real length, date and rules on pre-built hardware and code?
@@ -138,8 +138,8 @@ Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on
 ## Next steps
 
 1. Run the Bluefy camera test on the iPhone (open question 2).
-2. Get Vercel connected and open `/tracker` on the iPhone in Bluefy. Check the frame rate.
+2. Ask the repo owner to merge PR #4 and PR #6 (website), then open the deployed `/tracker` on the iPhone in Bluefy. Check the frame rate.
 3. Try `/tracker` with the PC webcam: walk out of view, hide behind a chair, come back.
-4. Kris reviews the firmware merge PR; upload it and test with the website (`docs/BUILD_STEPS.md`).
+4. Kris reviews the firmware merge, PR #7 (into `hardware-build-guide`); upload it and test with the website (`docs/BUILD_STEPS.md`).
 5. Approve and buy the humidifier parts; test the mist reach and whether droplets reach the radars.
 6. Tune on the real stand (`docs/BUILD_STEPS.md` Part E), then rehearse the demo at least 5 times.
