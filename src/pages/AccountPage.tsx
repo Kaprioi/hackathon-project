@@ -305,7 +305,7 @@ function Circles({ userId }: { userId: string }) {
         Your family circles
       </h2>
       {problem ? (
-        <p role="alert" className="mt-3 text-lg font-bold text-[#a61b1b]">
+        <p role="alert" className="mt-3 text-lg font-bold text-error">
           {problem}
         </p>
       ) : !rows ? (
