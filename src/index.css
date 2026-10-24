@@ -218,6 +218,11 @@ html[data-contrast="more"] .bg-peach,
 html[data-contrast="more"] .bg-sun {
   box-shadow: inset 0 0 0 3px var(--color-ink);
 }
+/* ...except the pale half of each colour circle in the Display panel, which would
+   otherwise show a black box drawn inside the circle. */
+html[data-contrast="more"] .swatch-half {
+  box-shadow: none;
+}
 /* Pale borders turn white in high contrast, so boxes and buttons drawn with one
    (the About Us demo, the language picker...) would lose their edge. Make it dark.
    Kept as weak as a normal class, so a chosen or hovered border still wins. */

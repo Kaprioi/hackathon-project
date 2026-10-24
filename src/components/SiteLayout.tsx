@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, NavLink } from "react-router";
+import { Link, NavLink, useLocation } from "react-router";
 import { useLanguage } from "../i18n/useLanguage";
 import { useOnline } from "../lib/useOnline";
+import BackButton from "./BackButton";
 import { Arrow } from "./ButtonLink";
 import { DisplayButton, DisplayPanel } from "./DisplaySettings";
 import { motionIsReduced } from "../lib/displaySettings";
@@ -11,13 +12,14 @@ import LanguagePicker from "./LanguagePicker";
 // Copied from the Lovable design: a sticky header that turns frosted when you
 // scroll, a purple reading-progress line, a mobile menu, and a "back to top" button.
 
-// The only pages in the app. Shown in the header on every screen size.
+// The only pages in the app. Shown in the header on every screen size,
+// with Every Word Capitalised.
 const navLinks = [
   { to: "/", label: "About Us" },
-  { to: "/login", label: "Sign in" },
-  { to: "/tracker", label: "Phone camera" },
+  { to: "/login", label: "Sign In" },
+  { to: "/tracker", label: "Phone Camera" },
   { to: "/dashboard", label: "Family" },
-  { to: "/profile", label: "Care profile" },
+  { to: "/profile", label: "Care Profile" },
   { to: "/help", label: "Help" },
 ];
 
@@ -244,6 +246,7 @@ export function Blobs({ fixed = false }: { fixed?: boolean }) {
 export default function SiteLayout({ title, children }: { title?: string; children: React.ReactNode }) {
   const online = useOnline();
   const { t } = useLanguage();
+  const { pathname } = useLocation();
   // Pages pass the English title; it is translated here.
   const tabTitle = title && t(title);
   useEffect(() => {
@@ -271,6 +274,13 @@ export default function SiteLayout({ title, children }: { title?: string; childr
         </p>
       )}
       <main id="main" className="flex-1">
+        {/* Every page but the homepage gets a "Go back" button at the top. */}
+        {pathname !== "/" && (
+          // Raised so the drifting colour clouds (Blobs) on the page below don't wash it out.
+          <div className="relative z-10 mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+            <BackButton />
+          </div>
+        )}
         {children}
       </main>
       <SiteFooter />

@@ -2,14 +2,15 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useLanguage } from "../i18n/useLanguage";
 import { systemPrefersLessMotion, THEMES, useDisplaySettings, type TextSize, type Theme } from "../lib/displaySettings";
 
-// The "Display" button in the header and the small panel it opens: text size
-// (Normal, Large, Extra large), a colour theme, and "High contrast" and
+// The "Display" button in the header and the small panel it opens: Zoom In and
+// Zoom Out buttons for the text size (Normal, Large, Extra large), a colour theme, and "High contrast" and
 // "Reduce motion" switches. Works on every page.
 
-const sizes: { value: TextSize; label: string; className: string }[] = [
-  { value: "normal", label: "Normal", className: "text-lg" },
-  { value: "large", label: "Large", className: "text-xl" },
-  { value: "extra", label: "Extra large", className: "text-2xl" },
+// Smallest to biggest. Zoom In moves one step down this list, Zoom Out one step up.
+const sizes: { value: TextSize; label: string }[] = [
+  { value: "normal", label: "Normal" },
+  { value: "large", label: "Large" },
+  { value: "extra", label: "Extra large" },
 ];
 
 /** The "Aa Display" button that opens and closes the panel. */
@@ -55,7 +56,7 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
 
   // Move keyboard focus into the panel when it opens.
   useEffect(() => {
-    panel.current?.querySelector<HTMLInputElement>("input:checked")?.focus();
+    panel.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
   }, []);
 
   return (
@@ -70,13 +71,7 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
         {t("Display settings")}
       </h2>
 
-      <Choices
-        legend="Text size"
-        name={`${id}-size`}
-        options={sizes}
-        value={settings.textSize}
-        onChange={(textSize) => update({ textSize })}
-      />
+      <Zoom value={settings.textSize} onChange={(textSize) => update({ textSize })} />
       <ColorChoices name={`${id}-theme`} value={settings.theme} onChange={(theme) => update({ theme })} />
 
       <Switch
@@ -104,43 +99,40 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** A group of big radio buttons. */
-function Choices<T extends string>({
-  legend,
-  name,
-  options,
-  value,
-  onChange,
-}: {
-  legend: string;
-  name: string;
-  options: { value: T; label: string; className?: string }[];
-  value: T;
-  onChange: (value: T) => void;
-}) {
+/** Zoom Out and Zoom In buttons that step the text size down or up, and the size it is now. */
+function Zoom({ value, onChange }: { value: TextSize; onChange: (value: TextSize) => void }) {
   const { t } = useLanguage();
+  const index = Math.max(0, sizes.findIndex((s) => s.value === value));
+  const zoomButton =
+    "inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border-[3px] border-brand bg-surface px-3 text-lg font-extrabold text-brand transition-colors hover:bg-lilac disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface";
   return (
-    <fieldset className="mt-4">
-      <legend className="text-xl font-extrabold">{t(legend)}</legend>
-      <div className="mt-2 flex flex-col gap-2">
-        {options.map((o) => (
-          <label
-            key={o.value}
-            className="flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl border-[3px] border-lilac px-4 font-bold has-[:checked]:border-brand has-[:checked]:bg-lilac"
-          >
-            <input
-              type="radio"
-              name={name}
-              value={o.value}
-              checked={value === o.value}
-              onChange={() => onChange(o.value)}
-              className="h-6 w-6 shrink-0 accent-brand"
-            />
-            <span className={o.className ?? "text-lg"}>{t(o.label)}</span>
-          </label>
-        ))}
+    <div className="mt-4">
+      <h3 className="text-xl font-extrabold">{t("Text size")}</h3>
+      {/* Read out when the size changes. */}
+      <p aria-live="polite" className="text-base font-bold text-muted">
+        {t("Now: {size}", { size: t(sizes[index].label) })}
+      </p>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          disabled={index === 0}
+          onClick={() => onChange(sizes[index - 1].value)}
+          className={zoomButton}
+        >
+          <span aria-hidden="true" className="text-2xl leading-none">−</span>
+          {t("Zoom Out")}
+        </button>
+        <button
+          type="button"
+          disabled={index === sizes.length - 1}
+          onClick={() => onChange(sizes[index + 1].value)}
+          className={zoomButton}
+        >
+          <span aria-hidden="true" className="text-2xl leading-none">+</span>
+          {t("Zoom In")}
+        </button>
       </div>
-    </fieldset>
+    </div>
   );
 }
 
@@ -176,7 +168,7 @@ function ColorChoices({ name, value, onChange }: { name: string; value: Theme; o
               data-theme={o.value}
               className={`relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-brand ${value === o.value ? "ring-[3px] ring-ink" : "ring-2 ring-ink/20"}`}
             >
-              <span className="absolute inset-y-0 right-0 w-1/2 bg-lilac" />
+              <span className="swatch-half absolute inset-y-0 right-0 w-1/2 bg-lilac" />
               {value === o.value && (
                 <svg viewBox="0 0 24 24" className="relative h-6 w-6">
                   <circle cx="12" cy="12" r="11" fill="#fff" />
