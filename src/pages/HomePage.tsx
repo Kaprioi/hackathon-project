@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useId, useReducer, useRef, useState } from "react";
 import ButtonLink from "../components/ButtonLink";
 import Highlight from "../components/Highlight";
 import Reveal, { useInView } from "../components/Reveal";
@@ -16,6 +16,7 @@ import {
 } from "../components/illustrations";
 import { useLanguage } from "../i18n/useLanguage";
 import { motionIsReduced } from "../lib/displaySettings";
+import { checkInviteName, initial, MAX_NAME_LENGTH } from "../lib/inviteName";
 
 // The About Us page at "/", copied from the Lovable design.
 // "Get started" opens the login page on its "Create your account" form.
@@ -621,18 +622,26 @@ function Demo() {
   );
 }
 
-const invitees = [
-  { name: "Daughter", color: "bg-coral" },
-  { name: "Grandson", color: "bg-brand" },
-  { name: "Neighbour", color: "bg-leaf" },
-  { name: "Carer", color: "bg-sun" },
-];
+// The colours of the little circles, in turn: one for each person typed in.
+const circleColours = ["bg-coral text-ink", "bg-brand text-on-brand", "bg-leaf text-on-brand", "bg-sun text-ink"];
 
 function Family() {
   const { t } = useLanguage();
-  const [invited, setInvited] = useState(["Daughter", "Grandson"]);
-  const toggle = (name: string) =>
-    setInvited((list) => (list.includes(name) ? list.filter((n) => n !== name) : [...list, name]));
+  const id = useId();
+  // Pretend only: these names stay on this page and are never sent anywhere.
+  const [invited, setInvited] = useState<string[]>([]);
+  const [typed, setTyped] = useState("");
+  const [problem, setProblem] = useState("");
+
+  function add(e: React.FormEvent) {
+    e.preventDefault();
+    const check = checkInviteName(typed, invited);
+    if (!check.ok) return setProblem(check.problem);
+    setInvited((list) => [...list, check.name]);
+    setTyped("");
+    setProblem("");
+  }
+  const remove = (name: string) => setInvited((list) => list.filter((n) => n !== name));
 
   return (
     <section className="px-6 py-24" aria-labelledby="family-title">
@@ -660,39 +669,74 @@ function Family() {
             </p>
           </Reveal>
           <Reveal delay={120}>
-            <p className="font-extrabold">{t("Who would you invite?")}</p>
-            <div className="mt-3 flex flex-wrap gap-3">
-              {invitees.map((person) => {
-                const on = invited.includes(person.name);
-                return (
-                  <button
-                    key={person.name}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => toggle(person.name)}
-                    className={`inline-flex min-h-12 items-center gap-2 rounded-full border-[3px] px-4 font-extrabold transition-all duration-200 hover:-translate-y-0.5 ${on ? "border-brand bg-lilac text-brand" : "border-lilac bg-surface text-muted"}`}
+            <form onSubmit={add} noValidate>
+              <label htmlFor={`${id}-name`} className="font-extrabold">
+                {t("Who would you invite?")}
+              </label>
+              <p id={`${id}-hint`} className="text-base text-muted">
+                {t("Type a name or who they are to you, then press Add.")}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <input
+                  id={`${id}-name`}
+                  type="text"
+                  autoComplete="off"
+                  maxLength={MAX_NAME_LENGTH * 2}
+                  placeholder={t("For example: Daughter or Sam")}
+                  value={typed}
+                  onChange={(e) => {
+                    setTyped(e.target.value);
+                    setProblem("");
+                  }}
+                  aria-invalid={problem ? true : undefined}
+                  aria-describedby={problem ? `${id}-hint ${id}-problem` : `${id}-hint`}
+                  className={`min-h-12 min-w-0 flex-1 basis-56 rounded-2xl border-[3px] bg-surface px-4 text-lg text-ink transition-colors ${problem ? "border-error" : "border-lilac hover:border-brand focus:border-brand"}`}
+                />
+                <button
+                  type="submit"
+                  className="inline-flex min-h-12 items-center gap-2 rounded-2xl border-[3px] border-brand bg-brand px-5 font-extrabold text-on-brand transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-dark"
+                >
+                  <span aria-hidden="true">+</span> {t("Add")}
+                </button>
+              </div>
+              {problem && (
+                <p id={`${id}-problem`} role="alert" className="mt-2 font-bold text-error">
+                  {t(problem)}
+                </p>
+              )}
+            </form>
+            {invited.length > 0 && (
+              <ul className="mt-4 flex flex-wrap gap-2" aria-label={t("People you'd invite")}>
+                {invited.map((name) => (
+                  <li
+                    key={name}
+                    className="inline-flex min-h-12 animate-pop items-center gap-2 rounded-full border-[3px] border-brand bg-lilac py-1 pl-4 pr-1 font-extrabold text-brand"
                   >
-                    <span
-                      className={`grid h-6 w-6 place-items-center rounded-full text-xs transition-transform duration-300 ${on ? `${person.color} scale-110 text-on-brand` : "bg-lilac text-brand"}`}
+                    {name}
+                    <button
+                      type="button"
+                      onClick={() => remove(name)}
+                      aria-label={t("Remove {name}", { name })}
+                      className="grid h-10 w-10 place-items-center rounded-full text-xl leading-none hover:bg-surface"
                     >
-                      {on ? "✓" : "+"}
-                    </span>
-                    {t(person.name)}
-                  </button>
-                );
-              })}
-            </div>
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="mt-6 flex items-center gap-4">
               <div className="flex -space-x-3">
                 <span className="grid h-12 w-12 place-items-center rounded-full border-4 border-cream bg-peach font-black text-ink">
                   G
                 </span>
-                {invited.map((name) => (
+                {invited.map((name, i) => (
                   <span
                     key={name}
-                    className={`grid h-12 w-12 animate-pop place-items-center rounded-full border-4 border-cream font-black text-on-brand ${invitees.find((p) => p.name === name)?.color ?? "bg-brand"}`}
+                    aria-hidden="true"
+                    className={`grid h-12 w-12 animate-pop place-items-center rounded-full border-4 border-cream font-black ${circleColours[i % circleColours.length]}`}
                   >
-                    {t(name)[0]}
+                    {initial(name)}
                   </span>
                 ))}
               </div>

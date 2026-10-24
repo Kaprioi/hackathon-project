@@ -677,7 +677,7 @@ export default function TrackerPage() {
               {account === "signed-out" ? (
                 <div className="space-y-3">
                   <p className="text-xl font-bold">{t("Please sign in first, so your family can see the updates.")}</p>
-                  <Link to="/login" className={`${buttonVariants.primary} min-h-16 w-full text-2xl`}>
+                  <Link to="/login?next=/tracker" className={`${buttonVariants.primary} min-h-16 w-full text-2xl`}>
                     {t("Sign in")}
                   </Link>
                 </div>

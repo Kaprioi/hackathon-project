@@ -2,7 +2,7 @@
 
 **CareNest**: a phone standing on a table watches the room with its camera (all on the phone), and family see in plain words how their loved one is doing. No video or pictures ever leave the phone.
 
-The site has seven pages:
+The site has eight pages:
 
 | Page | Address | What it is |
 | --- | --- | --- |
@@ -13,6 +13,7 @@ The site has seven pages:
 | Care profile | `/profile` | A few questions about the person being cared for (age, routine, who they live with), then how likely a fall is and the times to keep an eye on |
 | Help | `/help` | Picture steps for getting started, what the Family page means, privacy, and common questions |
 | Your account | `/account` | Your email, the name family see, change your password, your family circles, and log out (signed-in only) |
+| Set up your iPhone | `/get-started` | Step-by-step guide shown right after signing in: turns an iPhone into the phone camera on the table (with a QR code to open it on the iPhone). Signed-in only |
 
 The "forgot password" email also brings people to `/reset-password` to choose a new password.
 
@@ -139,7 +140,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
 Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, and colours and fonts in `src/index.css`. `vercel.json` makes links like `/login`, `/dashboard` and `/reset-password` work when the site is deployed.
 
-Logging in: `/login` has log in, create an account, and "forgot your password". Creating an account logs people straight in and takes them to `/dashboard`. The "forgot password" email brings people back to `/reset-password` to choose a new password (and if "Confirm email" is turned back on, the confirmation email brings them to `/dashboard`). `/dashboard` is the family page (below) and sends people to `/login` if they aren't logged in.
+Logging in: `/login` has log in, create an account, and "forgot your password". Until someone signs in, the **Sign In** link in the header glows with a yellow "Start here" bubble pointing at it. After logging in or creating an account, people go to the iPhone setup guide at `/get-started` (one step at a time, with a glowing **Next** button); once they finish or skip it, later log-ins on that browser go straight to `/dashboard`. A link like `/login?next=/tracker` brings people back to that page after logging in instead (the Phone camera page uses this, so an iPhone that signs in goes straight back to the camera). The "forgot password" email brings people back to `/reset-password` to choose a new password (and if "Confirm email" is turned back on, the confirmation email brings them to `/dashboard`). `/dashboard` is the family page (below) and sends people to `/login` if they aren't logged in.
 
 ## Phone Tracker page (`/tracker`)
 

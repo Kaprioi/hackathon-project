@@ -1,40 +1,29 @@
-// Tests for the saved "Display" settings, especially older saves from before the
-// colour themes (when the choice was "Same as my device", "Light" or "Dark").
+// Tests for the saved "Display" settings, especially older saves that still hold
+// a colour theme or "Light"/"Dark" from before the whole site was one CareNest colour (blue).
 //
 // Run with:  npm test
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { loadDisplaySettings, motionIsReduced, THEMES } from "./displaySettings.ts";
+import { loadDisplaySettings, motionIsReduced } from "./displaySettings.ts";
 
 // A pretend browser storage holding whatever this browser saved before.
 function saved(value) {
   globalThis.localStorage = { getItem: () => value, setItem() {} };
 }
 
-test("someone who chose Dark (or Light, or Same as my device) gets CareNest purple", () => {
-  for (const theme of ["dark", "light", "system"]) {
+test("an old saved colour (Ocean blue, Dark...) is ignored, other choices are kept", () => {
+  for (const theme of ["dark", "light", "system", "ocean", "slate"]) {
     saved(JSON.stringify({ textSize: "large", theme, highContrast: true }));
-    const settings = loadDisplaySettings();
-    assert.equal(settings.theme, "carenest");
-    // Their other choices are kept.
-    assert.equal(settings.textSize, "large");
-    assert.equal(settings.highContrast, true);
-  }
-});
-
-test("a chosen colour theme is remembered", () => {
-  for (const { value } of THEMES) {
-    saved(JSON.stringify({ theme: value }));
-    assert.equal(loadDisplaySettings().theme, value);
+    assert.deepEqual(loadDisplaySettings(), { textSize: "large", reduceMotion: null, highContrast: true });
   }
 });
 
 test("nothing saved, or a broken save, gives the normal settings", () => {
   for (const value of [null, "not json", "null", "[]"]) {
     saved(value);
-    assert.deepEqual(loadDisplaySettings(), { textSize: "normal", reduceMotion: null, theme: "carenest", highContrast: false });
+    assert.deepEqual(loadDisplaySettings(), { textSize: "normal", reduceMotion: null, highContrast: false });
   }
 });
 

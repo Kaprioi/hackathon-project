@@ -5,6 +5,7 @@ import { PasswordField, TextField } from "../components/FormFields";
 import { useLanguage } from "../i18n/useLanguage";
 import { friendlyError } from "../lib/friendlyError";
 import { authLinkError, clearAuthLinkError, supabase } from "../lib/supabase";
+import { afterSignIn, guideDone } from "../lib/guide";
 import { useSession } from "../lib/useSession";
 
 // The things this page can do. "sent" is the "check your email" screen shown
@@ -130,8 +131,11 @@ export default function LoginPage() {
     }
   }
 
-  // Already logged in (or just logged in): go straight to the dashboard.
-  if (session) return <Navigate to={AFTER_LOGIN} replace />;
+  // Already logged in (or just logged in): back to the page that sent them here
+  // (like /login?next=/tracker), else the iPhone setup guide until it's done,
+  // else the family page.
+  if (session)
+    return <Navigate to={afterSignIn(searchParams.get("next"), guideDone(session.user.id))} replace />;
 
   return (
     <AuthLayout title={titles[mode]}>

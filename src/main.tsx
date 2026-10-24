@@ -7,6 +7,7 @@ import { startDisplaySettings } from "./lib/displaySettings";
 import AccountPage from "./pages/AccountPage";
 import CareProfilePage from "./pages/CareProfilePage";
 import DashboardPage from "./pages/DashboardPage";
+import GetStartedPage from "./pages/GetStartedPage";
 import HelpPage from "./pages/HelpPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
@@ -41,6 +42,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/profile" element={<CareProfilePage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/help" element={<HelpPage />} />
+          <Route path="/get-started" element={<GetStartedPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </BrowserRouter>

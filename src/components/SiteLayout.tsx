@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router";
 import { useLanguage } from "../i18n/useLanguage";
 import { useOnline } from "../lib/useOnline";
+import { supabase } from "../lib/supabase";
+import { useSession } from "../lib/useSession";
 import BackButton from "./BackButton";
 import { Arrow } from "./ButtonLink";
 import { DisplayButton, DisplayPanel } from "./DisplaySettings";
@@ -10,7 +12,7 @@ import LanguagePicker from "./LanguagePicker";
 
 // The header, footer and page frame shared by every page except the phone camera.
 // Copied from the Lovable design: a sticky header that turns frosted when you
-// scroll, a purple reading-progress line, a mobile menu, and a "back to top" button.
+// scroll, a blue reading-progress line, a mobile menu, and a "back to top" button.
 
 // The only pages in the app. Shown in the header on every screen size,
 // with Every Word Capitalised.
@@ -37,7 +39,30 @@ export function LogoMark({ size = 44 }: { size?: number }) {
   );
 }
 
+/** The yellow "Start here" bubble that points up at the Sign In link (or the menu button on phones). */
+function StartHereBubble({ align }: { align: "center" | "right" }) {
+  const { t } = useLanguage();
+  return (
+    <span
+      aria-hidden="true"
+      className={`pointer-events-none absolute top-full z-10 mt-4 ${align === "center" ? "left-1/2 -translate-x-1/2" : "right-0"}`}
+    >
+      <span className="relative block animate-bob whitespace-nowrap rounded-2xl bg-sun px-4 py-2 text-base font-extrabold text-ink shadow-soft">
+        <span
+          className={`absolute -top-1.5 h-3 w-3 rotate-45 bg-sun ${align === "center" ? "left-1/2 -translate-x-1/2" : "right-5"}`}
+        />
+        {t("Start here")}
+      </span>
+    </span>
+  );
+}
+
 export function SiteHeader() {
+  const { pathname } = useLocation();
+  const session = useSession();
+  // Nobody signed in yet: make the Sign In link glow and point at it. (Not when
+  // the Supabase keys are missing, because then signing in can't work.)
+  const pointAtSignIn = Boolean(supabase) && session === null && pathname !== "/login";
   const [scrolled, setScrolled] = useState(false);
   const [progress, setProgress] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -89,17 +114,23 @@ export function SiteHeader() {
           </Link>
           <nav aria-label="Main" className="site-nav hidden xl:block">
             <ul className="flex gap-1">
-              {navLinks.map((link) => (
-                <li key={link.to}>
-                  <NavLink
-                    to={link.to}
-                    end
-                    className="relative inline-flex min-h-12 items-center whitespace-nowrap rounded-2xl px-3 text-lg font-extrabold text-brand no-underline transition-colors hover:bg-lilac aria-[current=page]:bg-lilac aria-[current=page]:text-ink"
-                  >
-                    {t(link.label)}
-                  </NavLink>
-                </li>
-              ))}
+              {navLinks.map((link) => {
+                const spotlight = pointAtSignIn && link.to === "/login";
+                return (
+                  <li key={link.to} className="relative">
+                    <NavLink
+                      to={link.to}
+                      end
+                      className={`relative inline-flex min-h-12 items-center whitespace-nowrap rounded-2xl px-3 text-lg font-extrabold no-underline transition-colors aria-[current=page]:bg-lilac aria-[current=page]:text-ink ${
+                        spotlight ? "animate-glow bg-brand text-on-brand hover:bg-brand-dark" : "text-brand hover:bg-lilac"
+                      }`}
+                    >
+                      {t(link.label)}
+                    </NavLink>
+                    {spotlight && <StartHereBubble align="center" />}
+                  </li>
+                );
+              })}
             </ul>
           </nav>
           <div className="flex items-center gap-2">
@@ -115,10 +146,11 @@ export function SiteHeader() {
                 setMenuOpen(false);
               }}
             />
+            <span className="relative flex">
             <button
               ref={menuButton}
               type="button"
-              className="site-menu-button grid h-12 w-12 place-items-center rounded-2xl bg-lilac text-brand xl:hidden"
+              className={`site-menu-button grid h-12 w-12 place-items-center rounded-2xl bg-lilac text-brand xl:hidden ${pointAtSignIn && !menuOpen ? "animate-glow" : ""}`}
               aria-expanded={menuOpen}
               aria-controls="mobile-menu"
               aria-label={menuOpen ? t("Close menu") : t("Open menu")}
@@ -139,6 +171,13 @@ export function SiteHeader() {
                 />
               </span>
             </button>
+            {/* On smaller screens the Sign In link is inside the menu, so point at the menu button. */}
+            {pointAtSignIn && !menuOpen && (
+              <span className="site-menu-button block xl:hidden">
+                <StartHereBubble align="right" />
+              </span>
+            )}
+            </span>
           </div>
         </div>
 
@@ -154,7 +193,9 @@ export function SiteHeader() {
                     to={link.to}
                     end
                     onClick={() => setMenuOpen(false)}
-                    className="group flex min-h-14 items-center justify-between rounded-2xl bg-surface px-5 text-xl font-extrabold text-brand no-underline aria-[current=page]:bg-lilac aria-[current=page]:text-ink"
+                    className={`group flex min-h-14 items-center justify-between rounded-2xl px-5 text-xl font-extrabold no-underline aria-[current=page]:bg-lilac aria-[current=page]:text-ink ${
+                      pointAtSignIn && link.to === "/login" ? "animate-glow bg-brand text-on-brand" : "bg-surface text-brand"
+                    }`}
                   >
                     {t(link.label)}
                     <Arrow />
