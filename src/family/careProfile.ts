@@ -119,6 +119,36 @@ export const QUESTIONS: Question[] = [
   },
 ];
 
+const TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+
+/**
+ * Keep only answers the questions understand. Saved answers can be broken or
+ * from an older version of the page (not a list, a choice that no longer
+ * exists...), and showing those would crash the page.
+ */
+export function cleanAnswers(saved: unknown): Answers {
+  const answers: Answers = {};
+  if (!saved || typeof saved !== "object" || Array.isArray(saved)) return answers;
+  const raw = saved as Record<string, unknown>;
+  for (const q of QUESTIONS) {
+    if (q.kind === "text") {
+      if (typeof raw[q.id] === "string") answers[q.id] = raw[q.id] as string;
+    } else if (q.kind === "times") {
+      for (const f of q.fields) {
+        const t = raw[f.id];
+        if (typeof t === "string" && TIME.test(t)) answers[f.id] = t;
+      }
+    } else if (q.kind === "choice") {
+      if (q.choices.some((c) => c.value === raw[q.id])) answers[q.id] = raw[q.id] as string;
+    } else {
+      const list = Array.isArray(raw[q.id]) ? (raw[q.id] as unknown[]) : [];
+      const picked = q.choices.map((c) => c.value).filter((v) => list.includes(v));
+      if (picked.length > 0) answers[q.id] = picked.includes("never") ? ["never"] : picked;
+    }
+  }
+  return answers;
+}
+
 /** Has this question been answered enough to move on? (The name is optional.) */
 export function isAnswered(q: Question, answers: Answers): boolean {
   if (q.kind === "text") return true;
@@ -139,7 +169,7 @@ export interface Likelihood {
 
 /** "07:30" -> "7:30 am". */
 export function prettyTime(hhmm: string | undefined): string {
-  if (!hhmm) return "";
+  if (!hhmm || !TIME.test(hhmm)) return "";
   const [h, m] = hhmm.split(":").map(Number);
   const suffix = h < 12 ? "am" : "pm";
   const hour = h % 12 === 0 ? 12 : h % 12;

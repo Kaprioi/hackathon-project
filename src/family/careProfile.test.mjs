@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isAnswered, likelihood, prettyTime, QUESTIONS } from "./careProfile.ts";
+import { cleanAnswers, isAnswered, likelihood, prettyTime, QUESTIONS } from "./careProfile.ts";
 
 test("a younger person living with someone is a lower likelihood", () => {
   const result = likelihood({ age: "under65", lives: "withSomeone", nights: "rarely", falls: "none", aid: "none", meds: "no" });
@@ -46,4 +46,30 @@ test("the name is optional but the other questions need an answer", () => {
   assert.equal(isAnswered(byId.schedule, { wake: "07:00" }), false);
   assert.equal(isAnswered(byId.schedule, { wake: "07:00", bed: "22:00" }), true);
   assert.equal(isAnswered(byId.alone, { alone: [] }), false);
+});
+
+test("broken times don't show up as nonsense", () => {
+  assert.equal(prettyTime("7"), "");
+  assert.equal(prettyTime("abc"), "");
+  assert.equal(prettyTime("07:30:00"), "7:30 am");
+});
+
+test("broken or old saved answers are tidied up instead of crashing the page", () => {
+  // Things that aren't a set of answers at all.
+  for (const saved of [null, undefined, "hello", 5, [1, 2]]) assert.deepEqual(cleanAnswers(saved), {});
+  // Wrong kinds of value and choices that don't exist are dropped.
+  assert.deepEqual(
+    cleanAnswers({ name: 5, age: "100plus", lives: "alone", wake: "7", bed: "22:00", alone: "morning", other: "x" }),
+    { lives: "alone", bed: "22:00" },
+  );
+  // Lists keep only real choices, and "Hardly ever" can't go with the other times.
+  assert.deepEqual(cleanAnswers({ alone: ["evening", "teatime", 3, "morning"] }), { alone: ["morning", "evening"] });
+  assert.deepEqual(cleanAnswers({ alone: ["morning", "never"] }), { alone: ["never"] });
+  assert.deepEqual(cleanAnswers({ alone: [] }), {});
+});
+
+test("good saved answers come back unchanged", () => {
+  const saved = { name: "Mum", age: "85plus", lives: "alone", wake: "07:00", bed: "22:30", alone: ["morning"], nights: "once", falls: "none", aid: "stick", meds: "no" };
+  assert.deepEqual(cleanAnswers(saved), saved);
+  assert.ok(QUESTIONS.every((q) => isAnswered(q, cleanAnswers(saved))));
 });
