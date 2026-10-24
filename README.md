@@ -2,7 +2,7 @@
 
 **CareNest**: a phone standing on a table watches the room with its camera (all on the phone), and family see in plain words how their loved one is doing. No video or pictures ever leave the phone.
 
-The site has five pages:
+The site has seven pages:
 
 | Page | Address | What it is |
 | --- | --- | --- |
@@ -11,6 +11,8 @@ The site has five pages:
 | Phone camera | `/tracker` | Open this on the phone on the table and press **Start watching** |
 | Family | `/dashboard` | What is happening right now, recent news, and adding family |
 | Care profile | `/profile` | A few questions about the person being cared for (age, routine, who they live with), then how likely a fall is and the times to keep an eye on |
+| Help | `/help` | Picture steps for getting started, what the Family page means, privacy, and common questions |
+| Your account | `/account` | Your email, the name family see, change your password, your family circles, and log out (signed-in only) |
 
 The "forgot password" email also brings people to `/reset-password` to choose a new password.
 

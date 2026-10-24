@@ -4,8 +4,10 @@ import { BrowserRouter, Route, Routes } from "react-router";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./index.css";
 import { startDisplaySettings } from "./lib/displaySettings";
+import AccountPage from "./pages/AccountPage";
 import CareProfilePage from "./pages/CareProfilePage";
 import DashboardPage from "./pages/DashboardPage";
+import HelpPage from "./pages/HelpPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -37,6 +39,8 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/profile" element={<CareProfilePage />} />
+          <Route path="/account" element={<AccountPage />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </BrowserRouter>
