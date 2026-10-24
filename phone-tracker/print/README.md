@@ -2,25 +2,31 @@
 
 Apple prints on a Creality printer. Put design files (OpenSCAD `.scad`, `.stl`, `.3mf`) in this folder.
 
-## Phone holder (replaces a bought clamp)
+## SightLine head (the hardware the team is building)
 
-- **Blocked:** needs the iPhone model and whether it stays in a case.
-- Holds the phone sideways (landscape), centered over the tilt axle.
-- A captured-nut slot for a 1/4"-20 nut, so a 1/4"-20 × 1/2" hex bolt from below fastens it to the Lynxmotion kit's top plate.
-- Leaves the rear camera, the side buttons and the charging port clear.
-- A flat spot on top for the LD2410C radar, facing the same way as the rear camera.
-- Measure the kit's top plate holes before finalizing the bolt position.
+Kris already designed these: `hardware/cad/make_parts.py` and `hardware/cad/stl/` on the `hardware-build-guide` branch (`base_box.stl`, `base_lid.stl`, `radar_phone_head.stl`, `radar_head.stl`). Print instructions are in Kris's `hardware/build-guide.html`.
 
-## Base box
+## Mist nozzle arm (new, not designed yet)
 
-- About 15 × 15 cm, heavy or weighted enough that the stand can't tip.
-- Holds the half-size breadboard and the ESP32 inside, with a hole for wires and openings for the USB-C and power cables.
-- The Lynxmotion kit screws or tapes to the middle of the lid.
+From the 3D mockup (https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD):
+
+- Mounts on the outer edge of SightLine's radar plate, at the end of the phone **opposite** the front camera, at about mid-phone height.
+- Holds a nozzle for the ~16 mm tube. The tip sits about 4.5 cm in front of the screen, pitched up about 8° from the camera's direction, so the mist goes where the camera looks.
+- Never above the phone: cold mist sinks, and falling mist would cross the screen and lens.
+- The tip must be ahead of and outside both radar windows. The radar boards are bare, so droplets could short them.
+- Keep the arm and nozzle under about 30 g (an estimate). The tilt servo already carries the phone (~200 g).
+
+## Tank lid parts (new, not designed yet)
+
+- A ring that holds a 40 mm fan over a hole in the tank lid, blowing in.
+- A spigot for the tube.
+- A dry spot for the mist maker's driver board.
 
 ## Small parts
 
-- Cable clips along the bracket, so the wires don't snag as the head moves.
+- Cable and tube clips along the bracket, so the wires and the mist tube don't snag as the head moves. Clip the tube near the tilt axle.
 
-## If the steam feature goes ahead
+## Single-radar Phone Tracker stand (fallback only)
 
-Possibly a chimney or a fogger mount. See `docs/STEAM.md`.
+- **Phone holder:** holds the phone sideways (landscape), centered over the tilt axle. A captured-nut slot for a 1/4"-20 nut, so a 1/4"-20 × 1/2" hex bolt from below fastens it to the Lynxmotion kit's top plate. Leaves the cameras, the side buttons and the charging port clear. A flat spot on top for the LD2410C radar, facing the same way as the camera that faces the person.
+- **Base box:** about 15 × 15 cm, weighted so the stand can't tip. Holds the half-size breadboard and the ESP32, with openings for the USB-C and power cables.

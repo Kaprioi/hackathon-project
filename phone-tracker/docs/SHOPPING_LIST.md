@@ -10,7 +10,7 @@ Last checked Oct 17, 2026. Tick each box once it's actually ordered.
 | [ ] | Adafruit ESP32 Feather V2 **with headers** | Adafruit, PID 5900 | $20.95 | Not the $19.95 version without headers, which needs soldering. |
 | [ ] | Adafruit 5V 4A power supply | Adafruit, PID 1466 | $14.95 | Wasn't in the Adafruit cart on Oct 17. Order it with the ESP32. |
 | [ ] | California JOS DC jack adapters, 2 male + 2 female, 2.1 × 5.5 mm | Amazon | $3.97 | Use one of the **female** ones. |
-| [ ] | Coliao LD2410C radar, 2-pack | Amazon | $14.99 | The second one is a spare. |
+| [ ] | Coliao LD2410C radar, 2-pack | Amazon | $14.99 | SightLine uses both (left and right). The single-radar stand uses one and keeps one spare. |
 | [ ] | 1/4"-20 × 1/2" **hex-head** bolt with a nut | Any hardware store | about $1 | Holds the printed phone holder to the kit's top plate. |
 
 About $104 total, plus shipping and tax.
@@ -35,9 +35,25 @@ Without the carriage bolts the Amazon subtotal is about $19, under the $35 free-
 - Creality 3D printer and filament
 - Small Phillips screwdriver, foam tape or zip ties
 
-## Steam parts
+## Humidifier (the mist that follows you)
 
-Not decided yet. See `docs/STEAM.md` for options and rough prices.
+Nothing here is approved or bought yet. Prices are rough estimates from Oct 23; check before buying. See `docs/STEAM.md` and `docs/BUILD_STEPS.md` Part B2.
+
+| ✓ | Part | Price (estimate) | Notes |
+|---|---|---|---|
+| [ ] | 5V ultrasonic mist maker, floating type | $8–12 | Must start misting as soon as it gets power (no on button). Driver board on a lead, so it can sit dry on the lid. |
+| [ ] | 5V fan, 40 mm | $3–6 | Blows into the tank to push mist up the tube. |
+| [ ] | MOSFET switch module, logic-level (turns on from 3.3 V) | $3–5 | One module switches the mist maker and the fan together, from pin A0. |
+| [ ] | Diode, 1N5819 or 1N4007 | under $1 | Across the fan, unless the module has one built in. |
+| [ ] | Tank with a lid, about 1.5 L | $3–6 | A food container works. Drill holes for the fan and the tube spigot. |
+| [ ] | Tube, about 16 mm across, about 1 m | $5–10 | Light silicone or a slim CPAP hose. |
+| [ ] | Distilled water | $1–2 | Tap water leaves white dust. |
+
+About $25–40 total. If the 5V mist is too weak (test in `docs/STEAM.md`), a 24V multi-head pond fogger ($20–35) is much stronger, but needs its own 24V supply and a MOSFET rated for it.
+
+## SightLine radars
+
+SightLine uses **both** LD2410C radars from the 2-pack (left and right), so there's no spare. Consider a second 2-pack ($14.99) for a spare.
 
 ## Don't buy
 

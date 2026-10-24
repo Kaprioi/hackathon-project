@@ -96,3 +96,11 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
    `npm run preview` serves that production build locally.
 
 Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, and colours and fonts in `src/index.css`. `vercel.json` makes links like `/login` work when the site is deployed.
+
+## Phone Tracker page (`/tracker`)
+
+The page that drives the Phone Tracker stand: it finds people with the camera, follows the one you tap, and aims the stand and its humidifier mist at them. The code is in `src/tracker/` (see `src/tracker/README.md`); the hardware, firmware and build guide are in `phone-tracker/`.
+
+- On a PC: `npm run dev`, then open http://localhost:5173/tracker in **Chrome or Edge**. Safari and Firefox can't use Bluetooth.
+- On an iPhone: open the deployed `https://…/tracker` link in the free **Bluefy** browser. It has to be https; Safari can't use Bluetooth from a website.
+- Test the tracking logic without a camera: `npm run test:tracker`.

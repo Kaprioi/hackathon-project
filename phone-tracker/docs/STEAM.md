@@ -1,68 +1,55 @@
-# Steam
+# Steam: a humidifier whose mist follows you
 
 The hackathon theme is "Steel and Steam", and the team wants steam in the build. The team's rule: the steam must be **functional and tied to what the camera does**, not something bolted on to meet the theme.
 
-**Test for any steam idea:** take the camera away. If the steam still makes sense on its own, it's a separate project bolted on. (A friend's idea of steam for soothing arthritic hands fails this test, so it's ruled out.)
+**Test for any steam idea:** take the camera away. If the steam still makes sense on its own, it's a separate project bolted on.
 
-Steam fits in one of two ways:
-- **The rig makes steam for a reason that depends on the tracking.**
-- **Steam is the problem the tracking is built to beat.**
+## Decided (Oct 23): the mist follows the person
 
-The rig's edge: the radar and the Hidden rule keep the lock when the camera can't see. Steam is exactly what blinds cameras. The LD2410C works at 24 GHz, which passes through fog and water droplets.
+**Apple's reason:** "I don't like when my humidifier only sprays mist in one direction when I walk around my room or move from my bed to my chair. I'd like the mist to keep tracking me." For patients in wheelchairs or in bed, re-aiming a nozzle by hand is even more annoying, or impossible.
 
-## Option 1: Steam shield (top candidate, not yet decided)
+**Why it passes the test:** without the tracking it's just a humidifier pointing at a wall. The camera, the radar and the Hidden rule decide where the mist goes, including when the person is under a blanket in bed (radar confirms they're there) and in a dark room at night. Steam also usually blinds cameras; the 24 GHz radar sees through mist, so the lock holds.
 
-- **Idea:** security fog machines already exist; shops and warehouses fill a room with fog the moment an alarm goes off, so a thief can't see what to grab. Their catch is that the fog blinds the security cameras too. This rig fogs the area and keeps tracking the intruder through it, using the radar and object permanence.
-- **Why it fits:** the steam is the defense, and the tracking is what makes fogging usable. Each half needs the other.
-- **Demo:** a valuable prop in a clear plastic tote with a mist maker inside. When the tracked person reaches for it, the ESP32 fills the tote with steam. A second fog-filled tote between the camera and the person: the camera loses them, but the radar and the Hidden rule hold the lock.
-- **Build notes:** the trigger could be the target's box entering a "no-go zone" in the frame. The app sends a command; the ESP32 switches the fogger through a MOSFET on pin 14 (the first themed draft used pin 14 and a `puff` command).
+**How it works**
+- The nozzle rides on the pan-tilt head beside the phone and points where the camera points. The website aims at the chest by default (Settings → Aim height), not the face.
+- The water tank, a floating 5V ultrasonic mist maker and a small 5V fan sit in a closed tank **beside** the base box. The fan blows into the tank; mist leaves through a tube up to the nozzle.
+- One MOSFET module on Feather pin **A0 (GPIO 26)** switches the mist maker and fan together.
+- The website has three mist settings: **Off**, **On**, and **Follow me** (mist only while it knows where you are: TRACKING, HIDDEN, FOLLOWING).
+- Safety in the firmware: mist is off at power-on, off when the phone disconnects, and off if the phone hasn't said "mist on" for 3 seconds.
+- Layout and sizes: the 3D mockup at https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD and `docs/BUILD_STEPS.md` Part B2.
 
-## Option 2: Steam room safety
+**Demo:** the volunteer sits in a "bed" (a chair with a blanket), then moves to a second chair. The mist plume swings with them. They pull the blanket over themselves: HIDDEN, the radar says they're there, and the mist stays on them.
 
-- **Idea:** people faint in steam rooms and saunas, and staff can't see them through the steam. The rig locks onto each person as they enter, keeps tracking through the steam, and raises an alert if someone stops moving for too long. The same idea works for workers in steamy boiler rooms and steel mills.
-- **Why it fits:** it uses all four tracking states as they are.
-- **Extra work:** the radar's OUT pin only says "someone there". To detect "stopped moving", the ESP32 must read the radar's serial data, which reports moving and still targets separately (for example with the ncmreynolds `ld2410` Arduino library). Moderate firmware addition.
-- **Demo:** a fog-filled tote in front of the camera simulates the steam room; someone lying still behind it triggers the alert.
+## Tests before relying on it
 
-## Option 3: Auto follow-spot (weaker)
+- **Reach:** how far does visible mist travel from the nozzle? A small 5V mist maker may reach only 0.5–1.5 m (an estimate). If it's too weak, a 24V multi-head fogger is much stronger but needs its own supply and a MOSFET rated for it.
+- **Drips:** run it for 10 minutes and check for water on the radar boards (they're bare: droplets could short them), the phone and the base box.
+- **Condensation in the tube:** the tube must run downhill to the tank with no dips.
+- **Radar through mist:** it should be unaffected; confirm the radar still reads `1` with mist between it and the person.
+- **Venue:** ask the organizers about water mist near electronics. Cold mist won't set off smoke detectors the way fog machines can, but check.
 
-- **Idea:** theaters fill the stage with haze so spotlight beams show up, and a person aims each follow-spot by hand. Add a narrow LED spotlight to the rig; it follows a performer automatically, with the beam visible in the mist.
-- **Why it's weaker:** the steam only makes the beam visible; it doesn't connect to the hard part of the tracking. Never use a laser instead of the LED, because it would shine in people's eyes.
+## Parts (rough prices, nothing bought yet)
 
-## Recommendation
-
-Use the steam shield as the build feature, and the steam room as a second use case in the pitch.
-
-## Tests before committing
-
-- **Fog density:** one small 5V mist maker fills a closed tote slowly. A multi-head pond fogger is much faster but needs its own power supply. Check whether a fogged tote really blocks the camera.
-- **Radar through the tote:** thin plastic and fog should barely affect it. Test it.
-- **Venue:** ask the organizers about water mist. A closed tote keeps it contained. Real fog machines can set off smoke detectors.
-- Keep the blanket demo as the backup.
-
-## Parts (rough prices, check before buying)
-
-- 5V ultrasonic mist maker that starts misting as soon as it gets power (no on button): about $8–12.
-- Or a multi-head pond fogger with its own 24V supply: about $20–35.
-- MOSFET switch module that triggers from 3.3V: about $3–5.
-- Clear plastic tote(s).
+See `docs/SHOPPING_LIST.md` → Humidifier.
 
 ## Safety
 
 - Ultrasonic mist is cold, so it can't burn anyone.
 - Use distilled water, or the mist leaves white dust everywhere.
-- Keep water below and away from the electronics and the camera lens.
+- Empty and dry the tank daily. Standing water in a humidifier grows bacteria, which matters more for someone who is ill.
+- Keep water below and away from the electronics, and never inside the base box.
+- Don't run the mist maker without water.
 
-## Smaller extras (only after a functional steam feature works)
+## Earlier ideas (not chosen)
 
-- **Steam signals:** one puff on lock-on, two when Hidden, one long puff when Lost.
-- **The machine breathes:** while Hidden and the radar senses someone, puff softly every few seconds.
-- **Phone sounds:** the iPhone plays a hiss on lock-on and a whistle on re-find. No hardware.
-- **Steam-valve control:** a printed handwheel on a rotary encoder releases the target or recenters the camera.
+- **Steam shield:** fog a tote around a valuable when an intruder reaches for it, and keep tracking them through the fog. Replaced by the humidifier.
+- **Steam room safety:** alert when someone in a steam room stops moving. Kept as a pitch use case only.
+- **Auto follow-spot:** a light beam visible in stage haze. The steam didn't connect to the tracking.
+- **Steam for arthritic hands:** fails the test above.
 
 ## Parked theme look (from the first chat)
 
 - Name idea: "The Iron Owl". Pitch line: "A Victorian watchman automaton that never loses sight of you, even under a blanket."
-- Printed brass-painted boiler base with rivets and a chimney (electronics inside), side gears, a lens hood around the rear camera.
-- Metallic paint blocks radar, so keep it off anything in front of the radar.
-- Brass status pill, target box and dial gauges in the app.
+- Printed brass-painted boiler base with rivets and a chimney (electronics inside), side gears, a lens hood around the camera.
+- Metallic paint blocks radar, so keep it off anything in front of the radars.
+- Brass status pill, target box and dial gauges in the website.
