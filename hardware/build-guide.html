@@ -331,6 +331,7 @@ arduino-cli monitor -p $PORT -c baudrate=115200</pre><button class="copy">Copy</
             </table></div>
             <p>"Left" means on your left when you stand behind the device, looking where it looks. TX always goes to the Feather's receive side, and RX to its transmit side; crossing them is correct.</p>
             <div class="check"><b>Check:</b> the monitor now says "Left radar OK" and "Right radar OK". Wave a hand in front of each one: its <code>L=</code> or <code>R=</code> number jumps up.</div>
+            <p><b>Only one radar for now?</b> Wire it as the <b>left</b> radar, put it in the left holder, and skip the right column (pins 32 and 14 stay free). At startup the monitor prints "Radar mode: 1 radar". The radar then only tells whether someone is there: the head holds still while it senses them and sweeps after 2 seconds without. When the second radar arrives, wire it and press Reset: no new upload needed.</p>
             <div class="step-foot"><button class="btn show3d">Show in 3D</button><label class="done-toggle"><input type="checkbox"> Done</label></div>
           </li>
 
