@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink } from "react-router";
+import { useOnline } from "../lib/useOnline";
 import { Arrow } from "./ButtonLink";
 import { DisplayButton, DisplayPanel } from "./DisplaySettings";
 import { motionIsReduced } from "../lib/displaySettings";
@@ -15,6 +16,7 @@ const navLinks = [
   { to: "/tracker", label: "Phone camera" },
   { to: "/dashboard", label: "Family" },
   { to: "/profile", label: "Care profile" },
+  { to: "/help", label: "Help" },
 ];
 
 /** The CareNest heart. It beats when you hover the logo. */
@@ -80,7 +82,7 @@ export function SiteHeader() {
             <LogoMark />
             <span className="site-wordmark">CareNest</span>
           </Link>
-          <nav aria-label="Main" className="site-nav hidden md:block">
+          <nav aria-label="Main" className="site-nav hidden lg:block">
             <ul className="flex gap-1">
               {navLinks.map((link) => (
                 <li key={link.to}>
@@ -107,7 +109,7 @@ export function SiteHeader() {
             <button
               ref={menuButton}
               type="button"
-              className="site-menu-button grid h-12 w-12 place-items-center rounded-2xl bg-lilac text-brand md:hidden"
+              className="site-menu-button grid h-12 w-12 place-items-center rounded-2xl bg-lilac text-brand lg:hidden"
               aria-expanded={menuOpen}
               aria-controls="mobile-menu"
               aria-label={menuOpen ? "Close menu" : "Open menu"}
@@ -134,7 +136,7 @@ export function SiteHeader() {
         {displayOpen && <DisplayPanel onClose={closeDisplay} />}
 
         {menuOpen && (
-          <nav id="mobile-menu" aria-label="Mobile" className="site-mobile-menu animate-slide-in border-t-2 border-lilac px-6 pb-6 pt-3 md:hidden">
+          <nav id="mobile-menu" aria-label="Mobile" className="site-mobile-menu animate-slide-in border-t-2 border-lilac px-6 pb-6 pt-3 lg:hidden">
             <ul className="flex flex-col gap-2">
               {navLinks.map((link, i) => (
                 <li key={link.to} className="animate-slide-in" style={{ animationDelay: `${i * 60}ms` }}>
@@ -189,6 +191,14 @@ export function SiteFooter() {
         <LogoMark size={28} /> © 2026 CareNest
       </span>
       <span>Only the people you invite can see anything.</span>
+      <nav aria-label="Footer" className="flex flex-wrap gap-x-5">
+        <Link to="/help" className="inline-flex min-h-12 items-center font-bold text-brand underline underline-offset-4">
+          Need help?
+        </Link>
+        <Link to="/account" className="inline-flex min-h-12 items-center font-bold text-brand underline underline-offset-4">
+          Your account
+        </Link>
+      </nav>
     </footer>
   );
 }
@@ -222,6 +232,8 @@ export function Blobs({ fixed = false }: { fixed?: boolean }) {
 
 /** Skip link, header, the page itself, and the footer. Names the browser tab too. */
 export default function SiteLayout({ title, children }: { title?: string; children: React.ReactNode }) {
+  const online = useOnline();
+
   useEffect(() => {
     if (!title) return;
     const previous = document.title;
@@ -241,6 +253,11 @@ export default function SiteLayout({ title, children }: { title?: string; childr
         Skip to main content
       </a>
       <SiteHeader />
+      {!online && (
+        <p role="status" className="mx-4 mt-2 rounded-2xl bg-sun px-5 py-3 text-center text-lg font-bold text-ink">
+          You're offline. Check your Wi-Fi or mobile data; the page will catch up when you're back online.
+        </p>
+      )}
       <main id="main" className="flex-1">
         {children}
       </main>

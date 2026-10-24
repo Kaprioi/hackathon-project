@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/family/status.test.mjs src/family/careProfile.test.mjs src/family/dailySummary.test.mjs src/family/contacts.test.mjs",
+    "test": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/family/status.test.mjs src/family/careProfile.test.mjs src/family/dailySummary.test.mjs src/family/contacts.test.mjs src/lib/account.test.mjs",
     "test:tracker": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs"
   },
   "dependencies": {

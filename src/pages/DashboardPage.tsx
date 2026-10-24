@@ -223,9 +223,17 @@ function Family({
                 Signed in as <strong className="text-ink">{email}</strong>
               </p>
             </div>
-            <button type="button" onClick={logOut} disabled={loggingOut} className={smallButton}>
-              {loggingOut ? "Logging out…" : "Log out"}
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <Link to="/help" className={smallButton}>
+                Need help?
+              </Link>
+              <Link to="/account" className={smallButton}>
+                Your account
+              </Link>
+              <button type="button" onClick={logOut} disabled={loggingOut} className={smallButton}>
+                {loggingOut ? "Logging out…" : "Log out"}
+              </button>
+            </div>
           </div>
 
           {location.state?.passwordChanged && <Message kind="success">Your new password is saved.</Message>}
