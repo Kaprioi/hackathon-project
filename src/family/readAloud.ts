@@ -1,5 +1,5 @@
 // The plain logic behind the "Read aloud" button: which voice to use, how to say
-// a time, and how to tidy and split the words so the browser voice reads them
+// a time, and how to tidy and split the words so the voice reads them
 // smoothly. No React here, so it can be tested with `npm test`.
 
 import type { Lang } from "../i18n/translate.ts";
@@ -93,10 +93,7 @@ export function tidyForSpeech(text: string, lang: Lang): string {
   return out;
 }
 
-/**
- * Splits text into sentences to speak one at a time. Chrome can go quiet partway
- * through a long piece of speech, so short pieces are more reliable.
- */
+/** Splits text into tidy sentences (the button joins them back up before sending). */
 export function splitSentences(text: string): string[] {
   return (text.match(/[^.!?。！？]+(?:[.!?。！？]+|$)/g) ?? []).map((s) => s.trim()).filter(Boolean);
 }
