@@ -1,5 +1,10 @@
+<!doctype html>
+<html lang="en">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Radar Hookup</title>
+<meta name="description" content="Step-by-step 3D guide to wiring the LD2410C radar sensor to the SightLine breadboard, one wire at a time.">
+<link rel="icon" href="data:,">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,6 +32,7 @@ h1, h2 { font-family: var(--font-display); line-height: 1.15; margin: 0; text-wr
 h1 { font-size: clamp(1.7rem, 3.2vw, 2.3rem); font-weight: 800; letter-spacing: -0.02em; }
 h2 { font-size: clamp(1.3rem, 2.4vw, 1.7rem); font-weight: 800; }
 p { margin: 0; }
+code { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: anywhere; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .wrap { max-width: 1100px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 22px 48px; display: grid; gap: 16px; }
 .eyebrow { font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
@@ -54,7 +60,7 @@ p { margin: 0; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 </style>
 
-<div class="wrap">
+<main class="wrap">
   <div class="intro">
     <span class="eyebrow">SightLine · step 6</span>
     <h1>Radar Hookup</h1>
@@ -75,7 +81,7 @@ p { margin: 0; }
       <button class="btn primary" id="next">Next →</button>
     </div>
   </section>
-</div>
+</main>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
@@ -142,7 +148,7 @@ const STEPS = [
     route: null,
     how: ["Look: <b>4 wires</b> on VCC, GND, TX, RX. Nothing on <b>OUT</b>.",
           "Plug in the Feather's USB-C cable, then the 5V supply.",
-          "In the terminal run: <code>arduino-cli monitor -p /dev/cu.wchusbserial5B1E0644181 -c baudrate=115200</code>",
+          "In the same terminal window you used to load the program, run: <code>arduino-cli monitor -p $PORT -c baudrate=115200</code>",
           "Press the tiny <b>Reset</b> button on the Feather. You should see <b>Radar OK</b>.",
           "Wave your hand in front of the sensor: the <b>radar=</b> number jumps up."],
     tip: "<b>Says \"Radar NOT found\"?</b> Swap the green and blue wires at the breadboard (TX and RX are the usual mix-up), then press Reset again.",
