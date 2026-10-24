@@ -91,7 +91,7 @@ code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
       <div class="tabs" role="tablist" aria-label="Wiring step">
         <button role="tab" data-step="3" aria-selected="true">Step 3 · Power</button>
         <button role="tab" data-step="4" aria-selected="false">Step 4 · Servos</button>
-        <button role="tab" data-step="6" aria-selected="false">Step 6 · Radars</button>
+        <button role="tab" data-step="6" aria-selected="false">Step 6 · Radar</button>
         <button role="tab" data-step="all" aria-selected="false">Everything</button>
       </div>
       <h2 id="stepTitle">Step 3 · Power</h2>
@@ -140,7 +140,7 @@ const pin12Col = (label) => PINS12.indexOf(label) + 7;
 // ---------- off-board parts, in board-plane coords ----------
 const JACK = { x: -62, y: -23 };
 const SERVO_PLUG = { pan: { x: 46, y: 36 }, tilt: { x: 46, y: 46 } };
-const RADAR = { left: { x: 14, y: -44 }, right: { x: -6, y: 42 } };
+const RADAR = { left: { x: 14, y: -44 } };   // the one radar, below the board
 const radarPin = (side, label) => {
   const order = ["TX", "RX", "OUT", "GND", "VCC"];   // read your board's own labels
   const r = RADAR[side], dir = side === "left" ? 1 : -1;
@@ -170,20 +170,16 @@ const WIRES = [
   { step: 4, color: RED, a: { pt: plugPin("tilt", 1) }, b: "top+ 27", title: "Tilt servo red → top red rail", text: "Tilt servo red → top red (+) rail, column 27." },
   { step: 4, color: YELLOW, a: { pt: plugPin("tilt", 2) }, b: `a${pin12Col("33")}`, title: "Tilt servo yellow → Feather 33", text: `Tilt servo yellow → hole a${pin12Col("33")}, next to the Feather's pin 33.` },
 
-  { step: 6, color: RED, a: { pt: radarPin("left", "VCC") }, b: "bottom+ 22", title: "Left radar VCC → bottom red rail", text: "Left radar VCC → bottom red (+) rail, column 22." },
-  { step: 6, color: BLACK, a: { pt: radarPin("left", "GND") }, b: "bottom- 21", title: "Left radar GND → bottom blue rail", text: "Left radar GND → bottom blue (−) rail, column 21." },
-  { step: 6, color: GREEN, a: { pt: radarPin("left", "TX") }, b: `j${pin16Col("RX")}`, title: "Left radar TX → Feather RX", text: `Left radar TX → hole j${pin16Col("RX")}, next to the Feather's RX pin. Crossing TX to RX is correct.` },
-  { step: 6, color: BLUE, a: { pt: radarPin("left", "RX") }, b: `j${pin16Col("TX")}`, title: "Left radar RX → Feather TX", text: `Left radar RX → hole j${pin16Col("TX")}, next to the Feather's TX pin.` },
-  { step: 6, color: RED, a: { pt: radarPin("right", "VCC") }, b: "top+ 18", title: "Right radar VCC → top red rail", text: "Right radar VCC → top red (+) rail, column 18." },
-  { step: 6, color: BLACK, a: { pt: radarPin("right", "GND") }, b: "top- 19", title: "Right radar GND → top blue rail", text: "Right radar GND → top blue (−) rail, column 19." },
-  { step: 6, color: GREEN, a: { pt: radarPin("right", "TX") }, b: `a${pin12Col("32")}`, title: "Right radar TX → Feather 32", text: `Right radar TX → hole a${pin12Col("32")}, next to the Feather's pin 32.` },
-  { step: 6, color: BLUE, a: { pt: radarPin("right", "RX") }, b: `a${pin12Col("14")}`, title: "Right radar RX → Feather 14", text: `Right radar RX → hole a${pin12Col("14")}, next to the Feather's pin 14.` },
+  { step: 6, color: RED, a: { pt: radarPin("left", "VCC") }, b: "bottom+ 22", title: "Radar VCC → bottom red rail", text: "Radar VCC → bottom red (+) rail, column 22." },
+  { step: 6, color: BLACK, a: { pt: radarPin("left", "GND") }, b: "bottom- 21", title: "Radar GND → bottom blue rail", text: "Radar GND → bottom blue (−) rail, column 21." },
+  { step: 6, color: GREEN, a: { pt: radarPin("left", "TX") }, b: `j${pin16Col("RX")}`, title: "Radar TX → Feather RX", text: `Radar TX → hole j${pin16Col("RX")}, next to the Feather's RX pin. Crossing TX to RX is correct.` },
+  { step: 6, color: BLUE, a: { pt: radarPin("left", "RX") }, b: `j${pin16Col("TX")}`, title: "Radar RX → Feather TX", text: `Radar RX → hole j${pin16Col("TX")}, next to the Feather's TX pin.` },
 ];
 
 const STEP_INFO = {
   3: { title: "Step 3 · Power", intro: "The Feather sits in columns 3–18: its long pin row in row i, its short pin row in row c, USB-C end at column 3. Then five wires bring 5V and ground to both rails. The Feather itself still runs from its own USB-C cable." },
   4: { title: "Step 4 · Servos", intro: "Push male-to-male jumpers into each servo's 3-wire plug. Power goes to the top rails, which step 3 linked to the bottom ones." },
-  6: { title: "Step 6 · Radars", intro: "Female ends go on the radar pins. Read the labels printed on your radar board: the pin order differs between sellers, and the model shows one common order." },
+  6: { title: "Step 6 · Radar", intro: "Four wires connect the one radar. Female ends go on the radar pins. Read the labels printed on your radar board: the pin order differs between sellers, and the model shows one common order. Its OUT pin stays empty." },
   all: { title: "Everything", intro: "The finished breadboard with every wire from steps 3, 4 and 6." },
 };
 
@@ -353,13 +349,13 @@ function build3D() {
     const tag = sprite(`${name === "pan" ? "Pan" : "Tilt"} servo plug`, { x: p.x + 34, y: p.y, z: 18 }, 3.8);
     servoBodies.push({ step: 4, objs: [body, plug, ribbon, tag] });
   }
-  for (const side of ["left", "right"]) {
+  for (const side of ["left"]) {
     const r = RADAR[side], dir = side === "left" ? 1 : -1;
     const pcb = box(22, 16, 1.2, 0x1F5E3B, { x: r.x, y: r.y, z: 0 });
     const head = box(13, 2.5, 2.5, 0x1C1C1C, { x: r.x, y: r.y + dir * 7.6, z: 1.2 });
     const objs = [pcb, head];
     objs.push(sprite("pins: TX · RX · OUT · GND · VCC", { x: r.x, y: r.y + dir * 2.5, z: 3 }, 2.6, "#F4F3EE", "rgba(31,94,59,0.95)"));
-    objs.push(sprite(`${side === "left" ? "Left" : "Right"} radar`, { x: r.x, y: r.y - dir * 4, z: 9 }, 3.8));
+    objs.push(sprite("Radar (LD2410C)", { x: r.x, y: r.y - dir * 4, z: 9 }, 3.8));
     radarBodies.push({ step: 6, objs });
   }
 

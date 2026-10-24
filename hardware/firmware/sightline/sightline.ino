@@ -1,5 +1,7 @@
-// SightLine: a pan-tilt head with two LD2410C radars that keeps a person in
+// SightLine: a pan-tilt head with an LD2410C radar that keeps a person in
 // view and sends an alert when they have been out of sight for too long.
+// One radar (the default) finds direction by wiggling the head and listening
+// for which side hears the person better; two radars compare left and right.
 //
 // Board:  Adafruit ESP32 Feather V2 (Tools > Board > "Adafruit Feather ESP32 V2")
 // Libs:   "ESP32Servo" by Kevin Harrington, "ld2410" by ncmreynolds
@@ -15,11 +17,14 @@
 #define FACETIME_TO ""
 #endif
 
+// ---------- Radars ----------
+const int RADARS = 1;       // 1 = one radar facing straight ahead; 2 = left + right radars
+
 // ---------- Pins (see the wiring table in the build guide) ----------
-const int RADAR_L_RX = 7;   // Feather "RX" pin  <- left radar TX
-const int RADAR_L_TX = 8;   // Feather "TX" pin  -> left radar RX
-const int RADAR_R_RX = 32;  // Feather "32"      <- right radar TX
-const int RADAR_R_TX = 14;  // Feather "14"      -> right radar RX
+const int RADAR_L_RX = 7;   // Feather "RX" pin  <- radar TX (the left radar with two)
+const int RADAR_L_TX = 8;   // Feather "TX" pin  -> radar RX
+const int RADAR_R_RX = 32;  // Feather "32"      <- right radar TX (two-radar mode only)
+const int RADAR_R_TX = 14;  // Feather "14"      -> right radar RX (two-radar mode only)
 const int PAN_PIN = 27;     // Feather "27"      -> pan servo signal (yellow)
 const int TILT_PIN = 33;    // Feather "33"      -> tilt servo signal (yellow)
 const int LED_PIN = 13;     // red LED on the Feather
@@ -27,9 +32,16 @@ const int LED_PIN = 13;     // red LED on the Feather
 // ---------- Tuning ----------
 const int PAN_MIN = 20, PAN_MAX = 160, PAN_CENTER = 90;  // degrees
 const int TILT_LEVEL = 90;          // straight ahead; lower = look down
-const int PAN_DIRECTION = 1;        // set to -1 if the head turns the wrong way
 const int MIN_ENERGY = 15;          // 0-100; below this a radar "sees nobody"
-const int DEADBAND = 8;             // ignore left/right differences smaller than this
+const int DEADBAND = 8;             // ignore energy differences smaller than this
+// One radar: wiggle the head to either side, listen, step toward the louder side.
+const float WIGGLE_DEG = 8;         // how far each wiggle turns from center (degrees)
+const uint32_t WIGGLE_SETTLE_MS = 250;   // wait for the head to stop before listening
+const uint32_t WIGGLE_LISTEN_MS = 350;   // how long to listen on each side
+const float WIGGLE_GAIN = 0.2;      // degrees of turn per point of energy difference
+const float WIGGLE_MAX_STEP = 6;    // biggest step toward the person per wiggle (degrees)
+// Two radars: steer toward the radar that hears the person better.
+const int PAN_DIRECTION = 1;        // set to -1 if the head turns the wrong way
 const float GAIN = 0.08;            // degrees of turn per point of energy difference
 const float MAX_STEP = 3.0;         // fastest turn per control tick (degrees)
 const float SWEEP_STEP = 1.2;       // search speed per control tick (degrees)
@@ -58,6 +70,53 @@ int radarScore(ld2410 &r) {
 void movePan(float delta) {
   pan = constrain(pan + delta * PAN_DIRECTION, PAN_MIN, PAN_MAX);
   panServo.write((int)pan);
+}
+
+// One-radar tracking: look a little to one side, then the other, and move the
+// center toward whichever side heard the person more strongly.
+struct {
+  bool active = false;
+  int side = 1;        // +1 or -1: which side of center we're looking at
+  uint32_t start = 0;
+  float sum = 0;
+  int count = 0;
+  float firstSide = 0; // average energy heard on the +1 side
+  float center = PAN_CENTER;
+} wig;
+
+void wiggleTo(int side, uint32_t now) {
+  wig.side = side;
+  wig.start = now;
+  wig.sum = 0;
+  wig.count = 0;
+  pan = constrain(wig.center + side * WIGGLE_DEG, PAN_MIN, PAN_MAX);
+  panServo.write((int)pan);
+}
+
+void wiggleStep(uint32_t now, int energy) {
+  if (!wig.active) {
+    wig.active = true;
+    wig.center = pan;
+    wiggleTo(1, now);
+    return;
+  }
+  uint32_t t = now - wig.start;
+  if (t < WIGGLE_SETTLE_MS) return;  // the radar sees its own motion while turning
+  wig.sum += energy;
+  wig.count++;
+  if (t < WIGGLE_SETTLE_MS + WIGGLE_LISTEN_MS) return;
+  float avg = wig.sum / wig.count;
+  if (wig.side == 1) {
+    wig.firstSide = avg;
+    wiggleTo(-1, now);
+    return;
+  }
+  float diff = wig.firstSide - avg;  // positive: the +1 side heard them better
+  if (fabs(diff) > DEADBAND) {
+    float step = constrain(diff * WIGGLE_GAIN, -WIGGLE_MAX_STEP, WIGGLE_MAX_STEP);
+    wig.center = constrain(wig.center + step, PAN_MIN, PAN_MAX);
+  }
+  wiggleTo(1, now);
 }
 
 const char *wifiReasonText(uint8_t r) {
@@ -173,10 +232,15 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
 
   Serial1.begin(256000, SERIAL_8N1, RADAR_L_RX, RADAR_L_TX);
-  Serial2.begin(256000, SERIAL_8N1, RADAR_R_RX, RADAR_R_TX);
   delay(500);
-  Serial.println(radarL.begin(Serial1) ? "Left radar OK" : "Left radar NOT found - check wiring");
-  Serial.println(radarR.begin(Serial2) ? "Right radar OK" : "Right radar NOT found - check wiring");
+  if (RADARS == 1) {
+    Serial.println(radarL.begin(Serial1) ? "Radar OK" : "Radar NOT found - check wiring");
+  } else {
+    Serial2.begin(256000, SERIAL_8N1, RADAR_R_RX, RADAR_R_TX);
+    delay(500);
+    Serial.println(radarL.begin(Serial1) ? "Left radar OK" : "Left radar NOT found - check wiring");
+    Serial.println(radarR.begin(Serial2) ? "Right radar OK" : "Right radar NOT found - check wiring");
+  }
 
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
@@ -193,7 +257,7 @@ void setup() {
 void loop() {
   // The radars stream data constantly; read() must run every loop.
   radarL.read();
-  radarR.read();
+  if (RADARS == 2) radarR.read();
 
   uint32_t now = millis();
   if (now - lastTick < TICK_MS) return;
@@ -202,20 +266,22 @@ void loop() {
   if (pendingType && WiFi.status() == WL_CONNECTED) sendAlert(pendingType, pendingMessage);
 
   int l = radarScore(radarL);
-  int r = radarScore(radarR);
+  int r = RADARS == 2 ? radarScore(radarR) : 0;
   bool seenL = l >= MIN_ENERGY, seenR = r >= MIN_ENERGY;
   bool seen = seenL || seenR;
 
   if (seen) {
     lastSeenAt = now;
     if (seenSince == 0) seenSince = now;
-    // Turn toward the radar that hears the person better. Radar L points
-    // left of center, so a stronger left signal means "turn left".
-    if (seenL && seenR) {
-      int diff = l - r;
-      if (abs(diff) > DEADBAND) movePan(constrain(diff * GAIN, -MAX_STEP, MAX_STEP));
-    } else {
-      movePan(seenL ? MAX_STEP : -MAX_STEP);
+    // Two radars: turn toward the one that hears the person better. Radar L
+    // points left of center, so a stronger left signal means "turn left".
+    if (RADARS == 2) {
+      if (seenL && seenR) {
+        int diff = l - r;
+        if (abs(diff) > DEADBAND) movePan(constrain(diff * GAIN, -MAX_STEP, MAX_STEP));
+      } else {
+        movePan(seenL ? MAX_STEP : -MAX_STEP);
+      }
     }
     if (state != TRACKING && now - seenSince >= FOUND_CONFIRM_MS) {
       if (state == ALERTED) sendAlert("back_in_view", "Person is back in view.");
@@ -227,6 +293,7 @@ void loop() {
     uint32_t unseen = now - lastSeenAt;
     if (state == TRACKING && unseen >= LOST_GRACE_MS) {
       state = SEARCHING;
+      wig.active = false;
       Serial.println("-> SEARCHING");
     }
     if (state != TRACKING) {
@@ -242,6 +309,10 @@ void loop() {
     }
   }
 
+  // One radar: keep wiggling while tracking, including the short grace period
+  // after a brief miss, so the head keeps homing in on the person.
+  if (RADARS == 1 && state == TRACKING) wiggleStep(now, l);
+
   // LED: solid = tracking, slow blink = searching, fast blink = alert sent.
   if (state == TRACKING) digitalWrite(LED_PIN, HIGH);
   else digitalWrite(LED_PIN, (now / (state == ALERTED ? 150 : 500)) % 2);
@@ -249,8 +320,14 @@ void loop() {
   if (now - lastLog >= 500) {
     lastLog = now;
     const char *names[] = {"TRACKING", "SEARCHING", "ALERTED"};
-    Serial.printf("L=%3d R=%3d pan=%3d dist=%3dcm %s WiFi=%s\n", l, r, (int)pan,
-                  radarL.presenceDetected() ? radarL.detectionDistance() : radarR.detectionDistance(),
-                  names[state], WiFi.status() == WL_CONNECTED ? "on" : "off");
+    const char *wifi = WiFi.status() == WL_CONNECTED ? "on" : "off";
+    if (RADARS == 1) {
+      Serial.printf("radar=%3d pan=%3d dist=%3dcm %s WiFi=%s\n", l, (int)pan,
+                    radarL.presenceDetected() ? radarL.detectionDistance() : 0, names[state], wifi);
+    } else {
+      Serial.printf("L=%3d R=%3d pan=%3d dist=%3dcm %s WiFi=%s\n", l, r, (int)pan,
+                    radarL.presenceDetected() ? radarL.detectionDistance() : radarR.detectionDistance(),
+                    names[state], wifi);
+    }
   }
 }
