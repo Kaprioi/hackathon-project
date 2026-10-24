@@ -1,6 +1,7 @@
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./index.css";
 import CareProfilePage from "./pages/CareProfilePage";
 import DashboardPage from "./pages/DashboardPage";
@@ -14,24 +15,27 @@ const TrackerPage = lazy(() => import("./tracker/TrackerPage.tsx"));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
-      <Routes>
-        {/* HomePage is the About Us page. */}
-        <Route path="/" element={<HomePage />} />
-        <Route
-          path="/tracker"
-          element={
-            <Suspense fallback={<p className="p-6 text-xl">Loading the tracker...</p>}>
-              <TrackerPage />
-            </Suspense>
-          }
-        />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/profile" element={<CareProfilePage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </BrowserRouter>
+    {/* Shows "Something went wrong" instead of a blank page if anything crashes. */}
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          {/* HomePage is the About Us page. */}
+          <Route path="/" element={<HomePage />} />
+          <Route
+            path="/tracker"
+            element={
+              <Suspense fallback={<p className="p-6 text-xl">Loading the tracker...</p>}>
+                <TrackerPage />
+              </Suspense>
+            }
+          />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/profile" element={<CareProfilePage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>,
 );

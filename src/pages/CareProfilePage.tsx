@@ -3,6 +3,7 @@ import { Navigate } from "react-router";
 import { buttonVariants } from "../components/ButtonLink";
 import SiteLayout, { Blobs } from "../components/SiteLayout";
 import {
+  cleanAnswers,
   isAnswered,
   likelihood,
   prettyTime,
@@ -23,7 +24,8 @@ const storageKey = (userId: string) => `carenest-care-profile-${userId}`;
 
 function loadAnswers(userId: string): Answers {
   try {
-    return JSON.parse(localStorage.getItem(storageKey(userId)) ?? "{}") as Answers;
+    // Old or broken saved answers are tidied up so they can't crash the page.
+    return cleanAnswers(JSON.parse(localStorage.getItem(storageKey(userId)) ?? "{}"));
   } catch {
     return {};
   }
@@ -69,10 +71,16 @@ function CareProfile({ userId }: { userId: string }) {
     QUESTIONS.every((q) => isAnswered(q, loadAnswers(userId))) ? QUESTIONS.length : 0,
   );
 
-  useEffect(() => saveAnswers(userId, answers), [userId, answers]);
+  // The curly braces matter: an effect may only return a clean-up function, and
+  // newer browsers make scrollTo return a Promise, which crashed the page on "Next".
+  useEffect(() => {
+    saveAnswers(userId, answers);
+  }, [userId, answers]);
 
   // Bring the top of the card into view when the question changes.
-  useEffect(() => window.scrollTo({ top: 0, behavior: "smooth" }), [step]);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [step]);
 
   const done = step >= QUESTIONS.length;
   const name = (answers.name as string | undefined)?.trim();
