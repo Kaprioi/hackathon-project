@@ -20,6 +20,7 @@ const BLUE = [30, 50, 180];
 const GREEN = [30, 160, 60];
 const BLACK = [15, 15, 15];
 const FOV = DEFAULT_SETTINGS.fovH;
+const FOV_V = DEFAULT_SETTINGS.fovV;
 
 function fillRect(img, x0, x1, y0, y1, color) {
   for (let y = Math.max(0, Math.floor(y0 * H)); y < Math.min(H, Math.ceil(y1 * H)); y++) {
@@ -126,12 +127,13 @@ function room({ radars = 1, quiet = false, loudness: withLoudness = true, webcam
       const boxes = [];
       for (const p of sim.people) {
         const x = 0.5 + (p.pan - real.pan) / FOV - 0.075; // left edge of a 0.15-wide person
+        const y = 0.2 + ((p.tilt ?? LIMITS.center) - real.tilt) / FOV_V; // top of a 0.6-tall person
         const x0 = Math.max(0, x);
         const x1 = Math.min(1, x + 0.15);
         if (x1 - x0 < 0.03) continue; // out of the picture
-        fillRect(img, x0, x1, 0.2, 0.5, p.top);
-        fillRect(img, x0, x1, 0.5, 0.8, p.bottom);
-        boxes.push({ x: x0, y: 0.2, w: x1 - x0, h: 0.6 });
+        fillRect(img, x0, x1, y, y + 0.3, p.top);
+        fillRect(img, x0, x1, y + 0.3, y + 0.6, p.bottom);
+        boxes.push({ x: x0, y, w: x1 - x0, h: 0.6 });
       }
       const head = guess.at(sim.t - TUNING.latencyMs);
       const fixed = webcam === "fixed";
@@ -200,8 +202,8 @@ test("one radar: the listening sweep stops, listens, and parks at the loudest sp
     pan = goal; // a head that gets there at once
     stops.add(goal);
   }
-  assert.deepEqual([...stops], [60, 30, 10], "stopped every 30°, and went one past them");
-  assert.equal(sweep.parkedAt, 30, "parked at the loudest stop (closest to 40°)");
+  assert.deepEqual([...stops], [50, 10], "stopped every 40°, and went one past them");
+  assert.equal(sweep.parkedAt, 50, "parked at the loudest stop (closest to 40°)");
 });
 
 test("one radar: a quiet side makes the listening sweep try the other side", () => {
@@ -214,7 +216,7 @@ test("one radar: a quiet side makes the listening sweep try the other side", () 
     pan = sweep.update(t, pan, loudness(150 - pan));
   }
   assert.equal(sweep.direction, 1, "turned back the other way");
-  assert.ok(Math.abs(sweep.parkedAt - 150) <= 15, `should park near 150°, parked at ${sweep.parkedAt}`);
+  assert.ok(Math.abs(sweep.parkedAt - 150) <= RADAR.stepDeg / 2, `should park near 150°, parked at ${sweep.parkedAt}`);
 });
 
 // ---------- the simulated room ----------
@@ -254,15 +256,17 @@ test("two radars: you leave on the left but double back behind to the right; the
     const me = you(80);
     sim.people.push(me);
     sim.lockOn(me);
-    // Dash out on the left, faster than the head can turn...
-    sim.run(400, (p) => {
-      p.pan = Math.max(20, p.pan - (200 * FRAME_MS) / 1000);
-    });
-    // ...then, out of sight, double back round behind the head to the right, and stop at 135°.
-    me.pan = 135;
+    // Dash out on the left, faster than the head can turn, until it has lost you...
+    let out = sim.step();
+    for (let i = 0; i < 100 && out.mode === "tracking"; i++) {
+      me.pan -= (200 * FRAME_MS) / 1000;
+      out = sim.step();
+    }
+    // ...then, out of sight, double back round behind the head to its right.
+    me.pan = sim.motor.current.pan + 50;
     const from = sim.t;
     sim.run(12000);
-    return { sim, found: refoundAfter(sim, from) };
+    return { sim, me, found: refoundAfter(sim, from) };
   };
   const withRadar = run(2);
   const blind = run(null);
@@ -273,7 +277,8 @@ test("two radars: you leave on the left but double back behind to the right; the
     "the screen should say you're to the right once the radar hears you there",
   );
   assert.equal(withRadar.sim.log.at(-1).mode, "tracking");
-  assert.ok(Math.abs(withRadar.sim.motor.current.pan - 135) < 8, "should face you at 135°");
+  const at = withRadar.me.pan;
+  assert.ok(Math.abs(withRadar.sim.motor.current.pan - at) < 8, `should face you at ${at.toFixed(0)}°`);
   assert.ok(withRadar.found !== null, "should find you");
   assert.ok(
     blind.found === null || withRadar.found < blind.found - 2000,
@@ -428,5 +433,47 @@ test("laptop webcam: you step out on the left, the motor turns left toward you, 
     p.pan = Math.min(85, p.pan + (60 * FRAME_MS) / 1000);
   });
   assert.equal(sim.log.at(-1).mode, "tracking");
+});
+
+// ---------- up and down, and how quickly it turns ----------
+
+for (const webcam of [null, "fixed"]) {
+  test(`up and down: it tilts to follow you (${webcam ? "laptop webcam beside the stand" : "camera on the stand"})`, () => {
+    const sim = room({ radars: 1, webcam });
+    const me = you(90);
+    sim.people.push(me);
+    sim.lockOn(me);
+    // Your chest is about 3.6° above your "tilt" in this room (the aim is at chest height).
+    const aimFor = (tilt) => tilt - 0.09 * FOV_V;
+    sim.run(1500, (p) => {
+      p.tilt = Math.min(105, (p.tilt ?? 90) + (20 * FRAME_MS) / 1000); // you crouch: lower in the picture
+    });
+    sim.run(1500);
+    assert.equal(sim.log.at(-1).mode, "tracking");
+    assert.ok(Math.abs(sim.motor.current.tilt - aimFor(105)) < 3, `tilted down to ${sim.motor.current.tilt.toFixed(1)}°, you're at ${aimFor(105)}°`);
+    sim.run(1500, (p) => {
+      p.tilt = Math.max(78, p.tilt - (30 * FRAME_MS) / 1000); // and stand up tall
+    });
+    sim.run(1500);
+    assert.equal(sim.log.at(-1).mode, "tracking");
+    assert.ok(Math.abs(sim.motor.current.tilt - aimFor(78)) < 3, `tilted up to ${sim.motor.current.tilt.toFixed(1)}°, you're at ${aimFor(78)}°`);
+  });
+}
+
+test("turning to look at someone is quicker (25% a tick, was 15%) and doesn't overshoot", () => {
+  // The page's copy of the firmware's motor steering.
+  const motor = new ServoModel();
+  motor.step(0);
+  motor.setTarget({ pan: 150, tilt: 90 });
+  let t = 0;
+  let last = 90;
+  while (Math.abs(motor.current.pan - 150) > 2) {
+    t += 20;
+    motor.step(t);
+    assert.ok(motor.current.pan >= last && motor.current.pan <= 150, `jumped back or past the target at ${t} ms`);
+    assert.ok(motor.current.pan - last <= (240 * 20) / 1000 + 1e-9, "never faster than 240°/s");
+    last = motor.current.pan;
+  }
+  assert.ok(t <= 360, `a 60° turn should take about a third of a second, took ${t} ms (was 460)`);
 });
 

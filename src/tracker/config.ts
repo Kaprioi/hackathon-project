@@ -25,11 +25,18 @@ export const LIMITS = {
   center: 90,
 };
 
-/** The firmware moves each motor 15% of the remaining way every 20 ms. */
-export const SERVO_EASE = 0.15;
+/**
+ * The firmware moves each motor 25% of the remaining way every 20 ms (was 15%: quicker to
+ * look at someone now), but never faster than SERVO_MAX_SPEED. Keep both in step with
+ * CAMERA_EASE and CAMERA_MAX_SPEED in the firmware.
+ */
+export const SERVO_EASE = 0.25;
 export const SERVO_TICK_MS = 20;
-/** Roughly the fastest an HS-422 servo turns (degrees per second). An estimate. */
-export const SERVO_MAX_SPEED = 280;
+/**
+ * The fastest the firmware turns a motor (degrees per second), a little under the HS-422's
+ * own top speed (about 280 unloaded), so it doesn't overshoot carrying the phone.
+ */
+export const SERVO_MAX_SPEED = 240;
 
 /** Settings you can change on the page (they're saved in the browser). */
 export interface Settings {
@@ -97,15 +104,15 @@ export const TUNING = {
   trackLookSlack: 1.6,
   /** Right after you leave the frame, how loose the look match is (x matchLimit). */
   followLookSlack: 1.25,
-  /** Following you out of the frame: turn at least this fast, and at most this fast (degrees/second). */
-  followMinSpeed: 25,
-  followMaxSpeed: 90,
+  /** Following you out of the frame: turn at least this fast, and at most this fast (degrees/second). Was 25 and 90. */
+  followMinSpeed: 40,
+  followMaxSpeed: 120,
   /** Keep turning toward where you went for at most this long. */
   followMaxMs: 3500,
   /** If the stand hits its turning limit while following, wait this long before sweeping. */
   limitPauseMs: 700,
-  /** Sweep speed while searching the room (degrees/second). */
-  sweepSpeed: 30,
+  /** Sweep speed while searching the room (degrees/second). Was 30. */
+  sweepSpeed: 45,
   /** How quickly the saved look adapts to lighting changes (0 = never, 1 = instantly). Only while sure it's them. */
   lookUpdate: 0.02,
   /** Follow someone who only "sort of" looks like the target (over matchLimit) for at most this long. */
@@ -193,16 +200,19 @@ export const RADAR = {
   minEnergy: 15,
   /** Ignore loudness differences smaller than this (the firmware's DEADBAND). */
   deadband: 8,
-  /** One radar, the listening sweep: turn this far between stops (about half the camera's width)... */
-  stepDeg: 30,
-  /** ...wait this long once there (the radar hears its own motion while the head turns)... */
-  settleMs: 250,
-  /** ...then listen this long, averaging the loudness. */
-  listenMs: 350,
+  /**
+   * One radar, the listening sweep: turn this far between stops (was 30; the camera is about
+   * 65° wide, so each stop still overlaps the last)...
+   */
+  stepDeg: 40,
+  /** ...wait this long once there (the radar hears its own motion while the head turns; was 250)... */
+  settleMs: 200,
+  /** ...then listen this long, averaging the loudness (was 350). */
+  listenMs: 300,
   /** Stop waiting for the head to reach a stop after this long (it may be stuck at an end). */
   moveMaxMs: 1200,
-  /** Two radars: turn toward the louder one at this speed (degrees/second). */
-  turnSpeed: 45,
+  /** Two radars: turn toward the louder one at this speed (degrees/second; was 45). */
+  turnSpeed: 75,
   /** Pointed where the radar says, and the camera doesn't see them there for this long: sweep the room instead. */
   parkMs: 2500,
   /**

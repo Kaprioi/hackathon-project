@@ -94,8 +94,9 @@ const uint32_t FOUND_CONFIRM_MS = 1000;  // must be seen this long to count as "
 #define RADAR_UUID   "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  // we notify "presence,left,right,pan,tilt"
 #define MIST_UUID    "6e400004-b5a3-f393-e0a9-e50e24dcca9e"  // website writes "1" (on) or "0" (off)
 const uint32_t CAMERA_HOLD_MS = 700;     // the website's aims count as "person in view" (for alerts) this long
-const uint32_t CAMERA_TICK_MS = 20;      // camera steering: move 15% of the way every 20 ms
-const float CAMERA_EASE = 0.15;          // (the website's motor model assumes exactly this)
+const uint32_t CAMERA_TICK_MS = 20;      // website steering: move 25% of the way every 20 ms (was 15%),
+const float CAMERA_EASE = 0.25;          // but at most CAMERA_MAX_SPEED. The website's motor model
+const float CAMERA_MAX_SPEED = 240;      // assumes exactly these (SERVO_* in config.ts). Degrees/second.
 const uint32_t MIST_TIMEOUT_MS = 3000;   // no "1" from the website for this long: mist off (safety)
 const uint32_t REPORT_MS = 100;          // send radar readings and the head angle 10 times a second
 
@@ -415,8 +416,9 @@ void loop() {
   bool cameraSteering = cameraAt != 0 && (int32_t)(now - cameraAt) < (int32_t)CAMERA_HOLD_MS;
   if (websiteSteers && now - lastCameraTick >= CAMERA_TICK_MS) {
     lastCameraTick = now;
-    pan += (cameraPan - pan) * CAMERA_EASE;
-    tilt += (cameraTilt - tilt) * CAMERA_EASE;
+    const float maxStep = CAMERA_MAX_SPEED * CAMERA_TICK_MS / 1000.0;  // 4.8 degrees a tick
+    pan += constrain((cameraPan - pan) * CAMERA_EASE, -maxStep, maxStep);
+    tilt += constrain((cameraTilt - tilt) * CAMERA_EASE, -maxStep, maxStep);
     panServo.writeMicroseconds(toMicros(pan));
     tiltServo.writeMicroseconds(toMicros(tilt));
   }

@@ -1,7 +1,7 @@
 // Guesses where the camera is pointing right now.
 //
 // The stand doesn't report its angle back, but we know exactly how the firmware
-// moves (15% of the remaining way every 20 ms), so we copy that here. Knowing
+// moves (25% of the remaining way every 20 ms, at most 240 degrees a second), so we copy that here. Knowing
 // where the camera was pointing when a frame was taken lets the brain turn
 // "you're on the left of the picture" into "you're at 70 degrees in the room".
 
