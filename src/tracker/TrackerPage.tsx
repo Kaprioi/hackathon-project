@@ -101,6 +101,15 @@ function agoText(seconds: number): string {
   return `${Math.round(seconds / 3600)} h ago`;
 }
 
+/** The CareNest login token, or null: the call server only lets signed-in accounts call. */
+async function loginToken(): Promise<string | null> {
+  try {
+    return (await supabase?.auth.getSession())?.data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** The emergency contact's name for the screen. */
 function contactLabel(s: Settings): string {
   return s.contactName.trim() || "your emergency contact";
@@ -930,7 +939,7 @@ export default function TrackerPage() {
   const placeCall = useCallback(
     (callStart: number, kind: EmergencyKind) => {
       patchAlarm(callStart, { call: "sending", callError: undefined });
-      void requestCall(kind).then((out: CallOutcome) => {
+      void loginToken().then((token) => requestCall(kind, token)).then((out: CallOutcome) => {
         if (alarmRef.current?.callStart !== callStart) return; // closed meanwhile
         if (out.result === "off") {
           patchAlarm(callStart, { call: "pretend" });
@@ -1881,12 +1890,12 @@ function SettingsPanel(props: {
   const [callTest, setCallTest] = useState<"idle" | "sending" | CallOutcome>("idle");
   useEffect(() => {
     let live = true;
-    void callSetup().then((r) => live && setSetup(r));
+    void loginToken().then(callSetup).then((r) => live && setSetup(r));
     return () => {
       live = false;
     };
   }, []);
-  const callsReady = setup !== null && setup !== "checking" && setup.ready;
+  const callsReady = setup !== null && setup !== "checking" && setup.ready && !setup.needsSignIn;
   // The test buttons go by the screen. On a mirrored picture the screen's left is the camera's right.
   const side = mirrored ? -1 : 1;
 
@@ -2008,7 +2017,9 @@ function SettingsPanel(props: {
                 ? "Checking whether real calls are set up…"
                 : setup === null
                   ? "Couldn't check whether real calls are set up. No internet?"
-                  : setup.ready
+                  : setup.needsSignIn
+                    ? "Sign in to CareNest on this phone to use real calls (only signed-in accounts can call)."
+                    : setup.ready
                     ? `Real calls are on: it calls the number ending ${setup.to}.`
                     : setup.problem
                       ? `Calling is half set up: ${setup.problem}`
@@ -2024,7 +2035,7 @@ function SettingsPanel(props: {
               disabled={!callsReady || callTest === "sending"}
               onClick={() => {
                 setCallTest("sending");
-                void requestCall("test").then(setCallTest);
+                void loginToken().then((token) => requestCall("test", token)).then(setCallTest);
               }}
             >
               Test the call (rings them now)

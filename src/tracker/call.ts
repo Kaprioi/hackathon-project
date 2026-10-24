@@ -1,7 +1,8 @@
 // The emergency call, page side. A web page can't dial a phone, so the alert asks the
 // website's server (api/emergency-call.ts) to call the emergency contact through Twilio.
 // The number and the Twilio keys stay on the server. If calling isn't set up there, the
-// alert shows a pretend call instead.
+// alert shows a pretend call instead. The page sends its CareNest login token, because the
+// server only lets signed-in accounts call.
 
 export type CallKind = "fall" | "seizure" | "test";
 
@@ -15,32 +16,45 @@ export interface CallSetup {
   problem: string | null;
   /** How the server's last call attempt went (since it started), or null. */
   last: { secondsAgo: number; kind: CallKind; ok: boolean; error?: string } | null;
+  /** The server only tells a signed-in page the details (and only lets it call). */
+  needsSignIn: boolean;
 }
 
 /** What happened: Twilio is making the call, calling isn't set up (pretend), or it failed. */
 export type CallOutcome = { result: "sent" } | { result: "off" } | { result: "failed"; error: string };
 
+/** The login token as a request header, if signed in. */
+function signedIn(token?: string | null): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 /** Asks the server whether real calls are set up. Null if the server couldn't be reached. */
-export async function callSetup(): Promise<CallSetup | null> {
+export async function callSetup(token?: string | null): Promise<CallSetup | null> {
   try {
-    const res = await fetch(URL_PATH, { cache: "no-store" });
-    if (res.status === 404) return { ready: false, to: null, problem: null, last: null }; // no calling on this server at all
+    const res = await fetch(URL_PATH, { cache: "no-store", headers: signedIn(token) });
+    if (res.status === 404) return { ready: false, to: null, problem: null, last: null, needsSignIn: false }; // no calling on this server at all
     if (!res.ok) return null;
     const body = (await res.json()) as Partial<CallSetup>;
-    return { ready: body.ready === true, to: body.to ?? null, problem: body.problem ?? null, last: body.last ?? null };
+    return {
+      ready: body.ready === true,
+      to: body.to ?? null,
+      problem: body.problem ?? null,
+      last: body.last ?? null,
+      needsSignIn: body.needsSignIn === true,
+    };
   } catch {
     return null;
   }
 }
 
-/** Asks the server to make the call. Gives up after `timeoutMs`. */
-export async function requestCall(kind: CallKind, timeoutMs = 15000): Promise<CallOutcome> {
+/** Asks the server to make the call, with the login token (if signed in). Gives up after `timeoutMs`. */
+export async function requestCall(kind: CallKind, token?: string | null, timeoutMs = 15000): Promise<CallOutcome> {
   const stop = new AbortController();
   const timer = setTimeout(() => stop.abort(), timeoutMs);
   try {
     const res = await fetch(URL_PATH, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...signedIn(token) },
       body: JSON.stringify({ kind }),
       signal: stop.signal,
     });
