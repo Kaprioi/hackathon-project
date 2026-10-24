@@ -19,6 +19,7 @@ const RED = [200, 30, 30];
 const BLUE = [30, 50, 180];
 const GREEN = [30, 160, 60];
 const BLACK = [15, 15, 15];
+const WHITE = [235, 235, 235];
 const FOV = DEFAULT_SETTINGS.fovH;
 const FOV_V = DEFAULT_SETTINGS.fovV;
 
@@ -476,3 +477,35 @@ test("turning to look at someone: quick (25% a tick, at most 280°/s), and it gl
   }
   assert.ok(t <= 340, `a 60° turn should take about a third of a second, took ${t} ms (was 460)`);
 });
+
+// ---------- with Dennis's "keep the person when they turn around" ----------
+
+test("you turn around, then walk out of view showing your back: the radar search still knows you", () => {
+  const sim = room({ radars: 1 });
+  const me = you(110);
+  sim.people.push(me);
+  sim.lockOn(me);
+  sim.run(1500);
+  // You turn around (from behind your top is white, not red) and stand there for 2 seconds:
+  // the brain learns that look of you too (brain.ts learnView).
+  me.top = WHITE;
+  sim.run(2000);
+  assert.equal(sim.log.at(-1).mode, "tracking", "still on you from behind");
+  // Then you dash off to the left, still showing your back, until it loses you, and carry on
+  // out of the picture to 50° left of where it points (only the radar hears you there).
+  let out = sim.step();
+  for (let i = 0; i < 100 && out.mode === "tracking"; i++) {
+    me.pan -= (200 * FRAME_MS) / 1000;
+    out = sim.step();
+  }
+  me.pan = sim.motor.current.pan - 50;
+  const at = me.pan;
+  const from = sim.t;
+  sim.run(8000);
+  const after = sim.log.filter((l) => l.t > from);
+  assert.ok(after.some((l) => l.mode === "radar"), "the radar should guide the search");
+  assert.ok(after.some((l) => /radar led me to you/i.test(l.note)), "re-found by the camera, from behind, after the radar pointed the way");
+  assert.equal(sim.log.at(-1).mode, "tracking");
+  assert.ok(Math.abs(sim.motor.current.pan - at) < 8, `should face you at ${at.toFixed(0)}°, faces ${sim.motor.current.pan.toFixed(0)}°`);
+});
+

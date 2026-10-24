@@ -16,23 +16,29 @@ const FRAME_MS = 66; // the camera: about 15 frames a second
 const SCREEN_MS = 16; // the page: about 60 screen refreshes a second
 const FOV = DEFAULT_SETTINGS.fovH;
 
-/** A frame showing a red-and-blue person standing at `you` degrees, seen from `cam` degrees. */
-function frame(you, cam) {
+/**
+ * A frame showing a red-and-blue person at `you` degrees, seen from `cam` degrees: standing,
+ * or lying on the floor (head to the left: red on the left, blue on the right).
+ */
+function frame(you, cam, lying = false) {
   const image = { width: W, height: H, data: new Uint8ClampedArray(W * H * 4).fill(128) };
-  const x = 0.5 + (you - cam) / FOV - 0.075;
+  const bw = lying ? 0.45 : 0.15;
+  const x = 0.5 + (you - cam) / FOV - bw / 2;
   const x0 = Math.max(0, x);
-  const x1 = Math.min(1, x + 0.15);
+  const x1 = Math.min(1, x + bw);
   if (x1 - x0 < 0.03) return { image, people: [] };
-  for (let y = 36; y < 144; y++) {
+  const [y0, y1] = lying ? [0.65, 0.8] : [0.2, 0.8];
+  for (let y = Math.floor(y0 * H); y < Math.ceil(y1 * H); y++) {
     for (let px = Math.floor(x0 * W); px < Math.ceil(x1 * W); px++) {
       const i = (y * W + px) * 4;
-      const c = y < 90 ? [200, 30, 30] : [30, 50, 180];
+      const upper = lying ? px < (x + bw / 2) * W : y < (y0 + y1) * 0.5 * H;
+      const c = upper ? [200, 30, 30] : [30, 50, 180];
       image.data[i] = c[0];
       image.data[i + 1] = c[1];
       image.data[i + 2] = c[2];
     }
   }
-  return { image, people: [{ x: x0, y: 0.2, w: x1 - x0, h: 0.6 }] };
+  return { image, people: [{ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }] };
 }
 
 /**
@@ -47,12 +53,13 @@ function stand(start) {
   const brain = new Brain({ ...DEFAULT_SETTINGS });
   const you = [{ t: 0, pan: start }];
   const youAt = (t) => [...you].reverse().find((s) => s.t <= t)?.pan ?? start;
+  let lyingSince = Infinity; // when you fell over
   let t = 0;
   let last = null; // the brain's last answer and when
   const log = [];
   const look = (tap = null) => {
     const cam = motor.at(t - TUNING.latencyMs);
-    const { image, people } = frame(youAt(t - TUNING.latencyMs), cam.pan);
+    const { image, people } = frame(youAt(t - TUNING.latencyMs), cam.pan, t - TUNING.latencyMs >= lyingSince);
     const out = brain.update({ t, people, image, camera: cam, radar: null, tap });
     if (out.aim) motor.setTarget(out.aim);
     last = { out, t };
@@ -71,9 +78,14 @@ function stand(start) {
         log.push({ t, you: youAt(t), pan: motor.current.pan, mode: last.out.mode });
       }
     },
+    /** You fall over, now: lying on the floor from the next picture on. */
+    fall() {
+      lyingSince = t;
+    },
     get t() {
       return t;
     },
+    motor,
   };
 }
 
@@ -169,3 +181,19 @@ test("between camera frames the aim moves on smoothly, but never runs away if fr
   assert.ok(stalled.pan <= 90 + (40 * TUNING.predictMaxMs) / 1000 + 1e-9, "at most predictMaxMs ahead");
   assert.equal(predictAim({ pan: 169, tilt: 90 }, vel, 100).pan, LIMITS.panMax, "never past the end stop");
 });
+
+test("you fall over (Dennis's lying-down colours): it keeps you, and the motor settles instead of running off", () => {
+  const s = stand(80);
+  s.run(2500);
+  s.fall();
+  const fell = s.t;
+  s.run(4000);
+  const after = s.log.filter((l) => l.t > fell);
+  assert.ok(after.every((l) => l.mode === "tracking"), `lost you after the fall: ${[...new Set(after.map((l) => l.mode))]}`);
+  const tilt = s.motor.current.tilt;
+  assert.ok(tilt > 90 && tilt < LIMITS.tiltMax, `should look down at you on the floor, tilt ${tilt.toFixed(1)}°`);
+  const late = after.filter((l) => l.t > fell + 2500).map((l) => l.pan);
+  assert.ok(Math.max(...late) - Math.min(...late) < 0.2, "and hold still while you lie there");
+  assert.ok(Math.abs(late.at(-1) - 80) < 3, `pointing at you (80°), at ${late.at(-1).toFixed(1)}°`);
+});
+
