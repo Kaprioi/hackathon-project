@@ -1,5 +1,8 @@
 // SightLine: a pan-tilt head with two LD2410C radars that keeps a person in
 // view and sends an alert when they have been out of sight for too long.
+// Also runs with only the left radar fitted (see RADAR_COUNT): then the radar
+// only says whether someone is there, and the head holds still instead of
+// turning toward one side.
 //
 // Also talks Bluetooth to the Phone Tracker website (the /tracker page in this
 // repo, running on the iPhone in the Bluefy browser):
@@ -41,6 +44,12 @@ const int LED_PIN = 13;     // red LED on the Feather
 const int MIST_PIN = 26;    // Feather "A0"      -> MOSFET module signal: HIGH = mist maker + fan on
                             // (not 14: the right radar uses it, and it can pulse during boot)
 
+// ---------- Radars fitted ----------
+// 0 = decide at startup: two if the right radar answers, otherwise one.
+// 1 = left radar only (pins 32 and 14 stay free). 2 = both, always.
+// With 0 nothing needs reflashing when the second radar arrives.
+const int RADAR_COUNT = 0;
+
 // ---------- Tuning ----------
 // Widened from 20-160 to 10-170 to match the website (160 degrees of pan).
 // If the cables or the radar mount can't take it, change both this line and
@@ -71,6 +80,7 @@ const uint32_t MIST_TIMEOUT_MS = 3000;   // no "1" from the website for this lon
 const uint32_t REPORT_MS = 100;          // send radar readings and the head angle 10 times a second
 
 ld2410 radarL, radarR;
+int radarCount = 2;  // how many radars are in use; decided in setup()
 Servo panServo, tiltServo;
 
 enum State { TRACKING, SEARCHING, ALERTED };
@@ -280,10 +290,25 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
 
   Serial1.begin(256000, SERIAL_8N1, RADAR_L_RX, RADAR_L_TX);
-  Serial2.begin(256000, SERIAL_8N1, RADAR_R_RX, RADAR_R_TX);
+  if (RADAR_COUNT != 1) Serial2.begin(256000, SERIAL_8N1, RADAR_R_RX, RADAR_R_TX);
   delay(500);
   Serial.println(radarL.begin(Serial1) ? "Left radar OK" : "Left radar NOT found - check wiring");
-  Serial.println(radarR.begin(Serial2) ? "Right radar OK" : "Right radar NOT found - check wiring");
+  bool rightOk = false;
+  if (RADAR_COUNT != 1) {
+    rightOk = radarR.begin(Serial2);
+    if (rightOk) Serial.println("Right radar OK");
+    else if (RADAR_COUNT == 2) Serial.println("Right radar NOT found - check wiring");
+    else Serial.println("Right radar not found");
+  }
+  radarCount = (RADAR_COUNT == 1 || RADAR_COUNT == 2) ? RADAR_COUNT : (rightOk ? 2 : 1);
+  if (radarCount == 1 && RADAR_COUNT != 1) Serial2.end();  // leave pins 32 and 14 free
+  Serial.printf("Radar mode: %d radar%s (%s)\n", radarCount, radarCount == 1 ? "" : "s",
+                RADAR_COUNT == 0 ? "detected at startup" : "set by RADAR_COUNT");
+  if (radarCount == 1) {
+    Serial.println("  Left radar only: it says whether someone is there, not which side.");
+    Serial.println("  The head holds still while it senses them and sweeps after 2 s without.");
+    if (RADAR_COUNT == 0) Serial.println("  Have two radars? Check the right radar's wiring, or set RADAR_COUNT to 2.");
+  }
 
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
@@ -301,7 +326,7 @@ void setup() {
 void loop() {
   // The radars stream data constantly; read() must run every loop.
   radarL.read();
-  radarR.read();
+  if (radarCount == 2) radarR.read();
 
   uint32_t now = millis();
 
@@ -326,7 +351,7 @@ void loop() {
   if (pendingType && WiFi.status() == WL_CONNECTED) sendAlert(pendingType, pendingMessage);
 
   int l = radarScore(radarL);
-  int r = radarScore(radarR);
+  int r = radarCount == 2 ? radarScore(radarR) : 0;  // one radar: the website always gets right = 0
   bool seenL = l >= MIN_ENERGY, seenR = r >= MIN_ENERGY;
   // The website's camera steering counts as "in view" too, for the alerts.
   bool seen = seenL || seenR || cameraSteering;
@@ -346,7 +371,9 @@ void loop() {
     // Turn toward the radar that hears the person better. Radar L points
     // left of center, so a stronger left signal means "turn left".
     // (Skipped while the camera is steering: it's more precise.)
-    if (!cameraSteering) {
+    // With one radar there's nothing to compare, so the head holds still while
+    // it senses them. Turning toward the only radar would run into the end stop.
+    if (!cameraSteering && radarCount == 2) {
       if (seenL && seenR) {
         int diff = l - r;
         if (abs(diff) > DEADBAND) movePan(constrain(diff * GAIN, -MAX_STEP, MAX_STEP));
@@ -387,7 +414,7 @@ void loop() {
     lastLog = now;
     const char *names[] = {"TRACKING", "SEARCHING", "ALERTED"};
     Serial.printf("L=%3d R=%3d pan=%3d dist=%3dcm %s WiFi=%s steer=%s mist=%s\n", l, r, (int)pan,
-                  radarL.presenceDetected() ? radarL.detectionDistance() : radarR.detectionDistance(),
+                  (radarCount == 1 || radarL.presenceDetected()) ? radarL.detectionDistance() : radarR.detectionDistance(),
                   names[state], WiFi.status() == WL_CONNECTED ? "on" : "off",
                   cameraSteering ? "camera" : "radar", mistOn ? "on" : "off");
   }
