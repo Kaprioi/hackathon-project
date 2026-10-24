@@ -319,6 +319,9 @@ const zh: Record<string, string> = {
   "Read aloud": "朗读",
   "Stop reading": "停止朗读",
   "This device has no voice for this language, so it can't read this aloud.": "这台设备没有中文语音，所以无法朗读。",
+  "The natural voice isn't working right now, so this device's voice is reading instead.":
+    "自然语音暂时无法使用，所以改用这台设备的语音朗读。",
+  "Sorry, reading aloud isn't working right now. Please try again later.": "抱歉，朗读功能暂时无法使用，请稍后再试。",
   "Simple view": "简洁模式",
   "Show everything": "显示全部",
   "Your loved one": "您的家人",

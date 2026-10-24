@@ -1,12 +1,29 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { checkingLine, type AlertSettings } from "../family/alerts";
-import { pickVoice } from "../family/readAloud";
-import { canSpeak, loadVoices, utterancesFor } from "../family/speech";
+import { speechParts } from "../family/readAloud";
+import { canSpeak } from "../family/speech";
 import { useLanguage } from "../i18n/useLanguage";
+import { supabase } from "../lib/supabase";
 
 // Small extras for the family page: the "Read aloud" speaker button, the simple
 // view switch, the spoken alerts switch, the alert settings panel and the
 // "I'm checking on it" button.
+
+// A tiny silent sound. Playing it straight from the button press "unlocks" the
+// player on iPhones, so the real voice can start once it has arrived.
+const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
+// One player for the whole page, so only one thing is read at a time.
+let player: HTMLAudioElement | null = null;
+// How to stop whichever button is reading right now.
+let stopCurrent: (() => void) | null = null;
+
+/** Stops anything being read. */
+function stopAll() {
+  const stop = stopCurrent;
+  stopCurrent = null;
+  stop?.();
+}
 
 function SpeakerIcon({ size }: { size: number }) {
   return (
@@ -24,10 +41,9 @@ function SpeakerIcon({ size }: { size: number }) {
 }
 
 /**
- * A speaker button that reads `text` out loud with the browser's own voice.
- * Shows nothing at all in browsers that can't speak. Press again to stop.
- * Spanish and Chinese use a voice for that language; if the device has none,
- * a short note says so instead of reading it in an English voice.
+ * A speaker button that reads `text` out loud with our ElevenLabs voice for the
+ * site language (fetched from /api/tts). Press again to stop.
+ * If the ElevenLabs voice can't be reached, a short note says so.
  */
 export function ReadAloudButton({
   text,
@@ -43,65 +59,93 @@ export function ReadAloudButton({
   big?: boolean;
 }) {
   const [speaking, setSpeaking] = useState(false);
-  const [noVoice, setNoVoice] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [note, setNote] = useState("");
   const { lang, t } = useLanguage();
-  // The sentences being spoken. Holding on to them stops Chrome from throwing
-  // them away (and going quiet) partway through. Each press gets a new list.
-  const mine = useRef<SpeechSynthesisUtterance[] | null>(null);
+  // This button's current reading, if any. Each press gets a new one.
+  const mine = useRef<object | null>(null);
 
   // Stop talking if the button disappears (e.g. leaving the page) or the language changes.
   useEffect(
     () => () => {
-      if (mine.current) {
-        mine.current = null;
-        window.speechSynthesis.cancel();
-      }
+      if (mine.current) stopAll();
+      mine.current = null;
       setSpeaking(false);
-      setNoVoice(false);
+      setLoading(false);
+      setNote("");
     },
     [lang],
   );
 
-  if (!canSpeak) return null;
-
   async function toggle() {
-    const synth = window.speechSynthesis;
-    const wasTalking = synth.speaking || synth.pending;
-    mine.current = null;
-    synth.cancel();
-    if (speaking) {
-      setSpeaking(false);
-      return;
-    }
+    const wasMine = mine.current !== null;
+    stopAll();
+    if (wasMine) return;
 
-    const voices = await loadVoices();
-    const voice = pickVoice(voices, lang);
-    // No voice for Spanish or Chinese here: say so rather than read it badly.
-    // (If the browser lists no voices at all we can't tell, so just try.)
-    if (lang !== "en" && !voice && voices.length > 0) {
-      setNoVoice(true);
-      return;
-    }
-    setNoVoice(false);
-
-    const parts = utterancesFor(text, lang, voice);
-    if (parts.length === 0) return;
-    const finish = () => {
-      if (mine.current === parts) {
-        mine.current = null;
-        setSpeaking(false);
-      }
-    };
-    parts[parts.length - 1].onend = finish;
-    for (const u of parts) u.onerror = finish;
-    mine.current = parts;
+    const words = speechParts(text, lang).join(" ");
+    if (!words) return;
+    const reading = {};
+    mine.current = reading;
+    setNote("");
     setSpeaking(true);
+    setLoading(true);
 
-    // Chrome can drop speech that starts the instant other speech is stopped.
-    if (wasTalking) await new Promise((r) => setTimeout(r, 100));
-    if (mine.current !== parts) return;
-    synth.resume(); // in case the browser left speech paused
-    for (const u of parts) synth.speak(u);
+    const controller = new AbortController();
+    let url = "";
+    const audio = (player ??= new Audio());
+    const done = () => {
+      if (mine.current !== reading) return;
+      mine.current = null;
+      stopCurrent = null;
+      setSpeaking(false);
+      setLoading(false);
+    };
+    const cleanUp = () => {
+      controller.abort();
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      if (url) URL.revokeObjectURL(url);
+    };
+    stopCurrent = () => {
+      cleanUp();
+      if (mine.current === reading) mine.current = null;
+      setSpeaking(false);
+      setLoading(false);
+    };
+
+    // Start the player now, while we're still inside the button press (iPhones need this).
+    audio.src = SILENCE;
+    audio.play().catch(() => {});
+
+    try {
+      const token = (await supabase?.auth.getSession())?.data.session?.access_token;
+      if (!token) throw new Error("not logged in");
+      if (mine.current !== reading) return;
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text: words, lang }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const sound = await res.blob();
+      if (mine.current !== reading) return;
+      url = URL.createObjectURL(sound);
+      audio.onended = () => {
+        cleanUp();
+        done();
+      };
+      audio.onerror = null;
+      audio.src = url;
+      await audio.play();
+      if (mine.current === reading) setLoading(false);
+    } catch {
+      if (mine.current !== reading) return;
+      cleanUp();
+      setNote("Read aloud isn't available right now. Please try again in a moment.");
+      done();
+    }
   }
 
   return (
@@ -110,14 +154,15 @@ export function ReadAloudButton({
         type="button"
         onClick={toggle}
         aria-pressed={speaking}
+        aria-busy={loading}
         className={`inline-flex items-center justify-center gap-2 rounded-2xl border-[3px] border-current bg-surface font-extrabold text-brand transition-colors hover:bg-lilac ${big ? "min-h-16 px-6 text-2xl" : "min-h-12 px-4 text-lg"}`}
       >
         <SpeakerIcon size={big ? 30 : 22} />
         {speaking ? t(stopLabel) : t(label)}
       </button>
-      {noVoice && (
+      {note && (
         <span role="status" className="text-lg font-bold text-muted">
-          {t("This device has no voice for this language, so it can't read this aloud.")}
+          {t(note)}
         </span>
       )}
     </span>
