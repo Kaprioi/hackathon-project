@@ -1,6 +1,15 @@
 # hackathon-project
 
-Our hackathon web app. (Replace this line with a one-sentence pitch once we decide.)
+**CareNest**: a phone standing on a table watches the room with its camera (all on the phone), and family see in plain words how their loved one is doing. No video or pictures ever leave the phone.
+
+The site has four pages:
+
+| Page | Address | What it is |
+| --- | --- | --- |
+| About Us | `/` | What CareNest is and how it works |
+| Sign in | `/login` | Sign in or create an account (email and password) |
+| Phone camera | `/tracker` | Open this on the phone on the table and press **Start watching** |
+| Family | `/dashboard` | What is happening right now, recent news, and adding family |
 
 ## Team setup (do this once, ~5 minutes)
 
@@ -64,7 +73,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
    npm install
    ```
 
-2. Set up Supabase keys (the homepage works without them; the login page at `/login` needs them):
+2. Set up Supabase keys (the About Us page works without them; the login page at `/login` needs them):
 
    ```bash
    cp .env.example .env.local
