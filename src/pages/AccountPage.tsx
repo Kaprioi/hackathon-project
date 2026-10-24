@@ -3,7 +3,9 @@ import { Link, Navigate } from "react-router";
 import { Message, linkButton } from "../components/AuthLayout";
 import { buttonVariants } from "../components/ButtonLink";
 import { PasswordField, TextField } from "../components/FormFields";
+import Highlight from "../components/Highlight";
 import SiteLayout, { Blobs } from "../components/SiteLayout";
+import { useLanguage } from "../i18n/useLanguage";
 import { cleanDisplayName, displayNameProblem, passwordProblems } from "../lib/account";
 import { friendlyError } from "../lib/friendlyError";
 import { supabase } from "../lib/supabase";
@@ -22,6 +24,7 @@ interface CircleRow {
 
 export default function AccountPage() {
   const session = useSession();
+  const { t } = useLanguage();
   const [loggingOut, setLoggingOut] = useState(false);
 
   // Not logged in (or Supabase isn't set up): send people to the log in page.
@@ -30,7 +33,7 @@ export default function AccountPage() {
     return (
       <SiteLayout title="Your account">
         <div className="mx-auto flex min-h-screen max-w-2xl items-center justify-center px-6">
-          <p className="text-xl text-muted">Loading…</p>
+          <p className="text-xl text-muted">{t("Loading…")}</p>
         </div>
       </SiteLayout>
     );
@@ -55,6 +58,7 @@ function Account({
   loggingOut: boolean;
   setLoggingOut: (value: boolean) => void;
 }) {
+  const { t } = useLanguage();
   const [logOutError, setLogOutError] = useState("");
 
   async function logOut() {
@@ -75,10 +79,10 @@ function Account({
         <div className="mx-auto flex max-w-2xl flex-col gap-6">
           <div>
             <h1 className="text-4xl font-extrabold md:text-5xl">
-              Your <span className="text-gradient-brand">account</span>
+              <Highlight text={t("Your *account*")} />
             </h1>
             <p className="mt-2 text-lg text-muted">
-              Signed in as <strong className="text-ink">{email}</strong>
+              {t("Signed in as")} <strong className="text-ink">{email}</strong>
             </p>
           </div>
 
@@ -88,19 +92,19 @@ function Account({
 
           <section aria-labelledby="logout-title" className={card}>
             <h2 id="logout-title" className="text-2xl font-extrabold">
-              Log out
+              {t("Log out")}
             </h2>
-            <p className="mt-2 text-lg text-muted">On a shared computer, log out when you are done.</p>
+            <p className="mt-2 text-lg text-muted">{t("On a shared computer, log out when you are done.")}</p>
             <div className="mt-4 flex flex-col gap-3">
-              {logOutError && <Message kind="error">{logOutError}</Message>}
+              {logOutError && <Message kind="error">{t(logOutError)}</Message>}
               <button type="button" onClick={logOut} disabled={loggingOut} className={button}>
-                {loggingOut ? "Logging out…" : "Log out"}
+                {loggingOut ? t("Logging out…") : t("Log out")}
               </button>
             </div>
           </section>
 
           <Link to="/help" className={`${linkButton} self-start`}>
-            Need help? Read how CareNest works
+            {t("Need help? Read how CareNest works")}
           </Link>
         </div>
       </section>
@@ -110,6 +114,7 @@ function Account({
 
 /** The name family members see. Saved in the profiles table. */
 function DisplayName({ userId }: { userId: string }) {
+  const { t } = useLanguage();
   const [name, setName] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [fieldError, setFieldError] = useState("");
@@ -136,7 +141,7 @@ function DisplayName({ userId }: { userId: string }) {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const problem = displayNameProblem(name);
+    const problem = displayNameProblem(name, t);
     if (problem) return setFieldError(problem);
     setFieldError("");
     setResult(null);
@@ -154,10 +159,10 @@ function DisplayName({ userId }: { userId: string }) {
   return (
     <section aria-labelledby="name-title" className={card}>
       <h2 id="name-title" className="text-2xl font-extrabold">
-        Your name
+        {t("Your name")}
       </h2>
       {!loaded ? (
-        <p className="mt-2 text-lg text-muted">Loading…</p>
+        <p className="mt-2 text-lg text-muted">{t("Loading…")}</p>
       ) : (
         <form noValidate onSubmit={save} className="mt-4 flex flex-col gap-4">
           <TextField
@@ -173,10 +178,10 @@ function DisplayName({ userId }: { userId: string }) {
             error={fieldError}
           />
           <div aria-live="polite" className="empty:hidden">
-            {result && <Message kind={result.ok ? "success" : "error"}>{result.text}</Message>}
+            {result && <Message kind={result.ok ? "success" : "error"}>{t(result.text)}</Message>}
           </div>
           <button type="submit" disabled={busy} className={button}>
-            {busy ? "Saving…" : "Save name"}
+            {busy ? t("Saving…") : t("Save name")}
           </button>
         </form>
       )}
@@ -186,6 +191,7 @@ function DisplayName({ userId }: { userId: string }) {
 
 /** Checks the current password first, so nobody at an unlocked computer can change it. */
 function ChangePassword({ email }: { email: string }) {
+  const { t } = useLanguage();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
@@ -225,7 +231,7 @@ function ChangePassword({ email }: { email: string }) {
   return (
     <section aria-labelledby="password-title" className={card}>
       <h2 id="password-title" className="text-2xl font-extrabold">
-        Change your password
+        {t("Change your password")}
       </h2>
       <form noValidate onSubmit={save} className="mt-4 flex flex-col gap-5">
         {/* Lets password managers save the new password against the right account. */}
@@ -265,13 +271,13 @@ function ChangePassword({ email }: { email: string }) {
           error={errors.again}
         />
         <div aria-live="polite" className="empty:hidden">
-          {result && <Message kind={result.ok ? "success" : "error"}>{result.text}</Message>}
+          {result && <Message kind={result.ok ? "success" : "error"}>{t(result.text)}</Message>}
         </div>
         <button type="submit" disabled={busy} className={button}>
-          {busy ? "Please wait…" : "Save new password"}
+          {busy ? t("Please wait…") : t("Save new password")}
         </button>
         <Link to="/login?mode=forgot" className={`${linkButton} self-start`}>
-          Forgot your current password?
+          {t("Forgot your current password?")}
         </Link>
       </form>
     </section>
@@ -280,6 +286,7 @@ function ChangePassword({ email }: { email: string }) {
 
 /** The family circles this account is in. Only a circle's owner can remove people from it. */
 function Circles({ userId }: { userId: string }) {
+  const { t } = useLanguage();
   const [rows, setRows] = useState<CircleRow[] | null>(null);
   const [problem, setProblem] = useState("");
 
@@ -302,28 +309,28 @@ function Circles({ userId }: { userId: string }) {
   return (
     <section aria-labelledby="circles-title" className={card}>
       <h2 id="circles-title" className="text-2xl font-extrabold">
-        Your family circles
+        {t("Your family circles")}
       </h2>
       {problem ? (
         <p role="alert" className="mt-3 text-lg font-bold text-error">
-          {problem}
+          {t(problem)}
         </p>
       ) : !rows ? (
-        <p className="mt-2 text-lg text-muted">Loading…</p>
+        <p className="mt-2 text-lg text-muted">{t("Loading…")}</p>
       ) : (
         <>
           <ul className="mt-4 flex flex-col gap-3">
             {rows.map((row, i) => (
               <li key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-cream px-5 py-4">
-                <span className="text-xl font-bold">{row.care_circles?.name ?? "Care circle"}</span>
+                <span className="text-xl font-bold">{row.care_circles?.name ?? t("Care circle")}</span>
                 <span className="rounded-full bg-lilac px-3 py-1 text-base font-bold text-ink">
-                  {row.role === "owner" ? "Your home" : "Family member"}
+                  {row.role === "owner" ? t("Your home") : t("Family member")}
                 </span>
               </li>
             ))}
           </ul>
           <p className="mt-4 text-lg text-muted">
-            Leaving a family circle isn't possible from this page yet. If you need to, please contact the CareNest team.
+            {t("Leaving a family circle isn't possible from this page yet. If you need to, please contact the CareNest team.")}
           </p>
         </>
       )}
