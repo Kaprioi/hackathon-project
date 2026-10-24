@@ -1,0 +1,14 @@
+{
+  "name": "CareNest",
+  "short_name": "CareNest",
+  "description": "Family see in plain words how their loved one is doing.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f8fd",
+  "theme_color": "#1a5fb4",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

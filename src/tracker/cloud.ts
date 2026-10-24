@@ -3,17 +3,23 @@
 //
 // The tables are in supabase/migrations/. Each signed-in person has a care circle;
 // this phone registers itself once as a `devices` row in it (the id is kept in
-// localStorage) and then adds `movement_events` rows.
+// localStorage) and then adds `movement_events` rows. For a possible fall (or the
+// camera stopping) it also asks api/notify.ts to send the family a phone notification.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAnonKey, supabaseUrl } from "../lib/supabase";
+import { currentPushSubscription, isPushKind } from "../family/push.ts";
 import type { MovementEvent } from "./events.ts";
 
 const DEVICE_KEY = "carenest.deviceId.v1";
+// Phone notifications are only offered once the site has its public notification key.
+const PUSH_ON = Boolean((import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined)?.trim());
 
 export class Cloud {
   /** The signed-in person's access key, kept for sendOnClose (which can't wait to look it up). */
   private token = "";
+  /** This phone's own notification address, if it has one, so it doesn't alert itself. */
+  private ownPushEndpoint: string | null = null;
 
   private constructor(
     private db: SupabaseClient,
@@ -54,13 +60,15 @@ export class Cloud {
     }
     const cloud = new Cloud(db, auth.user.id, circleId, deviceId);
     await cloud.refreshToken();
+    if (PUSH_ON) cloud.ownPushEndpoint = (await currentPushSubscription())?.endpoint ?? null;
     return cloud;
   }
 
   /** Sends one event. Throws a plain-words error if it didn't go through. */
   async send(event: MovementEvent): Promise<void> {
-    const { error } = await this.db.from("movement_events").insert(this.row(event));
+    const { data, error } = await this.db.from("movement_events").insert(this.row(event)).select("id").single();
     if (error) throw new Error(`Couldn't send an update: ${error.message}`);
+    if (isPushKind(event.kind) && data) this.alertFamily({ eventId: data.id as number }, false);
     // Let the family page know the phone is alive (best effort).
     await this.db.from("devices").update({ last_seen_at: new Date().toISOString() }).eq("id", this.deviceId);
     await this.refreshToken();
@@ -83,6 +91,19 @@ export class Cloud {
         Prefer: "return=minimal",
       },
       body: JSON.stringify(this.row(event)),
+    }).catch(() => {});
+    // The event's number isn't known yet, so the server looks up the newest one of this kind.
+    if (isPushKind(event.kind)) this.alertFamily({ circleId: this.circleId, kind: event.kind }, true);
+  }
+
+  /** Asks the server to send the family a phone notification (best effort, never throws). */
+  private alertFamily(what: { eventId: number } | { circleId: string; kind: string }, keepalive: boolean): void {
+    if (!PUSH_ON || !this.token) return;
+    fetch("/api/notify", {
+      method: "POST",
+      keepalive,
+      headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...what, skipEndpoint: this.ownPushEndpoint }),
     }).catch(() => {});
   }
 

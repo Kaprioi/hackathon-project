@@ -738,6 +738,36 @@ const zh: Record<string, string> = {
   "Please use letters only, like Daughter or Sam.": "请只使用文字，比如“女儿”或“小明”。",
   "They're already on the list.": "已经在名单上了。",
   "That's plenty of people for this demo!": "这个演示里的人已经够多啦！",
+  // ----- Family page: phone alerts ("Alerts on this device") -----
+  "Alerts on this device": "此设备上的提醒",
+  "Get a notification on this phone or computer if the camera sees a possible fall, even when this page is closed.":
+    "如果摄像头发现可能有人跌倒，即使关闭了此页面，也会在这部手机或电脑上收到通知。",
+  "Phone alerts aren't set up on this site yet. Whoever looks after CareNest can turn them on (see the README).":
+    "本网站还没有设置手机提醒。负责 CareNest 的人可以开启它（见 README）。",
+  "Phone alerts need a quick database update first. Please ask whoever set up CareNest to run the new step in the README.":
+    "手机提醒需要先进行一次简单的数据库更新。请让设置 CareNest 的人按 README 里的新步骤操作。",
+  'On iPhone or iPad, first tap the Share button, then "Add to Home Screen", and open CareNest from the new icon. Then you can turn on alerts here. This needs iOS 16.4 or newer.':
+    "在 iPhone 或 iPad 上，请先点按“共享”按钮，再点“添加到主屏幕”，然后从新图标打开 CareNest，就可以在这里开启提醒。需要 iOS 16.4 或更高版本。",
+  "This browser can't show alerts. Try Chrome, Edge, Firefox or Safari on a computer or an Android phone.":
+    "此浏览器无法显示提醒。请在电脑或安卓手机上使用 Chrome、Edge、Firefox 或 Safari。",
+  "Notifications are blocked for this site. To get alerts, allow notifications for CareNest in your browser or phone settings, then reload this page.":
+    "本网站的通知已被阻止。要收到提醒，请在浏览器或手机设置中允许 CareNest 发送通知，然后重新加载此页面。",
+  "Turning on…": "正在开启…",
+  "Get alerts on this device": "在此设备上接收提醒",
+  "Alerts are on for this device.": "此设备的提醒已开启。",
+  "Also tell me when the phone camera stops watching": "手机摄像头停止看护时也通知我",
+  "Also tell me when nobody has moved for a while during the day": "白天一段时间没有人走动时也通知我",
+  "Send a test alert": "发送测试提醒",
+  "Turn off alerts on this device": "关闭此设备上的提醒",
+  "On iPhone, alerts only work after adding CareNest to your Home Screen (iOS 16.4 or newer).":
+    "在 iPhone 上，需要先把 CareNest 添加到主屏幕，提醒才能使用（iOS 16.4 或更高版本）。",
+  "Alerts stay off until you press Allow.": "在您点按“允许”之前，提醒会保持关闭。",
+  "Done! You will get a notification here if the camera sees a possible fall.": "好了！如果摄像头发现可能有人跌倒，您会在这里收到通知。",
+  "Sorry, alerts couldn't be turned on. Please try again.": "抱歉，无法开启提醒。请再试一次。",
+  "Alerts are off for this device.": "此设备的提醒已关闭。",
+  "Test alert sent. It should appear in a few seconds.": "测试提醒已发送，几秒钟后应该会出现。",
+  "The test alert couldn't be sent right now. Phone alerts may not be set up on the server yet.":
+    "现在无法发送测试提醒。服务器上可能还没有设置手机提醒。",
 };
 
 export default zh;

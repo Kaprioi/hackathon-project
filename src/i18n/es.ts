@@ -776,6 +776,38 @@ const es: Record<string, string> = {
   "Please use letters only, like Daughter or Sam.": "Use solo letras, como Hija o Sam.",
   "They're already on the list.": "Ya está en la lista.",
   "That's plenty of people for this demo!": "¡Ya son bastantes personas para esta demostración!",
+  // ----- Family page: phone alerts ("Alerts on this device") -----
+  "Alerts on this device": "Avisos en este dispositivo",
+  "Get a notification on this phone or computer if the camera sees a possible fall, even when this page is closed.":
+    "Reciba una notificación en este teléfono u ordenador si la cámara ve una posible caída, aunque esta página esté cerrada.",
+  "Phone alerts aren't set up on this site yet. Whoever looks after CareNest can turn them on (see the README).":
+    "Los avisos al teléfono aún no están configurados en este sitio. Quien se encarga de CareNest puede activarlos (vea el README).",
+  "Phone alerts need a quick database update first. Please ask whoever set up CareNest to run the new step in the README.":
+    "Los avisos al teléfono necesitan antes una pequeña actualización de la base de datos. Pida a quien configuró CareNest que haga el nuevo paso del README.",
+  'On iPhone or iPad, first tap the Share button, then "Add to Home Screen", and open CareNest from the new icon. Then you can turn on alerts here. This needs iOS 16.4 or newer.':
+    'En iPhone o iPad, toque primero el botón Compartir, luego "Añadir a pantalla de inicio", y abra CareNest desde el nuevo icono. Después podrá activar los avisos aquí. Necesita iOS 16.4 o posterior.',
+  "This browser can't show alerts. Try Chrome, Edge, Firefox or Safari on a computer or an Android phone.":
+    "Este navegador no puede mostrar avisos. Pruebe Chrome, Edge, Firefox o Safari en un ordenador o un teléfono Android.",
+  "Notifications are blocked for this site. To get alerts, allow notifications for CareNest in your browser or phone settings, then reload this page.":
+    "Las notificaciones están bloqueadas para este sitio. Para recibir avisos, permita las notificaciones de CareNest en los ajustes del navegador o del teléfono y vuelva a cargar esta página.",
+  "Turning on…": "Activando…",
+  "Get alerts on this device": "Recibir avisos en este dispositivo",
+  "Alerts are on for this device.": "Los avisos están activados en este dispositivo.",
+  "Also tell me when the phone camera stops watching": "Avisarme también cuando la cámara del teléfono deje de vigilar",
+  "Also tell me when nobody has moved for a while during the day":
+    "Avisarme también cuando nadie se haya movido durante un rato de día",
+  "Send a test alert": "Enviar un aviso de prueba",
+  "Turn off alerts on this device": "Desactivar los avisos en este dispositivo",
+  "On iPhone, alerts only work after adding CareNest to your Home Screen (iOS 16.4 or newer).":
+    "En iPhone, los avisos solo funcionan después de añadir CareNest a la pantalla de inicio (iOS 16.4 o posterior).",
+  "Alerts stay off until you press Allow.": "Los avisos seguirán desactivados hasta que pulse Permitir.",
+  "Done! You will get a notification here if the camera sees a possible fall.":
+    "¡Listo! Recibirá una notificación aquí si la cámara ve una posible caída.",
+  "Sorry, alerts couldn't be turned on. Please try again.": "Lo sentimos, no se pudieron activar los avisos. Inténtelo de nuevo.",
+  "Alerts are off for this device.": "Los avisos están desactivados en este dispositivo.",
+  "Test alert sent. It should appear in a few seconds.": "Aviso de prueba enviado. Debería aparecer en unos segundos.",
+  "The test alert couldn't be sent right now. Phone alerts may not be set up on the server yet.":
+    "No se pudo enviar el aviso de prueba ahora. Puede que los avisos al teléfono aún no estén configurados en el servidor.",
 };
 
 export default es;
