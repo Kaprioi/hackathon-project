@@ -20,6 +20,7 @@ import {
   whoToSpeakOf,
   type AlertSettings,
 } from "../family/alerts";
+import { spokenClock } from "../family/readAloud";
 import { useCheckingOnIt } from "../family/useCheckingOnIt";
 import { AlertSettingsPanel, CheckingOnIt, ReadAloudButton, SimpleViewToggle } from "../components/FamilyTools";
 
@@ -126,7 +127,7 @@ function Family({
   setLoggingOut: (value: boolean) => void;
 }) {
   const location = useLocation();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const [logOutError, setLogOutError] = useState("");
   const [circle, setCircle] = useState<Circle | null>(null);
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -330,7 +331,7 @@ function Family({
             )}
             {latest && (
               <div className="mt-5">
-                <ReadAloudButton text={spokenStatus(summary, who, clock, t)} big={simple} />
+                <ReadAloudButton text={spokenStatus(summary, who, spokenClock(lang, clock), t)} big={simple} />
               </div>
             )}
             {!simple && latest && canCheckOn(latest) && (
@@ -394,7 +395,7 @@ function Family({
                       <span className="text-lg font-bold text-muted">{clock(e.created_at)}</span>
                       {alertType(e) && (
                         <div className="flex basis-full flex-wrap items-center gap-3">
-                          <ReadAloudButton text={spokenEvent(e, clock, t)} />
+                          <ReadAloudButton text={spokenEvent(e, spokenClock(lang, clock), t)} />
                           {canCheckOn(e) && (
                             <CheckingOnIt
                               names={checking.whoIsChecking(e.id)}
