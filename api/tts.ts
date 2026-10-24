@@ -5,11 +5,20 @@
 // The ElevenLabs key stays on the server (a Vercel environment variable) and is
 // never sent to the browser or written to the logs.
 //
+// Only people logged in to CareNest can use it: the page sends the person's
+// Supabase login token, and we check it with Supabase first. Each person can
+// ask for at most 30 readings every 10 minutes, so nobody can use up the
+// ElevenLabs credits.
+//
 // Needs these Vercel environment variables:
-//   ELEVENLABS_API_KEY   the secret key
-//   ELEVENLABS_VOICE_EN  voice ID for English
-//   ELEVENLABS_VOICE_ES  voice ID for Spanish
-//   ELEVENLABS_VOICE_ZH  voice ID for Chinese (Mandarin)
+//   ELEVENLABS_API_KEY      the secret key
+//   ELEVENLABS_VOICE_EN     voice ID for English
+//   ELEVENLABS_VOICE_ES     voice ID for Spanish
+//   ELEVENLABS_VOICE_ZH     voice ID for Chinese (Mandarin)
+//   VITE_SUPABASE_URL       the Supabase project (the same one the site uses)
+//   VITE_SUPABASE_ANON_KEY  the Supabase anon key (the same one the site uses)
+
+import { createClient } from "@supabase/supabase-js";
 
 // Vercel provides `process` on the server; this tells TypeScript about the part we use.
 declare const process: { env: Record<string, string | undefined> };
@@ -23,6 +32,10 @@ export type TtsLang = (typeof LANGS)[number];
 
 /** The ElevenLabs voice model. "Multilingual" speaks Spanish and Chinese well, not just English. */
 export const MODEL_ID = "eleven_multilingual_v2";
+
+/** How many readings one person may ask for in each window of time. */
+export const LIMIT = 30;
+export const WINDOW_MS = 10 * 60 * 1000;
 
 const VOICE_VARS: Record<TtsLang, string> = {
   en: "ELEVENLABS_VOICE_EN",
@@ -51,8 +64,43 @@ function problem(status: number, error: string): Response {
   return Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-/** POST /api/tts with {text, lang}. Answers with the spoken words as an MP3. */
+/** The logged-in person's ID for the token in the request, or null if there is no good token. */
+async function whoIsAsking(request: Request, url: string, anonKey: string): Promise<string | null> {
+  const token = request.headers.get("Authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
+  if (!token) return null;
+  const supabase = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  try {
+    const { data, error } = await supabase.auth.getUser(token);
+    return error ? null : (data.user?.id ?? null);
+  } catch {
+    return null;
+  }
+}
+
+// When each person last asked for a reading. Kept in memory, so it starts again
+// when the server restarts; that's fine for a simple cap.
+const recent = new Map<string, number[]>();
+
+/** True (and counts this one) if the person is still under the cap. */
+function underLimit(userId: string, now = Date.now()): boolean {
+  const times = (recent.get(userId) ?? []).filter((t) => now - t < WINDOW_MS);
+  if (times.length >= LIMIT) {
+    recent.set(userId, times);
+    return false;
+  }
+  times.push(now);
+  recent.set(userId, times);
+  return true;
+}
+
+/** POST /api/tts with {text, lang}, logged in. Answers with the spoken words as an MP3. */
 export async function POST(request: Request): Promise<Response> {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL?.trim();
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY?.trim();
+  if (!supabaseUrl || !anonKey) return problem(503, "The reading voice isn't set up on the server.");
+  const userId = await whoIsAsking(request, supabaseUrl, anonKey);
+  if (!userId) return problem(401, "Please log in to use Read aloud.");
+
   let body: unknown;
   try {
     body = await request.json();
@@ -65,6 +113,7 @@ export async function POST(request: Request): Promise<Response> {
   const key = process.env.ELEVENLABS_API_KEY?.trim();
   const voice = voiceFor(checked.lang);
   if (!key || !voice) return problem(503, "The reading voice isn't set up on the server.");
+  if (!underLimit(userId)) return problem(429, "Too many readings in a short time. Please wait a few minutes.");
 
   let upstream: Response;
   try {

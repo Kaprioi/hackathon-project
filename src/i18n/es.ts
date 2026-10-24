@@ -339,12 +339,8 @@ const es: Record<string, string> = {
     "No tiene conexión. Revise su wifi o sus datos móviles; la página se pondrá al día cuando vuelva a conectarse.",
   "Read aloud": "Leer en voz alta",
   "Stop reading": "Dejar de leer",
-  "This device has no voice for this language, so it can't read this aloud.":
-    "Este dispositivo no tiene una voz en español, así que no puede leerlo en voz alta.",
-  "The natural voice isn't working right now, so this device's voice is reading instead.":
-    "La voz natural no está disponible ahora mismo, así que se usa la voz de este dispositivo.",
-  "Sorry, reading aloud isn't working right now. Please try again later.":
-    "Lo sentimos, la lectura en voz alta no funciona en este momento. Inténtelo de nuevo más tarde.",
+  "Read aloud isn't available right now. Please try again in a moment.":
+    "La lectura en voz alta no está disponible ahora mismo. Inténtelo de nuevo en un momento.",
   "Simple view": "Vista sencilla",
   "Show everything": "Mostrar todo",
   "Your loved one": "Su ser querido",

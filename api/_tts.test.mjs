@@ -6,31 +6,52 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_CHARS, MODEL_ID, POST, checkRequest, voiceFor } from "./tts.ts";
+import { LIMIT, MAX_CHARS, MODEL_ID, POST, checkRequest, voiceFor } from "./tts.ts";
 
 const ENV = {
   ELEVENLABS_API_KEY: "test-key",
   ELEVENLABS_VOICE_EN: "voice-en",
   ELEVENLABS_VOICE_ES: "voice-es",
   ELEVENLABS_VOICE_ZH: "voice-zh",
+  VITE_SUPABASE_URL: "https://project.supabase.test",
+  VITE_SUPABASE_ANON_KEY: "anon-key",
 };
 
-const ask = (body) =>
+// Pretend login tokens, each for a different person, so the cap in one test doesn't affect another.
+let people = 0;
+const goodTokens = new Map();
+function newLogin() {
+  people += 1;
+  const token = `token-${people}`;
+  goodTokens.set(token, `user-${people}`);
+  return token;
+}
+
+const ask = (body, token = newLogin()) =>
   POST(
     new Request("http://localhost/api/tts", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: typeof body === "string" ? body : JSON.stringify(body),
     }),
   );
 
-/** Runs `fn` with our pretend settings and a pretend ElevenLabs. Gives back what was sent to it. */
+/** Pretend Supabase: answers who a login token belongs to, like the real /auth/v1/user. */
+function fakeSupabase(url, init) {
+  const auth = new Headers(init?.headers).get("Authorization") ?? "";
+  const user = goodTokens.get(auth.replace(/^Bearer /, ""));
+  if (!user) return Response.json({ code: 403, msg: "invalid JWT" }, { status: 403 });
+  return Response.json({ id: user, aud: "authenticated", role: "authenticated" });
+}
+
+/** Runs `fn` with our pretend settings, Supabase and ElevenLabs. Gives back what was sent to ElevenLabs. */
 async function withFakeElevenLabs(fn, answer = () => new Response("MP3", { headers: { "Content-Type": "audio/mpeg" } })) {
   const calls = [];
   const savedFetch = globalThis.fetch;
   const savedEnv = { ...process.env };
   Object.assign(process.env, ENV);
   globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith(`${ENV.VITE_SUPABASE_URL}/auth/v1/user`)) return fakeSupabase(url, init);
     calls.push({ url: String(url), init });
     return answer();
   };
@@ -116,12 +137,44 @@ test("the key never goes back to the browser, even when ElevenLabs fails", async
 });
 
 test("a missing voice or key says the server isn't set up", async () => {
-  const saved = { ...process.env };
-  delete process.env.ELEVENLABS_API_KEY;
-  try {
+  await withFakeElevenLabs(async (calls) => {
+    delete process.env.ELEVENLABS_API_KEY;
     const res = await ask({ text: "Hello.", lang: "en" });
     assert.equal(res.status, 503);
-  } finally {
-    Object.assign(process.env, saved);
-  }
+    assert.equal(calls.length, 0);
+  });
+});
+
+test("without a login token the voice is refused", async () => {
+  await withFakeElevenLabs(async (calls) => {
+    const res = await ask({ text: "Hello.", lang: "en" }, null);
+    assert.equal(res.status, 401);
+    assert.ok((await res.json()).error);
+    assert.equal(calls.length, 0);
+  });
+});
+
+test("a made-up login token is refused, and never shown back", async () => {
+  await withFakeElevenLabs(async (calls) => {
+    const res = await ask({ text: "Hello.", lang: "en" }, "not-a-real-token");
+    assert.equal(res.status, 401);
+    const text = await res.text();
+    assert.ok(!text.includes("not-a-real-token"));
+    assert.ok(!text.includes("test-key"));
+    assert.equal(calls.length, 0);
+  });
+});
+
+test("each person gets at most 30 readings every 10 minutes", async () => {
+  await withFakeElevenLabs(async (calls) => {
+    const token = newLogin();
+    for (let i = 0; i < LIMIT; i++) {
+      assert.equal((await ask({ text: "Hello.", lang: "en" }, token)).status, 200);
+    }
+    const res = await ask({ text: "Hello.", lang: "en" }, token);
+    assert.equal(res.status, 429);
+    assert.ok((await res.json()).error);
+    assert.equal(calls.length, LIMIT);
+    assert.equal((await ask({ text: "Hello.", lang: "en" })).status, 200);
+  });
 });
