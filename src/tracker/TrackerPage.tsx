@@ -81,7 +81,13 @@ function contentRect(cw: number, ch: number, vw: number, vh: number) {
   return { x: (cw - w) / 2, y: (ch - h) / 2, w, h };
 }
 
-function drawOverlay(canvas: HTMLCanvasElement, video: HTMLVideoElement, people: Box[], out: BrainOutput): void {
+function drawOverlay(
+  canvas: HTMLCanvasElement,
+  video: HTMLVideoElement,
+  people: Box[],
+  out: BrainOutput,
+  matchLimit: number,
+): void {
   const dpr = window.devicePixelRatio || 1;
   const cw = canvas.clientWidth;
   const ch = canvas.clientHeight;
@@ -96,13 +102,24 @@ function drawOverlay(canvas: HTMLCanvasElement, video: HTMLVideoElement, people:
   const r = contentRect(cw, ch, video.videoWidth, video.videoHeight);
   const toScreen = (b: Box) => ({ x: r.x + b.x * r.w, y: r.y + b.y * r.h, w: b.w * r.w, h: b.h * r.h });
 
-  // Everyone the detector sees: thin white boxes.
+  // Everyone the detector sees: thin white boxes, each labelled with how much they
+  // look like the target (0.00 = same clothes colours; under "Match strictness" = counts as them).
   ctx.lineWidth = 2;
   ctx.strokeStyle = "rgba(255,255,255,0.75)";
-  for (const p of people) {
+  ctx.font = "600 14px ui-monospace, monospace";
+  people.forEach((p, i) => {
     const s = toScreen(p);
     ctx.strokeRect(s.x, s.y, s.w, s.h);
-  }
+    const m = out.matches[i];
+    if (m === null || m === undefined) return;
+    const label = m.toFixed(2);
+    const lx = s.x + 4;
+    const ly = Math.max(r.y + 4, s.y + 4);
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    ctx.fillRect(lx - 2, ly - 2, ctx.measureText(label).width + 8, 20);
+    ctx.fillStyle = m <= matchLimit ? "#3ddc97" : "#ffffff";
+    ctx.fillText(label, lx + 2, ly + 13);
+  });
 
   // The target: thick coloured box, dashed when it's a guess (hidden under a cover).
   const color = MODE_STYLE[out.mode].stroke;
@@ -292,9 +309,25 @@ export default function TrackerPage() {
     let fps = 0;
     let lastUi = 0;
     let lastNote = "";
+    let lastError = "";
 
+    // Runs once per animation frame. If anything inside throws, show it on screen
+    // instead of silently freezing the boxes.
     const tick = () => {
       raf = requestAnimationFrame(tick);
+      try {
+        step();
+      } catch (e) {
+        const msg = `Tracker error: ${e instanceof Error ? e.message : String(e)}`;
+        if (msg !== lastError) {
+          lastError = msg;
+          console.error(e);
+          setError(msg);
+        }
+      }
+    };
+
+    const step = () => {
       const video = videoRef.current;
       const detector = detectorRef.current;
       if (!video || !detector || !actx || !dctx || video.readyState < 2 || video.currentTime === lastVideoTime) return;
@@ -366,7 +399,7 @@ export default function TrackerPage() {
         mode === "on" || (mode === "follow" && (MIST_FOLLOW_MODES as readonly string[]).includes(out.mode));
       stand.setMist(mistOn);
 
-      if (overlayRef.current) drawOverlay(overlayRef.current, video, people, out);
+      if (overlayRef.current) drawOverlay(overlayRef.current, video, people, out, settingsRef.current.matchLimit);
 
       frames++;
       if (t - fpsStart > 1000) {

@@ -115,14 +115,16 @@ Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on
 - `docs/DEMO_AND_PITCH.md`: the 36-hour plan, demo script, judge Q&A, the 360° answer.
 - `docs/STEAM.md`: the mist-that-follows-you design, tests and safety.
 - `docs/SESSION_LOG.md`: one entry per session.
+- `docs/HANDOFF_2026-10-24.md`: **the latest handoff. Read it first.** PRs, uncommitted work, phone testing (Cloudflare tunnel), gotchas, next steps.
 - `docs/HANDOFF.md`: the original handoff from claude.ai, kept for reference.
 
 ## Status (as of Oct 23, 2026)
 
 - Plan: website + SightLine head + mist that follows you. Plain version first.
-- Website: works end to end in Chrome on Apple's PC with a still photo fed in as the camera. It locks on from behind, follows off the edge, sweeps, re-finds by clothes, and holds HIDDEN. 10 automated tests pass. Not yet tried with a live webcam, on the iPhone in Bluefy, or with the real stand.
+- Website: works end to end in Chrome on Apple's PC with a still photo fed in as the camera. It locks on from behind, follows off the edge, sweeps, re-finds by clothes, and holds HIDDEN. 12 automated tests pass. Not yet tried with a live webcam, on the iPhone in Bluefy, or with the real stand.
 - Firmware: the single-radar `.ino` got the mist switch; never compiled or run on hardware. The SightLine merge is written as a proposal PR for Kris; not compiled.
-- 3D mockup of SightLine + mist: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD (made in a separate session).
+- 3D mockup of SightLine + mist, with a hole-by-hole breadboard layout: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD. Fallback without mist: https://claude.ai/artifact/S6Zg89U4N5bQv58RC92Qv3 (both made in a separate session).
+- Apple's first live webcam test (Oct 23): after hiding behind a wall, the box got stuck on something nearby and never followed again. Fixed: the target's look is now kept from the moment of the tap, a "sort of" match is only trusted for 1.5 s, a clearly better match anywhere wins, and the colour fingerprint was made finer (it used to score red, orange and brown as identical). Each box now shows its match number.
 - Parts: carts were nearly final on Oct 17. Which orders were placed is unknown. Humidifier parts not bought.
 - Printed parts: Kris has STLs for the SightLine base, lid and radar head. The nozzle arm isn't designed yet.
 

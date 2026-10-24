@@ -83,8 +83,17 @@ export const TUNING = {
   limitPauseMs: 700,
   /** Sweep speed while searching the room (degrees/second). */
   sweepSpeed: 30,
-  /** How quickly the saved look adapts to lighting changes (0 = never, 1 = instantly). */
-  lookUpdate: 0.05,
+  /** How quickly the saved look adapts to lighting changes (0 = never, 1 = instantly). Only while sure it's them. */
+  lookUpdate: 0.02,
+  /** Follow someone who only "sort of" looks like the target (over matchLimit) for at most this long. */
+  doubtMs: 1500,
+  /** Switch to another person if they look this much more like the target than the one we're on. */
+  switchMargin: 0.15,
+  /**
+   * ...and only if their match is under matchLimit x this. Measured on a busy street video:
+   * strangers scored under 0.38 in 9% of pairs but under 0.30 in only 1.4%.
+   */
+  switchStrict: 0.8,
   /** How much each new speed reading counts (0-1). Lower = smoother but slower to react. */
   velSmoothing: 0.3,
   /** Fastest believable movement (degrees/second), to ignore glitches. */

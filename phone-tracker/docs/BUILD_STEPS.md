@@ -47,7 +47,7 @@ Tools: small Phillips screwdriver, wire strippers or scissors, double-sided foam
 
 ## Part B2: the humidifier (both stands)
 
-The mist maker and its fan sit in a closed tank **beside** the base box, never inside it. A tube carries the mist up to a nozzle on the head. Geometry is in the 3D mockup: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD
+The mist maker and its fan sit in a closed tank **beside** the base box, never inside it. A tube carries the mist up to a nozzle on the head. Geometry and a hole-by-hole breadboard layout are in the 3D mockup: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD. If the mist parts aren't ready, build the same head without it (A0 left unconnected; the website still tracks): https://claude.ai/artifact/S6Zg89U4N5bQv58RC92Qv3
 
 9. **Tank.** About 1.5 L, with a lid. The floating mist maker sits in the water. Its driver board stays dry on the lid. The 5V fan sits on the lid, blowing **into** the tank. A spigot in the lid takes the tube. Use distilled water.
 10. **Tube and nozzle.** About 16 mm across, light silicone or CPAP hose, roughly 1 m. Clip it to the C bracket near the tilt axle, so it doesn't lever the head, with a loose loop for the full pan and tilt. It should run **downhill** from the nozzle to the tank, with no dips, so condensation drains back. The nozzle sits on a printed arm beside the phone and points where the camera points. Its tip goes ahead of and outside both radar windows.
@@ -102,7 +102,7 @@ All of these are on the page's **Settings** panel and are saved in the browser.
 24. **Directions.** Settings → Test the motors (press Release first). **Left** should bring what was on the left of the screen toward the middle. If it does the opposite, press **Flip left/right**. Same with **Up** and **Flip up/down**.
 25. **Feel.** If it overshoots and swings back past you, lower **Camera width**. If it lags behind you, raise it. If it twitches while you sit still, raise **Dead zone** to 4–5.
 26. **Hiding.** Get under a blanket within about 3 m. The box should turn dashed and say HIDDEN within about half a second. In HLKRadarTool, cap the radar's range at about 3 m.
-27. **Re-finding.** Walk out and wait for LOST. Note the "Closest match" number when you walk back in, then when a teammate walks in. Set **Match strictness** between the two.
+27. **Re-finding.** Every box shows a number: how much that person looks like the one you tapped (0.00 = same clothes colours). It turns green when it's under **Match strictness**, meaning "that's them". Note your own number as you walk around the room, then a teammate's. Set **Match strictness** between the two.
 28. **Mist aim.** **Aim height** 0.35 aims at the chest. For someone lying in bed, try 0.2–0.3. Don't aim straight at the face.
 
 ## Backup: the native iPhone app (needs the Mac)
@@ -138,6 +138,7 @@ Only if the website can't be used on the iPhone. It has no mist control and no F
 | Flickers between TRACKING and HIDDEN | Detector missing frames | Better light; fewer people in view |
 | Never goes LOST | Radar still senses someone nearby | Shorten the radar range |
 | Locks onto the wrong person | Match strictness too loose | Lower it (step 27) |
+| Box sticks to a coat, chair or door after you hide | Something near you looks like a person to the detector | It gives up within 1.5 s and re-finds you by your number; if not, lower Match strictness |
 | Never locks back on | Match strictness too strict, or the target changed clothes | Raise it (step 27) |
 
 ## Reference videos and guides

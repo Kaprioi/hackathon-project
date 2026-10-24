@@ -340,3 +340,64 @@ test("simulated room: the stand turns to face you, keeps up as you walk, and fin
   assert.equal(out.mode, "tracking", `should have found you again, ended in ${out.mode}`);
   assert.ok(Math.abs(real.current.pan - you) < 5, `should face you again: camera ${real.current.pan.toFixed(1)}, you ${you.toFixed(1)}`);
 });
+
+test("stepping behind a wall next to a brown coat: it doesn't get stuck on the coat, and re-finds you", () => {
+  const BROWN = [120, 70, 40];
+  const coat = person(0.42, BROWN, BLUE); // a coat on a chair that the detector thinks is a person
+  const brain = newBrain();
+  let t = 0;
+  let out = brain.update(frame(t, [person(0.25, RED, BLUE), coat], { tap: { x: 0.32, y: 0.5 } }));
+  assert.equal(out.mode, "tracking");
+  // Walk right, toward the wall.
+  for (let x = 0.25; x <= 0.33; x += 0.01) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [person(x, RED, BLUE), coat]));
+  }
+  // Behind the wall for 3 seconds: only the coat is visible.
+  for (let i = 0; i < 45; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [coat]));
+  }
+  // Come back out on the other side of the wall and keep walking.
+  for (let x = 0.7; x <= 0.8; x += 0.01) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [coat, person(x, RED, BLUE)]));
+  }
+  assert.equal(out.mode, "tracking", `should be tracking you again, ended in ${out.mode}`);
+  assert.ok(out.target && out.target.x > 0.65, `the box should be on you (x about 0.8), not the coat; got x=${out.target?.x}`);
+});
+
+test("a coat that looks very like you holds the box while you're hidden, but you win when you come back", () => {
+  const DARKRED = [120, 25, 25];
+  const coat = person(0.42, DARKRED, BLUE);
+  const brain = newBrain();
+  let t = 0;
+  let out = brain.update(frame(t, [person(0.3, RED, BLUE), coat], { tap: { x: 0.37, y: 0.5 } }));
+  for (let i = 0; i < 45; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [coat]));
+  }
+  for (let i = 0; i < 5; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [coat, person(0.75, RED, BLUE)]));
+  }
+  assert.equal(out.mode, "tracking");
+  assert.ok(Math.abs(out.target.x - 0.75) < 0.01, `should be on you at x=0.75, got ${out.target.x}`);
+  assert.ok(out.matches[1] < 0.1 && out.matches[0] > 0.3, "the on-screen numbers: you close to 0, the coat further");
+});
+
+test("walking into different light: your colours drift, but it keeps following you", () => {
+  const brain = newBrain();
+  let t = 0;
+  let out = brain.update(frame(t, [person(0.2, RED, BLUE)], { tap: { x: 0.27, y: 0.5 } }));
+  // Over 6 seconds the shirt slowly turns from bright red to a dim brownish red, and the trousers darken.
+  for (let i = 1; i <= 90; i++) {
+    const k = i / 90;
+    const top = [200 - 90 * k, 30 + 40 * k, 30 + 10 * k];
+    const bottom = [30 - 10 * k, 50 - 20 * k, 180 - 90 * k];
+    t += FRAME_MS;
+    out = brain.update(frame(t, [person(0.2 + i * 0.004, top, bottom)]));
+  }
+  assert.equal(out.mode, "tracking", `should still be tracking you, ended in ${out.mode}: ${out.note}`);
+  assert.ok(Math.abs(out.target.x - 0.56) < 0.02, `box should be on you at x=0.56, got ${out.target.x}`);
+});
