@@ -32,12 +32,14 @@ export function deviceTurn(x: number, y: number, previous: Turn | null): Turn | 
  * turned and the screen isn't. `screenAngle` is screen.orientation.angle.
  * Never 180 by itself: some phones report the sensor the other way round, and then a
  * screen that turns correctly would get its picture flipped upside down.
+ * The front camera faces the other way, so its sideways picture needs the opposite turn.
  */
-export function pictureTurn(device: Turn | null, screenAngle: number): Turn {
+export function pictureTurn(device: Turn | null, screenAngle: number, frontCamera = false): Turn {
   if (device === null) return 0;
   const screen = Math.round(screenAngle / 90) * 90;
   const d = (((device - screen) % 360) + 360) % 360;
-  return d === 90 || d === 270 ? d : 0;
+  if (d !== 90 && d !== 270) return 0;
+  return frontCamera ? ((360 - d) as Turn) : d;
 }
 
 /** A point in the camera's own picture -> the same spot in the upright picture. */

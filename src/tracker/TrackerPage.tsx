@@ -781,7 +781,7 @@ export default function TrackerPage() {
       // Turn the picture so people stand upright for the AI. With the phone sideways and
       // auto-rotate off, the camera picture arrives on its side; turned, the AI finds
       // people it would otherwise miss. Everything after this works in the upright picture.
-      const turn: Turn = s.turn === "auto" ? pictureTurn(deviceTurnRef.current, screenAngle()) : (Number(s.turn) as Turn);
+      const turn: Turn = s.turn === "auto" ? pictureTurn(deviceTurnRef.current, screenAngle(), mirroredRef.current) : (Number(s.turn) as Turn);
       turnRef.current = turn;
       const sideways = turn === 90 || turn === 270;
       const uw = sideways ? vh : vw; // the upright picture's size
