@@ -81,6 +81,11 @@ export interface Settings {
    * picture turns when the motor does. "auto" is from older saved settings and counts as yes.
    */
   cameraOnStand: "auto" | "yes" | "no";
+  /**
+   * Who the emergency alert calls, shown on screen (like "Sam"). Empty = "your emergency
+   * contact". Their number is a server setting (api/emergency-call.ts), not saved here.
+   */
+  contactName: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -96,6 +101,7 @@ export const DEFAULT_SETTINGS: Settings = {
   faces: true, // the page starts with false on iPhones (see TrackerPage loadSettings)
   emergency: true,
   cameraOnStand: "yes",
+  contactName: "",
 };
 
 /** True if the camera turns with the stand (the phone on it), false for a computer's webcam beside it. */
