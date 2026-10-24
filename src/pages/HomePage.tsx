@@ -507,7 +507,7 @@ function Demo() {
                 {t("Right side")}
               </span>
               <svg className="absolute inset-x-0 top-0 h-full w-full" viewBox="0 0 400 220" preserveAspectRatio="none">
-                <path className="animate-scan" d="M200 40 L20 220 L380 220 Z" fill="#5b3cc4" />
+                <path className="animate-scan" d="M200 40 L20 220 L380 220 Z" fill="var(--color-brand)" />
               </svg>
               <div className="absolute left-1/2 top-3 flex -translate-x-1/2 flex-col items-center">
                 <div className="grid h-9 w-6 place-items-center rounded-md bg-ink">

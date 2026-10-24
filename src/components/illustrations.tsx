@@ -3,7 +3,10 @@
 // they are hidden from screen readers.
 
 const ink = "#1f2a37";
-const brand = "#5b3cc4";
+// The theme colours (see the "Color" setting), so the drawings change with it.
+const brand = "var(--color-brand)";
+const lilac = "var(--color-lilac)";
+const lilacShade = "color-mix(in oklab, var(--color-lilac) 75%, var(--color-brand))";
 const leaf = "#17795a";
 const mint = "#c9f0df";
 const coral = "#ff9f7a";
@@ -30,12 +33,12 @@ export function HeroIllustration({
 }) {
   return (
     <svg viewBox="0 0 520 420" className={`h-auto w-full ${className}`} style={style} aria-hidden="true">
-      <circle cx="250" cy="210" r="200" fill="#e7defd" />
+      <circle cx="250" cy="210" r="200" fill={lilac} />
       <g className="animate-float">
         <circle className="origin-center animate-pulse-ring [transform-box:fill-box]" cx="78" cy="78" r="34" fill="#fff1b8" />
         <circle cx="78" cy="78" r="34" fill="#fff1b8" />
       </g>
-      <ellipse cx="260" cy="398" rx="230" ry="14" fill="#cdbff5" />
+      <ellipse cx="260" cy="398" rx="230" ry="14" fill={lilacShade} />
 
       {/* What the phone's camera can see */}
       <path className="animate-scan" d="M372 236 L140 120 L140 372 Z" fill={brand} />
@@ -94,7 +97,7 @@ export function HeroIllustration({
       />
       <g transform="translate(288 64)">
         <g key={cardKey} className="origin-center animate-pop [transform-box:fill-box]">
-          <rect x="4" y="6" width="214" height="70" rx="18" fill="#cdbff5" />
+          <rect x="4" y="6" width="214" height="70" rx="18" fill={lilacShade} />
           <rect width="214" height="70" rx="18" fill="#fff" />
           <circle cx="35" cy="35" r="19" fill={mint} />
           <path d="m26 35 6 6 12-13" stroke={leaf} strokeWidth="4.5" fill="none" strokeLinecap="round" />

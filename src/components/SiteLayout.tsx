@@ -29,7 +29,7 @@ export function LogoMark({ size = 44 }: { size?: number }) {
       <path
         className="origin-center [transform-box:fill-box] group-hover:animate-heartbeat"
         d="M22 33s-11-6.5-11-14a6 6 0 0 1 11-3.4A6 6 0 0 1 33 19c0 7.5-11 14-11 14z"
-        fill="#5b3cc4"
+        fill="var(--color-brand)"
       />
     </svg>
   );

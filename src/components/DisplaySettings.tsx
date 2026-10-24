@@ -1,21 +1,15 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useLanguage } from "../i18n/useLanguage";
-import { systemPrefersLessMotion, useDisplaySettings, type TextSize, type Theme } from "../lib/displaySettings";
+import { systemPrefersLessMotion, THEMES, useDisplaySettings, type TextSize, type Theme } from "../lib/displaySettings";
 
 // The "Display" button in the header and the small panel it opens: text size
-// (Normal, Large, Extra large), light or dark colours, and "High contrast" and
+// (Normal, Large, Extra large), a colour theme, and "High contrast" and
 // "Reduce motion" switches. Works on every page.
 
 const sizes: { value: TextSize; label: string; className: string }[] = [
   { value: "normal", label: "Normal", className: "text-lg" },
   { value: "large", label: "Large", className: "text-xl" },
   { value: "extra", label: "Extra large", className: "text-2xl" },
-];
-
-const themes: { value: Theme; label: string; className?: string }[] = [
-  { value: "system", label: "Same as my device" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
 ];
 
 /** The "Aa Display" button that opens and closes the panel. */
@@ -83,13 +77,7 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
         value={settings.textSize}
         onChange={(textSize) => update({ textSize })}
       />
-      <Choices
-        legend="Colours"
-        name={`${id}-theme`}
-        options={themes}
-        value={settings.theme}
-        onChange={(theme) => update({ theme })}
-      />
+      <ColorChoices name={`${id}-theme`} value={settings.theme} onChange={(theme) => update({ theme })} />
 
       <Switch
         label="High contrast"
@@ -149,6 +137,54 @@ function Choices<T extends string>({
               className="h-6 w-6 shrink-0 accent-brand"
             />
             <span className={o.className ?? "text-lg"}>{t(o.label)}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/**
+ * The "Color" picker: a named colour circle for each theme, the way startup sites
+ * show theme colours (shadcn/ui, Radix Themes, Slack). Picking one changes the
+ * whole site straight away, so the page itself is the preview.
+ */
+function ColorChoices({ name, value, onChange }: { name: string; value: Theme; onChange: (value: Theme) => void }) {
+  const { t } = useLanguage();
+  return (
+    <fieldset className="mt-4">
+      <legend className="text-xl font-extrabold">{t("Color")}</legend>
+      <p className="text-base text-muted">{t("Pick the colors you like best.")}</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {THEMES.map((o) => (
+          <label
+            key={o.value}
+            className="flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl border-[3px] border-lilac px-3 py-2 font-bold has-[:checked]:border-brand has-[:checked]:bg-lilac has-[:focus-visible]:outline-4 has-[:focus-visible]:outline-offset-4 has-[:focus-visible]:outline-ink"
+          >
+            <input
+              type="radio"
+              name={name}
+              value={o.value}
+              checked={value === o.value}
+              onChange={() => onChange(o.value)}
+              className="sr-only"
+            />
+            {/* The circle wears its own theme: a brand-coloured half and a pale half,
+                with a tick when chosen. */}
+            <span
+              aria-hidden="true"
+              data-theme={o.value}
+              className={`relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-brand ${value === o.value ? "ring-[3px] ring-ink" : "ring-2 ring-ink/20"}`}
+            >
+              <span className="absolute inset-y-0 right-0 w-1/2 bg-lilac" />
+              {value === o.value && (
+                <svg viewBox="0 0 24 24" className="relative h-6 w-6">
+                  <circle cx="12" cy="12" r="11" fill="#fff" />
+                  <path d="m7 12.5 3.2 3.2L17 9" stroke="#1f2a37" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </span>
+            <span className="text-lg leading-tight">{t(o.label)}</span>
           </label>
         ))}
       </div>

@@ -11,7 +11,7 @@ function PrivacyIcon() {
   return (
     <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
       <path d="M32 44V32a16 16 0 0 1 32 0v12" stroke="#1f2a37" strokeWidth="7" fill="none" strokeLinecap="round" />
-      <rect x="22" y="42" width="52" height="40" rx="10" fill="#5b3cc4" />
+      <rect x="22" y="42" width="52" height="40" rx="10" fill="var(--color-brand)" />
       <circle cx="48" cy="58" r="6" fill="#fff" />
       <rect x="45" y="60" width="6" height="12" rx="3" fill="#fff" />
     </svg>

@@ -16,7 +16,7 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 // Phone Tracker: loaded only when someone opens /tracker, so the homepage stays fast.
 const TrackerPage = lazy(() => import("./tracker/TrackerPage.tsx"));
 
-// Text size, motion, dark mode and contrast, as this browser asked for them, before anything is drawn.
+// Text size, motion, colour theme and contrast, as this browser asked for them, before anything is drawn.
 startDisplaySettings();
 
 createRoot(document.getElementById("root")!).render(
