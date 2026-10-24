@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { checkingLine, type AlertSettings } from "../family/alerts";
-import { pickVoice } from "../family/readAloud";
-import { canSpeak, loadVoices, utterancesFor } from "../family/speech";
+import { speak, stopVoice } from "../family/voice";
 import { useLanguage } from "../i18n/useLanguage";
+import { accessToken } from "../lib/supabase";
 
 // Small extras for the family page: the "Read aloud" speaker button, the simple
 // view switch, the spoken alerts switch, the alert settings panel and the
@@ -24,10 +24,9 @@ function SpeakerIcon({ size }: { size: number }) {
 }
 
 /**
- * A speaker button that reads `text` out loud with the browser's own voice.
- * Shows nothing at all in browsers that can't speak. Press again to stop.
- * Spanish and Chinese use a voice for that language; if the device has none,
- * a short note says so instead of reading it in an English voice.
+ * A speaker button that reads `text` out loud with our ElevenLabs voice for the
+ * site language (fetched from /api/tts). Press again to stop.
+ * If the ElevenLabs voice can't be reached, a short note says so.
  */
 export function ReadAloudButton({
   text,
@@ -43,65 +42,42 @@ export function ReadAloudButton({
   big?: boolean;
 }) {
   const [speaking, setSpeaking] = useState(false);
-  const [noVoice, setNoVoice] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [note, setNote] = useState("");
   const { lang, t } = useLanguage();
-  // The sentences being spoken. Holding on to them stops Chrome from throwing
-  // them away (and going quiet) partway through. Each press gets a new list.
-  const mine = useRef<SpeechSynthesisUtterance[] | null>(null);
+  // This button's current reading, if any. Each press gets a new one.
+  const mine = useRef<object | null>(null);
 
   // Stop talking if the button disappears (e.g. leaving the page) or the language changes.
   useEffect(
     () => () => {
-      if (mine.current) {
-        mine.current = null;
-        window.speechSynthesis.cancel();
-      }
+      if (mine.current) stopVoice();
+      mine.current = null;
       setSpeaking(false);
-      setNoVoice(false);
+      setLoading(false);
+      setNote("");
     },
     [lang],
   );
 
-  if (!canSpeak) return null;
-
   async function toggle() {
-    const synth = window.speechSynthesis;
-    const wasTalking = synth.speaking || synth.pending;
-    mine.current = null;
-    synth.cancel();
-    if (speaking) {
-      setSpeaking(false);
+    if (mine.current) {
+      stopVoice();
       return;
     }
-
-    const voices = await loadVoices();
-    const voice = pickVoice(voices, lang);
-    // No voice for Spanish or Chinese here: say so rather than read it badly.
-    // (If the browser lists no voices at all we can't tell, so just try.)
-    if (lang !== "en" && !voice && voices.length > 0) {
-      setNoVoice(true);
-      return;
-    }
-    setNoVoice(false);
-
-    const parts = utterancesFor(text, lang, voice);
-    if (parts.length === 0) return;
-    const finish = () => {
-      if (mine.current === parts) {
-        mine.current = null;
-        setSpeaking(false);
-      }
-    };
-    parts[parts.length - 1].onend = finish;
-    for (const u of parts) u.onerror = finish;
-    mine.current = parts;
+    const reading = {};
+    mine.current = reading;
+    setNote("");
     setSpeaking(true);
-
-    // Chrome can drop speech that starts the instant other speech is stopped.
-    if (wasTalking) await new Promise((r) => setTimeout(r, 100));
-    if (mine.current !== parts) return;
-    synth.resume(); // in case the browser left speech paused
-    for (const u of parts) synth.speak(u);
+    setLoading(true);
+    const outcome = await speak(text, lang, accessToken, () => {
+      if (mine.current === reading) setLoading(false);
+    });
+    if (mine.current !== reading) return;
+    mine.current = null;
+    setSpeaking(false);
+    setLoading(false);
+    if (outcome === "failed") setNote("Read aloud isn't available right now. Please try again in a moment.");
   }
 
   return (
@@ -110,14 +86,15 @@ export function ReadAloudButton({
         type="button"
         onClick={toggle}
         aria-pressed={speaking}
+        aria-busy={loading}
         className={`inline-flex items-center justify-center gap-2 rounded-2xl border-[3px] border-current bg-surface font-extrabold text-brand transition-colors hover:bg-lilac ${big ? "min-h-16 px-6 text-2xl" : "min-h-12 px-4 text-lg"}`}
       >
         <SpeakerIcon size={big ? 30 : 22} />
         {speaking ? t(stopLabel) : t(label)}
       </button>
-      {noVoice && (
+      {note && (
         <span role="status" className="text-lg font-bold text-muted">
-          {t("This device has no voice for this language, so it can't read this aloud.")}
+          {t(note)}
         </span>
       )}
     </span>
@@ -141,23 +118,25 @@ export function SimpleViewToggle({ on, onChange }: { on: boolean; onChange: (on:
 
 /**
  * The on/off switch for spoken alerts. Turning it on is the tap browsers need
- * before they allow speech, so it speaks straight away to show it works.
+ * before they allow sound, so it speaks straight away to show it works.
  * After a reload, `needsTap` shows a big "tap to turn back on" button.
  */
 export function SpokenAlertsSwitch({
   on,
   needsTap,
+  note,
   onChange,
   onWake,
 }: {
   on: boolean;
   needsTap: boolean;
+  /** A short message when the voice couldn't be reached or played, if any. */
+  note: string;
   onChange: (on: boolean) => void;
   /** The "tap to turn back on" button was pressed. */
   onWake: () => void;
 }) {
   const { t } = useLanguage();
-  if (!canSpeak) return null;
   return (
     <section className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
       <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4">
@@ -183,7 +162,7 @@ export function SpokenAlertsSwitch({
         </span>
       </label>
       {needsTap && (
-        // Any tap on the page turns speech back on; this button also says so out loud.
+        // Any tap on the page turns sound back on; this button also says so out loud.
         <button
           type="button"
           onClick={onWake}
@@ -192,6 +171,11 @@ export function SpokenAlertsSwitch({
           <SpeakerIcon size={24} />
           {t("Tap to turn spoken alerts back on")}
         </button>
+      )}
+      {on && note && (
+        <p role="status" className="mt-3 text-lg font-bold text-muted">
+          {t(note)}
+        </p>
       )}
       {on && (
         <p className="mt-3 text-lg text-muted">

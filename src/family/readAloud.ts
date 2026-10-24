@@ -1,61 +1,8 @@
-// The plain logic behind the "Read aloud" button: which voice to use, how to say
-// a time, and how to tidy and split the words so the browser voice reads them
-// smoothly. No React here, so it can be tested with `npm test`.
+// The plain logic behind the "Read aloud" button: how to say a time, and how
+// to tidy and split the words so the voice reads them smoothly. No React
+// here, so it can be tested with `npm test`.
 
 import type { Lang } from "../i18n/translate.ts";
-
-/** The voice languages to look for, best first. Mandarin before Cantonese (zh-HK). */
-const VOICE_LOCALES: Record<Lang, string[]> = {
-  en: ["en"],
-  es: ["es-ES", "es-US", "es-MX", "es"],
-  zh: ["zh-CN", "cmn-CN", "zh-TW", "cmn-TW", "zh", "cmn"],
-};
-
-/** The full language code to give the voice, e.g. "zh-CN" rather than the page's "zh-Hans". */
-export function speechLocale(lang: Lang): string {
-  return VOICE_LOCALES[lang][0];
-}
-
-/** Voices name their language like "es-ES", "es_ES" or "ES-es". This makes them all "es-es". */
-function tidyTag(tag: string): string {
-  return tag.replace(/_/g, "-").toLowerCase();
-}
-
-/** The part of a voice that matters here (the browser's SpeechSynthesisVoice has these too). */
-export interface VoiceInfo {
-  name?: string;
-  lang: string;
-  localService?: boolean;
-  default?: boolean;
-}
-
-// Apple's playful character voices. They are listed first on Macs and iPhones
-// but sound robotic, so they are only used when nothing else is there.
-const ROBOTIC = /^(Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley)\b/;
-
-/** Lower is better: proper voices first, then ones on the device, then the device's default. */
-function rank(v: VoiceInfo): number {
-  return (ROBOTIC.test(v.name ?? "") ? 4 : 0) + (v.localService ? 0 : 2) + (v.default ? 0 : 1);
-}
-
-/**
- * Picks the best voice for the language, or null if this device has none.
- * Prefers the closest accent first (Spain, then US Spanish; Mainland Mandarin),
- * then natural-sounding voices that live on the device (they don't stop when
- * the internet wobbles).
- */
-export function pickVoice<V extends VoiceInfo>(voices: readonly V[], lang: Lang): V | null {
-  for (const want of VOICE_LOCALES[lang].map(tidyTag)) {
-    const matches = voices.filter((v) => {
-      const tag = tidyTag(v.lang);
-      return want.includes("-") ? tag === want : tag === want || tag.startsWith(`${want}-`);
-    });
-    if (matches.length > 0) {
-      return [...matches].sort((a, b) => rank(a) - rank(b))[0];
-    }
-  }
-  return null;
-}
 
 /**
  * How the time is said out loud, in the viewer's own time zone.
@@ -93,10 +40,7 @@ export function tidyForSpeech(text: string, lang: Lang): string {
   return out;
 }
 
-/**
- * Splits text into sentences to speak one at a time. Chrome can go quiet partway
- * through a long piece of speech, so short pieces are more reliable.
- */
+/** Splits text into tidy sentences (the button joins them back up before sending). */
 export function splitSentences(text: string): string[] {
   return (text.match(/[^.!?。！？]+(?:[.!?。！？]+|$)/g) ?? []).map((s) => s.trim()).filter(Boolean);
 }

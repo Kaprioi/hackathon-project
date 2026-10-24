@@ -32,3 +32,8 @@ export function clearAuthLinkError() {
 // null until the env vars are set, so the homepage still works without Supabase.
 // Logins are saved in the browser, so people stay logged in after a reload.
 export const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
+/** The logged-in person's token, for our own server functions (like the "Read aloud" voice). */
+export async function accessToken(): Promise<string | null> {
+  return (await supabase?.auth.getSession())?.data.session?.access_token ?? null;
+}

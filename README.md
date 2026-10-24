@@ -124,6 +124,8 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    Then open the address it prints (usually http://localhost:5173).
 
+   The "Read aloud" buttons and spoken alerts speak with our ElevenLabs voices through the small server function in `api/tts.ts`. It needs these Vercel environment variables (already set for production, preview and development): `ELEVENLABS_API_KEY` (secret, stays on the server), and the voice IDs `ELEVENLABS_VOICE_EN`, `ELEVENLABS_VOICE_ES` and `ELEVENLABS_VOICE_ZH`. It also reads the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as the site, because only logged-in people can use it (at most 30 readings every 10 minutes each, spoken alerts included). Everything said out loud uses an ElevenLabs voice (the browser's own voices are never used); if that voice can't be reached, the page just says "Read aloud isn't available right now". `npm run dev` doesn't run that function, so locally you'll see that note. To hear the ElevenLabs voices on your computer, run `vercel dev` (after `vercel link`) instead of `npm run dev`.
+
 5. Check that it builds for production (Vercel runs this too):
 
    ```bash

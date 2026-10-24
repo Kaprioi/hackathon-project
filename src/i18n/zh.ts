@@ -318,7 +318,7 @@ const zh: Record<string, string> = {
     "您已断网。请检查 Wi-Fi 或手机流量；恢复联网后页面会自动更新。",
   "Read aloud": "朗读",
   "Stop reading": "停止朗读",
-  "This device has no voice for this language, so it can't read this aloud.": "这台设备没有中文语音，所以无法朗读。",
+  "Read aloud isn't available right now. Please try again in a moment.": "朗读功能暂时无法使用，请稍后再试。",
   "Simple view": "简洁模式",
   "Show everything": "显示全部",
   "Your loved one": "您的家人",
