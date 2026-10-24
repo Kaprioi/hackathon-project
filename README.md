@@ -157,6 +157,8 @@ It also still drives the optional Phone Tracker stand: it follows the person you
 - Test the tracking and event logic without a camera: `npm run test:tracker`.
 - The camera needs https on a phone: use the deployed Vercel link (or `npm run dev -- --host` plus an https tunnel).
 
+**Emergency alert.** If the person being followed seems to fall (or have a seizure), the phone shows "Are you OK?" with a 15-second countdown, then phones the emergency contact through Twilio via the server function `api/emergency-call.ts`. The call reads "This is a CareNest alert. Grandma may have fallen…" twice. It never calls emergency services. It needs these Vercel environment variables (see `.env.example`): `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` (secret), `TWILIO_FROM` (the Twilio number), `ALERT_CALL_TO` (who to call), `ALERT_PERSON_NAME`. Without them the alert makes a pretend call. Only signed-in CareNest accounts can start a call: the page sends its login token, and the function checks it with Supabase using the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. At most one call every 30 seconds. On a Twilio free trial, the number called must be verified in Twilio, and calls start with a short trial message. `npm run dev` also answers `/api/emergency-call`, reading the same settings from `.env.local`. Settings -> Emergency alert -> **Test the call** rings the contact.
+
 ## Family page (`/dashboard`)
 
 Where family members see how things are. After logging in, the login page brings you here; if nobody is logged in it sends you to `/login`. It shows:

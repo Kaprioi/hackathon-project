@@ -11,6 +11,11 @@
 //
 // Every answer to the page is 200 (or 400 for a bad request), with the outcome inside: the
 // phone test link goes through Cloudflare, which swaps 502 and 504 answers for its own page.
+//
+// Only people signed in to CareNest can start a call (the page sends their Supabase login
+// token, checked with Supabase), so nobody who finds this address can ring the contact.
+// Where the server has no Supabase settings (the PC test link), there are no accounts at
+// all, so calls are allowed there. Twilio fetching the words (?say=) needs no sign-in.
 
 /** The server settings this needs. */
 export interface CallEnv {
@@ -25,6 +30,9 @@ export interface CallEnv {
   ALERT_PERSON_NAME?: string;
   /** This site's public address, if it can't be worked out from the request (rarely needed). */
   PUBLIC_URL?: string;
+  /** The site's Supabase project (the same settings the page uses). When set, calls need a signed-in account. */
+  VITE_SUPABASE_URL?: string;
+  VITE_SUPABASE_ANON_KEY?: string;
 }
 
 export type CallKind = "fall" | "seizure" | "test";
@@ -105,6 +113,21 @@ function header(req: CallRequest, name: string): string {
   return (Array.isArray(v) ? v[0] : v)?.split(",")[0].trim() ?? "";
 }
 
+/** Is the page signed in to CareNest? "not needed" where the server has no Supabase (no accounts). */
+async function signInState(req: CallRequest, env: CallEnv, fetchFn: typeof fetch): Promise<"yes" | "no" | "unreachable" | "not needed"> {
+  const url = env.VITE_SUPABASE_URL?.trim().replace(/\/+$/, "");
+  const key = env.VITE_SUPABASE_ANON_KEY?.trim();
+  if (!url || !key) return "not needed";
+  const token = header(req, "authorization").match(/^Bearer\s+(\S+)$/i)?.[1];
+  if (!token) return "no";
+  try {
+    const res = await fetchFn(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${token}` } });
+    return res.ok ? "yes" : "no";
+  } catch {
+    return "unreachable";
+  }
+}
+
 /**
  * This site's public address, for Twilio to fetch the words from: PUBLIC_URL if set, else the
  * address the request came in on (through the tunnel or the hosting). Null for a local-only
@@ -128,9 +151,10 @@ export function publicBase(req: CallRequest, env: CallEnv): string | null {
 }
 
 /**
- * GET: is calling set up (the last 4 digits of who it calls, how the last call went)?
- * POST {kind}: make the call; the outcome is in `result`: "sent", "off" (not set up: the page
- * shows a pretend call) or "failed" (with `error`, in words).
+ * GET: is calling set up (the last 4 digits of who it calls, how the last call went)? The
+ * digits and the last call only for a signed-in page (`needsSignIn` says when it isn't).
+ * POST {kind}: make the call (signed in only); the outcome is in `result`: "sent", "off" (not
+ * set up: the page shows a pretend call) or "failed" (with `error`, in words).
  * GET or POST ?say=kind: the words for Twilio to say (it asks when the contact answers).
  */
 export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: { now?: number; fetch?: typeof fetch } = {}): Promise<CallReply> {
@@ -143,7 +167,12 @@ export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: 
 
   const ready = isReady(env);
   const now = opts.now ?? Date.now();
+  const fetchFn = opts.fetch ?? fetch;
   if (req.method === "GET") {
+    const signIn = await signInState(req, env, fetchFn);
+    if (signIn !== "yes" && signIn !== "not needed") {
+      return { status: 200, body: { ready, to: null, problem: setupProblem(env), last: null, needsSignIn: true } };
+    }
     const lastCall = last && { secondsAgo: Math.round((now - last.at) / 1000), kind: last.kind, ok: last.ok, error: last.error };
     return { status: 200, body: { ready, to: ready ? env.ALERT_CALL_TO!.slice(-4) : null, problem: setupProblem(env), last: lastCall } };
   }
@@ -153,7 +182,16 @@ export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: 
   if (!isKind(kind)) return { status: 400, body: { error: "Unknown alert kind." } };
   if (!ready) return { status: 200, body: { result: "off", problem: setupProblem(env) } };
 
-  const reply = await callTwilio(kind, env, publicBase(req, env), now, opts.fetch ?? fetch);
+  const signIn = await signInState(req, env, fetchFn);
+  if (signIn === "no") {
+    console.log(`[emergency-call] ${kind}: refused, not signed in`);
+    return { status: 200, body: { result: "failed", error: "Please sign in to CareNest on this phone first: only signed-in accounts can call." } };
+  }
+  if (signIn === "unreachable") {
+    return { status: 200, body: { result: "failed", error: "Couldn't check the sign-in with the database. Is the internet on?" } };
+  }
+
+  const reply = await callTwilio(kind, env, publicBase(req, env), now, fetchFn);
   const ok = reply.result === "sent";
   last = { at: now, kind, ok, error: reply.error };
   console.log(`[emergency-call] ${kind}: ${ok ? "Twilio is calling" : `didn't go through: ${reply.error}`}`);
