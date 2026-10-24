@@ -9,7 +9,9 @@ export const BLE = {
   service: "6e400001-b5a3-f393-e0a9-e50e24dcca9e",
   move: "6e400002-b5a3-f393-e0a9-e50e24dcca9e", // write "pan,tilt", like "90,90"
   radar: "6e400003-b5a3-f393-e0a9-e50e24dcca9e", // notifies "1" (someone there) or "0"
-  mist: "6e400004-b5a3-f393-e0a9-e50e24dcca9e", // write "1" (mist on) or "0" (off)
+  // write "1" (mist on) or "0" (off). The humidifier was dropped on Oct 24, so the page
+  // never turns it on; kept so the website and firmware still match.
+  mist: "6e400004-b5a3-f393-e0a9-e50e24dcca9e",
 };
 
 /** How far the motors may turn, in degrees. The firmware enforces the same limits. */
@@ -50,6 +52,10 @@ export interface Settings {
    * "auto" uses the phone's motion sensor (needed when the phone is sideways with auto-rotate off).
    */
   turn: "auto" | "0" | "90" | "180" | "270";
+  /** Save a face fingerprint of the tapped person and use it to re-find them (faces.ts). */
+  faces: boolean;
+  /** Watch the tracked person for a fall or seizure and raise the emergency alert (emergency.ts). */
+  emergency: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -62,6 +68,8 @@ export const DEFAULT_SETTINGS: Settings = {
   deadZoneDeg: 2.5,
   matchLimit: 0.38,
   turn: "auto",
+  faces: true, // the page starts with false on iPhones (see TrackerPage loadSettings)
+  emergency: true,
 };
 
 /** Timing and behaviour of the tracking brain. */
@@ -109,6 +117,25 @@ export const TUNING = {
   weakScore: 0.2,
   /** Follow the target on weak detections alone for at most this long. */
   weakMaxMs: 5000,
+  /** A face verdict sticks to the person it was about for this long (it follows their box). */
+  faceVerdictMs: 15000,
+  /**
+   * People seen at the same time as the target can't be the target. The brain follows them
+   * from frame to frame and won't take them when the target hides. It bridges a gap this
+   * short (the detector missing them for a frame or two); after a longer one it forgets
+   * them, so the note can't land on someone else who steps into their spot.
+   */
+  othersKeepMs: 250,
+  /**
+   * A note about someone (a face verdict, "seen with the target") moves on to the box in the
+   * next frame only if it overlaps this much (0-1), after allowing for the camera's own turn.
+   * Higher = harder for a note to jump to a neighbour when its person isn't detected.
+   */
+  carryOverlap: 0.5,
+  /** After a pause this long (page hidden, phone locked), forget all such notes: people may have moved. */
+  longGapMs: 1000,
+  /** Run the person detector at most this many times a second (less heat and memory on phones). */
+  maxDetectFps: 15,
   /**
    * ...and only if their match is under matchLimit x this. Measured on a busy street video:
    * strangers scored under 0.38 in 9% of pairs but under 0.30 in only 1.4%.
@@ -135,6 +162,58 @@ export const TUNING = {
   coverLostMs: 1000,
 };
 
+/**
+ * Face fingerprints (faces.ts). Distances are face-api's: 0 = the same picture; it suggests
+ * 0.6 as the line between the same person and someone else. These are starting points to
+ * tune on real faces, not measured yet.
+ */
+export const FACE = {
+  /** Closer than this: the same person. */
+  same: 0.5,
+  /** Further than this: clearly someone else. In between: unsure, so ignored. */
+  different: 0.7,
+  /** Read at most one face this often (milliseconds), in the background. */
+  everyMs: 400,
+  /** Don't read the same person's face again within this long. */
+  recheckMs: 2000,
+  /** Keep up to this many fingerprints of the target (from different moments), and add one at most this often. */
+  maxPrints: 5,
+  refreshMs: 3000,
+  /** Ignore faces smaller than this (pixels across, in the camera's full picture) or less sure than this. */
+  minFacePx: 40,
+  minScore: 0.6,
+};
+
+/**
+ * The emergency alert (emergency.ts): a rough guess at a fall or a seizure from the tracked
+ * person's box. Good enough for a staged demo, not a medical device. Estimates, to tune.
+ */
+export const EMERGENCY = {
+  /**
+   * Box height / width in real pixels: over this = standing, under `lying` = lying down. Lying
+   * was 0.9 at first, but someone sitting at a table (legs hidden, arms out) gets a box that wide.
+   */
+  standing: 1.7,
+  lying: 0.6,
+  /** A fall: standing, then lying within this long... */
+  fallWithinMs: 4000,
+  /** ...and still lying after this long. */
+  lyingMs: 3000, // long enough for the shaking check to speak first if they fell into a seizure
+  /**
+   * A seizure: while lying, the box's width or height swings back and forth at least `shakeFlips`
+   * times within `shakeWindowMs`, each swing (peak to peak) at least `shakeSwing` of the person's
+   * size. Only the size counts: a shaking camera moves the box but doesn't resize it. The
+   * detector's own wobble is a few percent; on Apple's phone 3% steps raised a false alarm.
+   */
+  shakeWindowMs: 3000,
+  shakeSwing: 0.1,
+  shakeFlips: 5,
+  /** After an alert, watch again once the person has been up (not lying) this long. */
+  rearmMs: 3000,
+  /** "Are you OK?" countdown before the pretend emergency call (seconds). */
+  countdownS: 15,
+};
+
 /** Long side of the small copy of each frame used for colours and the cover tracker. */
 export const ANALYSIS_WIDTH = 320;
 
@@ -145,8 +224,6 @@ export const ANALYSIS_WIDTH = 320;
  */
 export const DETECT_WIDTH = 640;
 
-/** Which tracking states turn the mist on when the mist is set to "Follow me". */
-export const MIST_FOLLOW_MODES = ["tracking", "hidden", "following"] as const;
 
 /**
  * Which tracking states let the camera steer the stand. In the others (TAP A PERSON

@@ -1,5 +1,7 @@
 # Demo and pitch
 
+> **Needs rewriting (Oct 24, 2026):** the humidifier was dropped (parts not obtainable) and the pitch moved to elderly care (family updates, a planned fall alert). The pitch and demo below still feature the mist. The tracking demos, the judge Q&A and the 360° answer still apply. See `phone-tracker/CLAUDE.md`.
+
 ## One-line pitch
 
 "A humidifier that keeps its mist on you. It watches with a phone and two radars, so it follows you from bed to chair, keeps aiming when you're under the covers or the lights are off, and comes back to you when you walk out and return."

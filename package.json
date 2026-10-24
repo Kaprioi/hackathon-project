@@ -7,13 +7,14 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/family/status.test.mjs",
-    "test:tracker": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs"
+    "test": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/tracker/handheld.test.mjs src/tracker/faces.test.mjs src/tracker/emergency.test.mjs src/family/status.test.mjs",
+    "test:tracker": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/tracker/handheld.test.mjs src/tracker/faces.test.mjs src/tracker/emergency.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/nunito": "^5.3.0",
     "@mediapipe/tasks-vision": "1.1.1",
     "@supabase/supabase-js": "^2.118.0",
+    "@vladmandic/face-api": "1.7.15",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router": "^8.5.0"

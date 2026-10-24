@@ -77,7 +77,7 @@ function paintBlanket(img, b) {
  * Builds one frame for the brain from a list of people (and maybe a blanket).
  * `front` people are drawn on top of the blanket (walking in front of it).
  */
-function frame(t, people, { radar = null, tap = null, blanket = null, camera = CENTER, front = [], weak = [] } = {}) {
+function frame(t, people, { radar = null, tap = null, blanket = null, camera = CENTER, front = [], weak = [], faces = [], behind = [] } = {}) {
   const img = { width: W, height: H, data: new Uint8ClampedArray(W * H * 4).fill(128) };
   const draw = (p) => {
     const v = visible(p.box);
@@ -91,12 +91,13 @@ function frame(t, people, { radar = null, tap = null, blanket = null, camera = C
     fillRect(img, { x: v.x, y: v.y + v.h / 2, w: v.w, h: v.h / 2 }, p.bottom);
     return v;
   };
+  behind.forEach(draw); // drawn first (partly covered) and not detected
   const boxes = people.map(draw).filter(Boolean);
   if (blanket) paintBlanket(img, blanket);
   boxes.push(...front.map(draw).filter(Boolean));
   // `weak` people are drawn, but the detector is unsure about them (covering their face, say).
   const weakBoxes = weak.map(draw).filter(Boolean);
-  return { t, people: boxes, weak: weakBoxes, image: img, radar, camera, tap };
+  return { t, people: boxes, weak: weakBoxes, image: img, radar, camera, tap, faces };
 }
 
 const newBrain = () => new Brain({ ...DEFAULT_SETTINGS });
@@ -417,6 +418,240 @@ test("one lucky frame of a better match doesn't make it switch", () => {
   assert.ok(Math.abs(out.target.x - 0.3) < 0.01, `should still be on you, but is on x=${out.target.x.toFixed(2)}`);
 });
 
+test("hiding behind a pillar next to someone: it doesn't switch to them, and finds you when you come out", () => {
+  const brain = newBrain();
+  let t = 0;
+  // Someone who sort of looks like you (match ~0.41) stands near the pillar the whole time.
+  const nearby = twoTone(0.52, RED, GREEN, 0.3, BLUE);
+  let out = brain.update(frame(t, [person(0.25, RED, BLUE), nearby], { tap: { x: 0.32, y: 0.5 } }));
+  for (let x = 0.25; x <= 0.33; x += 0.01) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [person(x, RED, BLUE), nearby]));
+  }
+  assert.ok(Math.abs(out.target.x - 0.33) < 0.02, "tracking you before the pillar");
+  // Behind the pillar for 3 seconds: only the other person is in view.
+  for (let i = 0; i < 45; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [nearby]));
+    assert.ok(!(out.mode === "tracking" && out.target && Math.abs(out.target.x - 0.52) < 0.02), `frame ${i}: switched to the person next to the pillar (${out.mode})`);
+  }
+  // You step out from behind the pillar.
+  for (let i = 0; i < 5; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [nearby, person(0.36, RED, BLUE)]));
+  }
+  assert.equal(out.mode, "tracking");
+  assert.ok(Math.abs(out.target.x - 0.36) < 0.02, `should be on you again, but is on x=${out.target.x.toFixed(2)}`);
+});
+
+test("walking into the spot someone just left doesn't make it lose you", () => {
+  const brain = newBrain();
+  let t = 0;
+  let out = brain.update(frame(t, [person(0.3, RED, BLUE), person(0.5, GREEN, BLACK)], { tap: { x: 0.37, y: 0.5 } }));
+  for (let i = 0; i < 5; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [person(0.3, RED, BLUE), person(0.5, GREEN, BLACK)]));
+  }
+  // The other person ducks out of view; you walk into the spot they left, straight away.
+  for (let i = 1; i <= 15; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [person(0.3 + i * 0.015, RED, BLUE)]));
+  }
+  assert.equal(out.mode, "tracking", `should still be tracking you, but is ${out.mode}`);
+  assert.ok(Math.abs(out.target.x - 0.525) < 0.02, `should be on you at x≈0.53, got ${out.target.x.toFixed(2)}`);
+});
+
+test("turning the camera away and back: it doesn't hand your face over to the person who slides into your spot", () => {
+  // Like Apple's video: the camera turns left, you leave the picture on the right, the person
+  // who was on your left slides into the spot where you were, then the camera turns back.
+  const brain = newBrain();
+  const fov = DEFAULT_SETTINGS.fovH;
+  const at = (worldPan, cameraPan, top, bottom, top2, share) => {
+    const x = 0.5 + (worldPan - cameraPan) / fov - 0.075;
+    return top2 ? twoTone(x, top, top2, share, bottom) : person(x, top, bottom);
+  };
+  const you = (cam) => at(95, cam, RED, BLUE);
+  const other = (cam) => at(83, cam, RED, BLUE, GREEN, 0.3); // sort of like you (~0.41)
+  const view = (cam) => [you(cam), other(cam)].filter((p) => visible(p.box));
+  let t = 0;
+  let cam = 90;
+  let out = brain.update(frame(t, view(cam), { tap: { x: you(cam).box.x + 0.07, y: 0.5 }, camera: { pan: cam, tilt: 90 } }));
+  const steps = [];
+  for (let c = 90; c >= 50; c -= 2) steps.push(c); // turn left...
+  for (let c = 50; c <= 90; c += 2) steps.push(c); // ...and back
+  for (const c of steps) {
+    cam = c;
+    t += FRAME_MS;
+    const people = view(cam);
+    // A face check of you finishes just before you leave the picture.
+    const faces = cam === 74 ? [{ box: you(cam).box, same: true }] : [];
+    out = brain.update(frame(t, people, { camera: { pan: cam, tilt: 90 }, faces }));
+    const onOther = out.mode === "tracking" && out.target && Math.abs(out.target.x - other(cam).box.x) < 0.02;
+    assert.ok(!onOther, `camera at ${cam}°: took the other person (${out.note})`);
+  }
+  assert.equal(out.mode, "tracking");
+  assert.ok(Math.abs(out.target.x - you(cam).box.x) < 0.02, `should be back on you, but is on x=${out.target.x.toFixed(2)}`);
+});
+
+for (const withFace of [false, true]) {
+  test(`someone walking behind you doesn't hand you their note${withFace ? " (their face was ruled out)" : ""}`, () => {
+    // Found in review: when the person behind stopped being detected, their note slid onto you.
+    const brain = newBrain();
+    let t = 0;
+    const you = person(0.3, RED, BLUE);
+    let out = brain.update(frame(t, [you], { tap: { x: 0.37, y: 0.5 } }));
+    for (let k = 0; k < 40; k++) {
+      t += FRAME_MS;
+      const bx = Math.max(-0.2, 0.6 - k * 0.015);
+      const other = person(bx, GREEN, BLACK);
+      const hidden = Math.abs(bx - 0.3) < 0.07; // mostly behind you: the detector misses them
+      const faces = withFace && k === 5 ? [{ box: other.box, same: false }] : [];
+      out = brain.update(frame(t, hidden ? [you] : [other, you], { behind: hidden ? [other] : [], faces }));
+      assert.equal(out.mode, "tracking", `frame ${k}: ${out.mode} (${out.note})`);
+      assert.equal(out.note, "Tracking you.", `frame ${k}: you're in plain view, but: ${out.note}`);
+    }
+  });
+}
+
+test("someone whose face was ruled out brushing past you doesn't make it lose you", () => {
+  const brain = newBrain();
+  let t = 0;
+  const you = person(0.4, RED, BLUE);
+  let out = brain.update(frame(t, [you], { tap: { x: 0.47, y: 0.5 } }));
+  for (let k = 0; k < 30; k++) {
+    t += FRAME_MS;
+    const other = person(0.75 - k * 0.01, GREEN, BLACK); // walks up close beside you (overlapping)
+    const faces = k === 2 ? [{ box: other.box, same: false }] : [];
+    out = brain.update(frame(t, [you, other], { faces }));
+    assert.equal(out.mode, "tracking", `frame ${k}: ${out.note}`);
+    assert.ok(Math.abs(out.target.x - 0.4) < 0.01, `frame ${k}: should stay on you`);
+  }
+});
+
+test("after a pause (page hidden), an old face verdict doesn't land on whoever stands there now", () => {
+  const brain = newBrain();
+  let t = 0;
+  const you = person(0.4, RED, BLUE);
+  let out = brain.update(frame(t, [you], { tap: { x: 0.47, y: 0.5 } }));
+  t += FRAME_MS;
+  out = brain.update(frame(t, [you], { faces: [{ box: you.box, same: true }] }));
+  assert.equal(out.faces[0], true);
+  // The phone is locked for 5 seconds. Meanwhile you left, and a stranger stands in your spot.
+  t += 5000;
+  out = brain.update(frame(t, [person(0.41, GREEN, BLACK)]));
+  assert.notEqual(out.faces[0], true, "the stranger must not inherit your face verdict");
+  assert.ok(!(out.mode === "tracking" && /face/i.test(out.note)), `took the stranger by face: ${out.note}`);
+});
+
+test("a tap that hits nobody changes nothing: same target, same notes", () => {
+  const brain = newBrain();
+  let t = 0;
+  const near = twoTone(0.52, RED, GREEN, 0.3, BLUE); // sort of like you, next to the pillar
+  let out = brain.update(frame(t, [person(0.3, RED, BLUE), near], { tap: { x: 0.37, y: 0.5 } }));
+  assert.equal(out.picked, true);
+  for (let i = 0; i < 5; i++) {
+    t += FRAME_MS;
+    const faces = i === 2 ? [{ box: person(0.3, RED, BLUE).box, same: true }] : [];
+    out = brain.update(frame(t, [person(0.3, RED, BLUE), near], { faces }));
+  }
+  assert.equal(out.faces[0], true, "your face was confirmed");
+  // A tap on empty floor.
+  t += FRAME_MS;
+  out = brain.update(frame(t, [person(0.3, RED, BLUE), near], { tap: { x: 0.95, y: 0.95 } }));
+  assert.equal(out.picked, false);
+  assert.ok(Math.abs(out.target.x - 0.3) < 0.01, "still on you");
+  assert.equal(out.faces[0], true, "a tap on nobody must not throw away what your face check said");
+  // You hide behind the pillar: the person next to it is still known to be someone else.
+  for (let i = 0; i < 30; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [near]));
+    assert.ok(!(out.mode === "tracking" && Math.abs(out.target.x - 0.52) < 0.02), `frame ${i}: took the person by the pillar`);
+  }
+});
+
+test("a face match re-finds you, even after a change of clothes", () => {
+  const brain = newBrain();
+  let t = 0;
+  let out = brain.update(frame(t, [person(0.3, RED, BLUE)], { tap: { x: 0.37, y: 0.5 } }));
+  // A wild camera turn: you're lost from view.
+  for (let i = 0; i < 12; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, []));
+  }
+  assert.notEqual(out.mode, "tracking");
+  // You're back, jacket off (different colours), next to a stranger in your old clothes.
+  const you = person(0.7, GREEN, BLACK);
+  const stranger = person(0.2, RED, BLUE);
+  t += FRAME_MS;
+  out = brain.update(frame(t, [stranger, you], { faces: [{ box: you.box, same: true }] }));
+  assert.equal(out.mode, "tracking");
+  assert.ok(Math.abs(out.target.x - 0.7) < 0.01, `should be on you, by your face, but is on x=${out.target.x.toFixed(2)}`);
+  assert.match(out.note, /face/i);
+  // And it stays with you over the next frames, though the stranger wears your old colours.
+  for (let i = 0; i < 20; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [stranger, person(0.7 - i * 0.005, GREEN, BLACK)]));
+  }
+  assert.equal(out.mode, "tracking");
+  assert.ok(Math.abs(out.target.x - 0.6) < 0.02, `should still be on you, but is on x=${out.target.x.toFixed(2)}`);
+});
+
+test("a face that isn't yours makes it drop a look-alike and go back to you", () => {
+  const brain = newBrain();
+  let t = 0;
+  let out = brain.update(frame(t, [person(0.42, RED, BLUE)], { tap: { x: 0.5, y: 0.5 } }));
+  for (let i = 0; i < 12; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, []));
+  }
+  // A look-alike (colours ~0.36) steps into your spot and gets taken.
+  const lookAlike = (x) => twoTone(x, RED, GREEN, 0.45, BLUE);
+  for (let i = 0; i < 10; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [lookAlike(0.4)]));
+  }
+  assert.ok(out.target && Math.abs(out.target.x - 0.4) < 0.01, "on the look-alike for now");
+  // Their face is checked: not you. It lets go of them at once.
+  t += FRAME_MS;
+  out = brain.update(frame(t, [lookAlike(0.4)], { faces: [{ box: lookAlike(0.4).box, same: false }] }));
+  assert.notEqual(out.mode, "tracking", "should stop following someone whose face isn't yours");
+  // It doesn't fall for them again by their colours, even after a while...
+  for (let i = 0; i < 20; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [lookAlike(0.4 + i * 0.003)]));
+  }
+  assert.notEqual(out.mode, "tracking", "the look-alike stays ruled out while in view");
+  // ...and when you're back (colours ~0.22), it's on you straight away.
+  const you = twoTone(0.75, RED, WHITE, 0.75, BLUE);
+  t += FRAME_MS;
+  out = brain.update(frame(t, [lookAlike(0.46), you]));
+  assert.equal(out.mode, "tracking");
+  assert.ok(Math.abs(out.target.x - 0.75) < 0.01, `should be on you, but is on x=${out.target?.x.toFixed(2)}`);
+});
+
+test("tapping someone new forgets what faces said before", () => {
+  const brain = newBrain();
+  let t = 0;
+  const a = person(0.2, RED, BLUE);
+  const b = person(0.65, GREEN, BLACK);
+  let out = brain.update(frame(t, [a, b], { tap: { x: 0.27, y: 0.5 } }));
+  t += FRAME_MS;
+  out = brain.update(frame(t, [a, b], { faces: [{ box: b.box, same: false }] }));
+  assert.equal(out.faces[1], false, "B's face isn't A's");
+  // Now tap B: B is the target, and the old verdict about B no longer applies.
+  t += FRAME_MS;
+  out = brain.update(frame(t, [a, b], { tap: { x: 0.72, y: 0.5 } }));
+  assert.equal(out.mode, "tracking");
+  assert.ok(Math.abs(out.target.x - 0.65) < 0.01);
+  for (let i = 0; i < 5; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [a, b]));
+  }
+  assert.equal(out.mode, "tracking");
+  assert.ok(Math.abs(out.target.x - 0.65) < 0.01, "still on B");
+  assert.equal(out.faces[1], null);
+});
+
 test("a different person walking in while LOST is ignored", () => {
   const brain = newBrain();
   let t = 0;
@@ -560,7 +795,7 @@ test("stepping behind a wall next to a brown coat: it doesn't get stuck on the c
   assert.ok(out.target && out.target.x > 0.65, `the box should be on you (x about 0.8), not the coat; got x=${out.target?.x}`);
 });
 
-test("a coat that looks very like you holds the box while you're hidden, but you win when you come back", () => {
+test("a coat that looks very like you: it doesn't take the coat while you're hidden, and finds you when you're back", () => {
   const DARKRED = [120, 25, 25];
   const coat = person(0.42, DARKRED, BLUE);
   const brain = newBrain();
@@ -569,6 +804,8 @@ test("a coat that looks very like you holds the box while you're hidden, but you
   for (let i = 0; i < 45; i++) {
     t += FRAME_MS;
     out = brain.update(frame(t, [coat]));
+    // The coat was in view at the same time as you, so it can't be you.
+    assert.ok(!(out.mode === "tracking" && Math.abs(out.target.x - 0.42) < 0.01), `frame ${i}: took the coat`);
   }
   for (let i = 0; i < 5; i++) {
     t += FRAME_MS;

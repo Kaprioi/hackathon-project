@@ -1,10 +1,11 @@
 // The Phone Tracker page (/tracker). Shows the camera, draws a box around each
-// person, lets you tap one to follow, and drives the stand and its humidifier.
+// person, lets you tap one to follow, and drives the stand.
 // Laid out for phones first (either way up), and still works on a PC.
 //
 // How the pieces fit:
 //   camera frame -> detector.ts (find people) -> brain.ts (decide) -> stand.ts (Bluetooth to the ESP32)
 //                                               -> events.ts (small text events) -> cloud.ts (Supabase, for the family page)
+//                -> faces.ts (now and then, one face fingerprint) -> back into brain.ts
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, CSSProperties, PointerEvent, ReactNode } from "react";
@@ -18,24 +19,29 @@ import {
   CAMERA_STEERS_IN,
   DEFAULT_SETTINGS,
   DETECT_WIDTH,
+  EMERGENCY,
+  FACE,
   LIMITS,
-  MIST_FOLLOW_MODES,
   TUNING,
 } from "./config.ts";
 import { Cloud } from "./cloud.ts";
 import type { Detection, PersonDetector } from "./detector.ts";
-import { createPersonDetector } from "./detector.ts";
+import { createPersonDetector, isIPhone, preferredDelegate } from "./detector.ts";
+import type { FaceLabel, FaceReader, ReadMiss } from "./faces.ts";
+import { FaceWatcher, createFaceReader, cropHead } from "./faces.ts";
+import type { EmergencyKind } from "./emergency.ts";
+import { EmergencyWatch } from "./emergency.ts";
 import type { MovementEvent } from "./events.ts";
 import { Reporter } from "./events.ts";
+import { HandheldCamera, viewTurn } from "./handheld.ts";
 import type { Turn } from "./orientation.ts";
 import { boxFromUpright, deviceTurn, fromUpright, pictureTurn, screenAngle, toUpright } from "./orientation.ts";
 import type { Angles, Box } from "./geometry.ts";
-import { centerX, centerY, contains } from "./geometry.ts";
+import { centerX, centerY, contains, iou } from "./geometry.ts";
 import { ServoModel } from "./servoModel.ts";
 import type { StandStatus } from "./stand.ts";
 import { Stand } from "./stand.ts";
 
-type MistMode = "off" | "on" | "follow";
 type Camera = Settings["camera"];
 
 interface Snapshot {
@@ -45,10 +51,56 @@ interface Snapshot {
   aim: Angles | null;
   fps: number;
   people: number;
-  mistOn: boolean;
   portrait: boolean;
   /** How far the camera picture is being turned for the AI (degrees counterclockwise). */
   turn: Turn;
+  /** How many face fingerprints of the target are saved. */
+  facesSaved: number;
+  /** What the tracked person seems to be doing (for the emergency alert), or null. */
+  posture: "standing" | "sitting" | "lying" | null;
+  /** Why no face was read lately: none where the head should be, or too far away. */
+  faceMiss: ReadMiss | null;
+}
+
+/** Face recognition: not wanted, still loading its AI, ready, or couldn't load. */
+type FaceStatus = "off" | "loading" | "ready" | "failed";
+
+/** The emergency alert on screen: "Are you OK?" until `endsAt`, then a pretend call from `callStart`. */
+interface Alarm {
+  kind: EmergencyKind;
+  phase: "ask" | "calling";
+  endsAt: number;
+  callStart: number;
+}
+
+/** Plays tones (the sound is unlocked by the Start watching tap; without it, it stays silent). */
+function tone(ctx: AudioContext, freqs: number[], start: number, seconds: number, volume: number): void {
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(volume, start);
+  gain.gain.setValueAtTime(0, start + seconds);
+  gain.connect(ctx.destination);
+  for (const f of freqs) {
+    const o = ctx.createOscillator();
+    o.frequency.value = f;
+    o.connect(gain);
+    o.start(start);
+    o.stop(start + seconds);
+  }
+}
+
+/** Three short beeps, to get attention. */
+function beep(ctx: AudioContext | null): void {
+  if (!ctx) return;
+  for (let i = 0; i < 3; i++) tone(ctx, [880], ctx.currentTime + i * 0.35, 0.2, 0.25);
+}
+
+/** A phone ringing (two seconds on, four off) until the returned function is called. */
+function ring(ctx: AudioContext | null): () => void {
+  if (!ctx) return () => {};
+  const once = () => tone(ctx, [440, 480], ctx.currentTime, 2, 0.2);
+  once();
+  const id = window.setInterval(once, 6000);
+  return () => window.clearInterval(id);
 }
 
 interface LogLine {
@@ -83,12 +135,6 @@ const SETTINGS_KEY = "phoneTracker.settings.v1";
 const TAP_MAX_MS = 600;
 const TAP_MAX_MOVE_PX = 20;
 
-const MIST_OPTIONS: [MistMode, string][] = [
-  ["off", "Off"],
-  ["on", "On"],
-  ["follow", "Follow me"],
-];
-
 // Keep controls clear of the notch, rounded corners and the home bar.
 const SIDES = {
   paddingLeft: "max(0.5rem, env(safe-area-inset-left))",
@@ -110,14 +156,44 @@ const TAP_RING_CSS = `
   pointer-events: none; animation: tracker-tap 0.45s ease-out forwards;
 }`;
 
+/**
+ * The defaults for this phone. Face recognition starts off on iPhones: Kris's iPhone 14
+ * reloaded the page by itself after tracking a while, and faces add work for the graphics chip.
+ */
+function defaultSettings(): Settings {
+  return { ...DEFAULT_SETTINGS, faces: !isIPhone() };
+}
+
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
+    if (raw) return { ...defaultSettings(), ...(JSON.parse(raw) as Partial<Settings>) };
   } catch {
     // private browsing or blocked storage: just use the defaults
   }
-  return { ...DEFAULT_SETTINGS };
+  return defaultSettings();
+}
+
+/** Draws the video frame onto `canvas` at w x h, turned upright by `turn` (counterclockwise). */
+function drawUpright(canvas: HTMLCanvasElement, video: HTMLVideoElement, turn: Turn, w: number, h: number): void {
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  if (turn === 0) {
+    ctx.drawImage(video, 0, 0, w, h);
+    return;
+  }
+  const sideways = turn === 90 || turn === 270;
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate((-turn * Math.PI) / 180);
+  const cw = sideways ? h : w; // the camera picture's size before turning
+  const ch = sideways ? w : h;
+  ctx.drawImage(video, -cw / 2, -ch / 2, cw, ch);
+  ctx.restore();
 }
 
 function saveSettings(s: Settings): void {
@@ -210,6 +286,8 @@ function drawOverlay(
   matchLimit: number,
   mirrored: boolean,
   turn: Turn,
+  faceLabels: FaceLabel[],
+  now: number,
 ): void {
   const dpr = window.devicePixelRatio || 1;
   const cw = canvas.clientWidth;
@@ -243,12 +321,26 @@ function drawOverlay(
     ctx.strokeRect(s.x, s.y, s.w, s.h);
     const m = out.matches[i];
     if (m === null || m === undefined) return;
-    const label = m.toFixed(2);
+    // Their latest face reading (number: 0 = the saved face), else what the brain was told.
+    const read = [...faceLabels].reverse().find((l) => now - l.t < 3000 && iou(l.box, p) > 0.3);
+    const d = read ? read.distance : undefined;
+    const face = d === undefined ? out.faces[i] : d === null || d <= FACE.same ? true : d >= FACE.different ? false : null;
+    const faceText =
+      d === null
+        ? "  face saved"
+        : d !== undefined
+          ? `  face ${d.toFixed(2)} ${face === true ? "✓" : face === false ? "✗" : "?"}`
+          : face === true
+            ? "  face ✓"
+            : face === false
+              ? "  face ✗"
+              : "";
+    const label = m.toFixed(2) + faceText;
     const lx = s.x + 4;
     const ly = Math.max(r.y + 4, s.y + 4);
     ctx.fillStyle = "rgba(0,0,0,0.65)";
     ctx.fillRect(lx - 2, ly - 2, ctx.measureText(label).width + 8, 20);
-    ctx.fillStyle = m <= matchLimit ? "#3ddc97" : "#ffffff";
+    ctx.fillStyle = face === false ? "#ff8a8a" : face === true || m <= matchLimit ? "#3ddc97" : d !== undefined ? "#ffd84d" : "#ffffff";
     ctx.fillText(label, lx + 2, ly + 13);
   });
 
@@ -297,7 +389,6 @@ const ICON = {
       <path d="M14 2v4M8 10v4M16 18v4" />
     </>
   ),
-  drop: <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z" />,
   expand: <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />,
   shrink: <path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" />,
   stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
@@ -414,6 +505,61 @@ function Choice<T extends string>(props: {
   );
 }
 
+/** The emergency alert: "Are you OK?" with a countdown, then a pretend emergency call. */
+function EmergencyScreen(props: { alarm: Alarm; familyAlerted: boolean; onOk: () => void; onCallNow: () => void; onEnd: () => void }) {
+  const { alarm, familyAlerted, onOk, onCallNow, onEnd } = props;
+  const what = alarm.kind === "fall" ? "Possible fall" : "Possible seizure";
+  if (alarm.phase === "ask") {
+    const left = Math.max(0, Math.ceil((alarm.endsAt - Date.now()) / 1000));
+    return (
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={`${what}. Are you OK?`}
+        className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 overflow-y-auto bg-red-700/95 px-4 py-6 text-center text-white"
+        style={SAFE_ALL}
+      >
+        <p className="text-xl font-extrabold tracking-wide uppercase">{what} detected</p>
+        <h2 className="text-4xl font-extrabold">Are you OK?</h2>
+        <p className="text-7xl font-extrabold tabular-nums">{left}</p>
+        <p className="px-4 text-lg">Calling emergency services in {left} s unless you press I'm OK.</p>
+        <button
+          onClick={onOk}
+          className="min-h-16 w-full max-w-sm rounded-2xl bg-white px-8 text-3xl font-extrabold text-red-700 transition-transform active:scale-95"
+        >
+          I'm OK
+        </button>
+        <button onClick={onCallNow} className="min-h-12 rounded-xl px-4 text-lg font-bold underline">
+          Call now
+        </button>
+      </div>
+    );
+  }
+  const secs = Math.max(0, Math.floor((Date.now() - alarm.callStart) / 1000));
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-label="Calling emergency services"
+      className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 overflow-y-auto bg-black/95 px-4 py-6 text-center text-white"
+      style={SAFE_ALL}
+    >
+      <p className="rounded-full bg-sun px-4 py-1 text-base font-extrabold text-ink">Demo: no real call is made</p>
+      <h2 className="px-4 text-3xl font-extrabold">Calling emergency services…</h2>
+      <p className="text-lg text-white/90">
+        {what} detected · {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}
+      </p>
+      {familyAlerted && <p className="text-base text-white/90">The family page has been alerted.</p>}
+      <button
+        onClick={onEnd}
+        className="min-h-16 w-full max-w-sm rounded-2xl bg-red-600 px-8 text-2xl font-extrabold text-white transition-transform active:scale-95"
+      >
+        End call
+      </button>
+    </div>
+  );
+}
+
 function ErrorBanner({ text, onDismiss }: { text: string; onDismiss: () => void }) {
   return (
     <div
@@ -444,12 +590,37 @@ export default function TrackerPage() {
   const servoRef = useRef<ServoModel>(new ServoModel());
   const tapRef = useRef<{ x: number; y: number } | null>(null);
   const pointersRef = useRef(new Map<number, { x: number; y: number; t: number }>());
-  const mistModeRef = useRef<MistMode>("off");
   const lastAimRef = useRef<Angles | null>(null);
   const testingRef = useRef(false); // true while the motor test buttons are in charge
   const mirroredRef = useRef(settingsRef.current.camera === "front");
   const deviceTurnRef = useRef<Turn | null>(null); // which way the phone is turned, from its motion sensor
   const turnRef = useRef<Turn>(0); // how far the camera picture is turned for the AI right now
+  const handheldRef = useRef(new HandheldCamera()); // where the camera points when the phone is moved by hand
+  // Face recognition: the face AI (loaded the first time it's needed) and who to check when.
+  const faceReaderRef = useRef<FaceReader | null>(null);
+  const faceLoadRef = useRef<Promise<FaceReader> | null>(null);
+  const faceWatcherRef = useRef<FaceWatcher | null>(null);
+  if (!faceWatcherRef.current) {
+    const source = document.createElement("canvas"); // the full camera picture, upright
+    const crop = document.createElement("canvas"); // just the head
+    faceWatcherRef.current = new FaceWatcher(async (box) => {
+      const reader = faceReaderRef.current;
+      const video = videoRef.current;
+      if (!reader || !video?.videoWidth) return null;
+      const turn = turnRef.current;
+      const sideways = turn === 90 || turn === 270;
+      const uw = sideways ? video.videoHeight : video.videoWidth;
+      const uh = sideways ? video.videoWidth : video.videoHeight;
+      const scale = Math.min(1, 1280 / Math.max(uw, uh));
+      drawUpright(source, video, turn, Math.round(uw * scale), Math.round(uh * scale));
+      const head = cropHead(source, box, crop);
+      const face = await reader.read(head.canvas);
+      // Too small a face (far away) gives an unreliable fingerprint.
+      if (!face) return "none";
+      return face.width / head.scale / scale >= FACE.minFacePx ? face.print : "small";
+    });
+  }
+  const faceWatcher = faceWatcherRef.current;
   const reporterRef = useRef<Reporter>(new Reporter());
   const cloudRef = useRef<Cloud | null>(null);
   const sendChainRef = useRef<Promise<void>>(Promise.resolve());
@@ -464,7 +635,6 @@ export default function TrackerPage() {
   const [settings, setSettings] = useState<Settings>(settingsRef.current);
   const [showSettings, setShowSettings] = useState(false);
   const [showLog, setShowLog] = useState(() => window.matchMedia?.("(min-width: 1024px)").matches ?? false);
-  const [mistMode, setMistMode] = useState<MistMode>("off");
   const [standStatus, setStandStatus] = useState<StandStatus>(standRef.current.status);
   const [radar, setRadar] = useState<boolean | null>(null);
   const [mirrored, setMirrored] = useState(mirroredRef.current);
@@ -480,10 +650,14 @@ export default function TrackerPage() {
     aim: null,
     fps: 0,
     people: 0,
-    mistOn: false,
     portrait: false,
     turn: 0,
+    facesSaved: 0,
+    posture: null,
+    faceMiss: null,
   });
+  const [faceStatus, setFaceStatus] = useState<FaceStatus>("off");
+  const [delegate, setDelegate] = useState(""); // "GPU" or "CPU": where the person detector runs
 
   const canFullscreen = !!document.fullscreenEnabled; // Android and PCs; not iPhone
   const isTouch = window.matchMedia?.("(pointer: coarse)").matches ?? false;
@@ -503,11 +677,22 @@ export default function TrackerPage() {
   // Which way the phone is really turned, from its motion sensor. Then a sideways picture
   // (phone sideways, auto-rotate off) can be turned upright for the AI. Android only:
   // iPhones ask permission first, so there the picture only turns with auto-rotate on.
+  // The same sensor's gyroscope also says when the phone is turned by hand, so without
+  // the stand the brain knows the camera moved, not everyone in the room.
   useEffect(() => {
+    let lastT: number | null = null;
     const onMotion = (e: DeviceMotionEvent) => {
       const g = e.accelerationIncludingGravity;
-      if (g?.x == null || g.y == null) return;
-      deviceTurnRef.current = deviceTurn(g.x, g.y, deviceTurnRef.current);
+      if (g?.x != null && g.y != null) deviceTurnRef.current = deviceTurn(g.x, g.y, deviceTurnRef.current);
+      const now = performance.now();
+      const r = e.rotationRate;
+      if (r && lastT !== null) {
+        const seconds = Math.min(0.2, (now - lastT) / 1000); // ignore gaps (page hidden)
+        const s = settingsRef.current;
+        const v = viewTurn(r, seconds, screenAngle(), mirroredRef.current, turnRef.current);
+        handheldRef.current.move(now, s.panSign * v.right, s.tiltSign * v.down);
+      }
+      lastT = now;
     };
     window.addEventListener("devicemotion", onMotion);
     return () => window.removeEventListener("devicemotion", onMotion);
@@ -561,6 +746,94 @@ export default function TrackerPage() {
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
+  /**
+   * Loads the face AI once (about 7 MB the first time, then a few seconds preparing the
+   * graphics chip, which can freeze the picture). Started with the camera, before anyone is tapped.
+   */
+  // ---- The emergency alert (a fall or seizure of the person being followed; emergency.ts) ----
+  const emergencyRef = useRef(new EmergencyWatch());
+  const audioRef = useRef<AudioContext | null>(null);
+  const ringRef = useRef<(() => void) | null>(null); // stops the ringing
+  const alarmRef = useRef<Alarm | null>(null);
+  const [alarm, setAlarm] = useState<Alarm | null>(null);
+  const [, setTick] = useState(0); // redraws the countdown
+
+  /** Sound needs a tap before it's allowed: called from Start watching and Test the alert. */
+  const unlockSound = useCallback(() => {
+    try {
+      audioRef.current ??= new AudioContext();
+      void audioRef.current.resume();
+    } catch {
+      // no sound on this browser; the alert still shows
+    }
+  }, []);
+
+  const raiseAlarm = useCallback((kind: EmergencyKind) => {
+    if (alarmRef.current) return;
+    const a: Alarm = { kind, phase: "ask", endsAt: Date.now() + EMERGENCY.countdownS * 1000, callStart: 0 };
+    alarmRef.current = a;
+    setAlarm(a);
+    navigator.vibrate?.([400, 200, 400]);
+    beep(audioRef.current);
+  }, []);
+
+  /** The pretend emergency call (never dials anything), and the alert on the family page. */
+  const startCall = useCallback(() => {
+    const a = alarmRef.current;
+    if (!a || a.phase === "calling") return;
+    const next: Alarm = { ...a, phase: "calling", callStart: Date.now() };
+    alarmRef.current = next;
+    setAlarm(next);
+    ringRef.current?.();
+    ringRef.current = ring(audioRef.current);
+    // The family page only knows "fall" so far; a seizure shows there as "Possible fall".
+    report({ kind: "fall", zone: null, posture: "lying" });
+  }, [report]);
+
+  const endAlarm = useCallback(() => {
+    ringRef.current?.();
+    ringRef.current = null;
+    alarmRef.current = null;
+    setAlarm(null);
+  }, []);
+
+  // While the alert is up: tick the countdown, and call when it runs out.
+  useEffect(() => {
+    if (!alarm) return;
+    const id = window.setInterval(() => {
+      setTick((n) => n + 1);
+      const a = alarmRef.current;
+      if (a?.phase === "ask" && Date.now() >= a.endsAt) startCall();
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [alarm, startCall]);
+
+  useEffect(() => () => ringRef.current?.(), []); // stop ringing when leaving the page
+
+  const loadFaces = useCallback(() => {
+    if (faceLoadRef.current) return;
+    setFaceStatus("loading");
+    faceLoadRef.current = createFaceReader();
+    faceLoadRef.current.then(
+      (reader) => {
+        faceReaderRef.current = reader;
+        setFaceStatus("ready");
+      },
+      (e: unknown) => {
+        console.warn("Face recognition couldn't load:", e);
+        setFaceStatus("failed");
+      },
+    );
+  }, []);
+
+  // Face recognition switched off: forget the saved face.
+  useEffect(() => {
+    if (!settings.faces) {
+      faceWatcher.forget();
+      brainRef.current.forgetFaces();
+    }
+  }, [settings.faces, faceWatcher]);
+
   // The tap ring fades by itself; remove it afterwards.
   useEffect(() => {
     if (!ripple) return;
@@ -593,6 +866,7 @@ export default function TrackerPage() {
 
   const startCamera = useCallback(
     async (avoidDeviceId?: string) => {
+      unlockSound(); // the emergency alert can only make sound after a tap
       setError("");
       setCameraStopped(false);
       if (!navigator.mediaDevices?.getUserMedia) {
@@ -635,9 +909,10 @@ export default function TrackerPage() {
         }
         void countCameras().then(setCameraCount);
         if (!detectorRef.current) {
-          detectorLoadRef.current ??= createPersonDetector();
+          detectorLoadRef.current ??= createPersonDetector(preferredDelegate());
           try {
             detectorRef.current = await detectorLoadRef.current;
+            setDelegate(detectorRef.current.delegate);
           } catch (e) {
             detectorLoadRef.current = null;
             stopCamera();
@@ -659,6 +934,7 @@ export default function TrackerPage() {
             }
           }
           watchingRef.current = true;
+          handheldRef.current.reset(); // the hand-held camera angle starts from straight ahead
           report(reporterRef.current.start(performance.now()));
         }
         void keepScreenOn();
@@ -669,7 +945,7 @@ export default function TrackerPage() {
         if (request === cameraRequestRef.current) setLoading(false);
       }
     },
-    [stopCamera, keepScreenOn, report],
+    [stopCamera, keepScreenOn, report, unlockSound],
   );
 
   const stopWatching = useCallback(() => {
@@ -678,6 +954,7 @@ export default function TrackerPage() {
     cameraRequestRef.current++; // cancel a camera start that's still under way
     stopCamera();
     brainRef.current.release();
+    faceWatcher.forget();
     setRunning(false);
     setLoading(false);
     setCameraStopped(false);
@@ -692,6 +969,7 @@ export default function TrackerPage() {
       updateSettings({ camera });
       if (!running) return;
       brainRef.current.release();
+      faceWatcher.forget();
       void startCamera(deviceIdRef.current);
     },
     [running, updateSettings, startCamera],
@@ -737,6 +1015,7 @@ export default function TrackerPage() {
     const dctx = detectCanvas.getContext("2d");
     let raf = 0;
     let lastVideoTime = -1;
+    let lastDetectT = -Infinity;
     let frames = 0;
     let fpsStart = performance.now();
     let fps = 0;
@@ -766,8 +1045,12 @@ export default function TrackerPage() {
       const detector = detectorRef.current;
       if (!video || !detector || !actx || !dctx || video.readyState < 2 || video.currentTime === lastVideoTime) return;
       if (!video.videoWidth || !video.videoHeight) return;
-      lastVideoTime = video.currentTime;
       const t = performance.now();
+      // At most maxDetectFps frames a second: plenty for following people, and less heat and
+      // memory on phones (an iPhone reloaded the page by itself after tracking a while).
+      if (t - lastDetectT < 1000 / TUNING.maxDetectFps) return;
+      lastDetectT = t;
+      lastVideoTime = video.currentTime;
       const vw = video.videoWidth;
       const vh = video.videoHeight;
       const s = settingsRef.current;
@@ -787,21 +1070,7 @@ export default function TrackerPage() {
       const dScale = Math.min(1, DETECT_WIDTH / longSide);
       const dw = Math.max(1, Math.round(uw * dScale));
       const dh = Math.max(1, Math.round(uh * dScale));
-      if (detectCanvas.width !== dw || detectCanvas.height !== dh) {
-        detectCanvas.width = dw;
-        detectCanvas.height = dh;
-      }
-      if (turn === 0) {
-        dctx.drawImage(video, 0, 0, dw, dh);
-      } else {
-        dctx.save();
-        dctx.translate(dw / 2, dh / 2);
-        dctx.rotate((-turn * Math.PI) / 180); // counterclockwise
-        const cw = sideways ? dh : dw; // the camera picture's size before turning
-        const ch = sideways ? dw : dh;
-        dctx.drawImage(video, -cw / 2, -ch / 2, cw, ch);
-        dctx.restore();
-      }
+      drawUpright(detectCanvas, video, turn, dw, dh);
       let found: Detection[] = [];
       try {
         found = detector.detect(detectCanvas, t);
@@ -830,7 +1099,16 @@ export default function TrackerPage() {
       // When the radars are steering (SightLine stand), trust the angle the stand reports.
       if (stand.connected && !cameraSteering && stand.reported) servo.sync(stand.reported, t);
       servo.step(t);
-      const camera = stand.connected ? servo.at(t - TUNING.latencyMs) : { pan: LIMITS.center, tilt: LIMITS.center };
+      // Without a stand, the phone's gyroscope says how it's been turned by hand (if it has one).
+      const handheld = handheldRef.current;
+      // While nobody is being followed, keep the hand-held angle at straight ahead, so a new pick
+      // starts from the middle. (Never mid-tracking: every remembered position would jump.)
+      if (!stand.connected && brainRef.current.currentMode === "idle") handheld.reset();
+      const camera = stand.connected
+        ? servo.at(t - TUNING.latencyMs)
+        : handheld.active
+          ? handheld.at(t - TUNING.latencyMs)
+          : { pan: LIMITS.center, tilt: LIMITS.center };
 
       // Held upright, the picture's width is the camera's narrow side, so swap the two
       // camera angles. Then a step to the side counts the same either way up.
@@ -847,7 +1125,26 @@ export default function TrackerPage() {
         camera,
         tap,
         weak,
+        faces: s.faces ? faceWatcher.takeVerdicts() : [],
       });
+
+      // A tap that picked someone new: forget the old target's face. (A tap on nobody keeps it.)
+      if (out.picked) {
+        faceWatcher.forget();
+        emergencyRef.current.reset();
+      }
+
+      // Emergency: a fall or seizure of the person being followed raises the alert.
+      if (s.emergency) {
+        const kind = emergencyRef.current.update(t, out.mode === "tracking" ? out.target : null, uw / uh);
+        if (kind) raiseAlarm(kind);
+      }
+
+      // Faces: once the face AI is ready, the watcher reads one face now and then in the background.
+      if (s.faces) {
+        loadFaces();
+        if (faceReaderRef.current && out.mode !== "idle") faceWatcher.step(t, people, out, s.matchLimit);
+      }
 
       for (const event of reporterRef.current.update(t, people, uw / uh)) report(event);
 
@@ -870,13 +1167,8 @@ export default function TrackerPage() {
         if (stand.reported) lastAimRef.current = stand.reported;
       }
 
-      const mode = mistModeRef.current;
-      const mistOn =
-        mode === "on" || (mode === "follow" && (MIST_FOLLOW_MODES as readonly string[]).includes(out.mode));
-      stand.setMist(mistOn);
-
       if (overlayRef.current)
-        drawOverlay(overlayRef.current, video, people, out, s.matchLimit, mirroredRef.current, turn);
+        drawOverlay(overlayRef.current, video, people, out, s.matchLimit, mirroredRef.current, turn, faceWatcher.labels, t);
 
       frames++;
       if (t - fpsStart > 1000) {
@@ -898,15 +1190,17 @@ export default function TrackerPage() {
           aim: lastAimRef.current,
           fps,
           people: people.length,
-          mistOn,
           portrait,
           turn,
+          facesSaved: faceWatcher.saved,
+          posture: emergencyRef.current.posture,
+          faceMiss: faceWatcher.miss,
         });
       }
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [running, report]);
+  }, [running, report, loadFaces, faceWatcher, raiseAlarm]);
 
   // Tapping a person. Only a quick, still touch counts: a thumb resting on the edge
   // while you hold the phone, a drag, or a pinch is ignored.
@@ -944,11 +1238,6 @@ export default function TrackerPage() {
       const msg = e instanceof Error ? e.message : String(e);
       if (!/cancel/i.test(msg)) setError(`Couldn't connect to the stand: ${msg}`);
     }
-  };
-
-  const chooseMist = (m: MistMode) => {
-    mistModeRef.current = m;
-    setMistMode(m);
   };
 
   const closeSettings = useCallback(() => {
@@ -1039,7 +1328,10 @@ export default function TrackerPage() {
             {tracking && (
               <button
                 className="min-h-9 rounded-full bg-white/90 px-3 text-sm font-bold text-ink transition-transform active:scale-95"
-                onClick={() => brainRef.current.release()}
+                onClick={() => {
+                  brainRef.current.release();
+                  faceWatcher.forget();
+                }}
               >
                 Release
               </button>
@@ -1072,13 +1364,32 @@ export default function TrackerPage() {
           )}
         </section>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
-          {running && <Chip>{snap.fps.toFixed(0)} fps</Chip>}
+          {running && (
+            <Chip>
+              {snap.fps.toFixed(0)} fps{delegate ? ` · ${delegate}` : ""}
+            </Chip>
+          )}
+          {running && settings.faces && (snap.mode !== "idle" || faceStatus === "loading" || faceStatus === "failed") && (
+            <Chip tone={faceStatus === "ready" && snap.facesSaved > 0 ? "good" : "plain"}>
+              {faceStatus === "loading"
+                ? "Face AI loading..."
+                : faceStatus === "failed"
+                  ? "Face AI unavailable"
+                  : snap.facesSaved > 0
+                    ? "Face saved"
+                    : snap.faceMiss === "small"
+                      ? "Face too far away"
+                      : snap.faceMiss === "none"
+                        ? "No face seen yet"
+                        : "Looking for a face"}
+            </Chip>
+          )}
+          {running && settings.emergency && snap.mode === "tracking" && snap.posture && <Chip>Posture: {snap.posture}</Chip>}
           {connected && (
             <Chip tone={radar ? "good" : "plain"}>
               {radar === null ? "Radar: -" : radar ? "Radar: someone" : "Radar: empty"}
             </Chip>
           )}
-          {(connected || mistMode !== "off") && <Chip tone={snap.mistOn ? "good" : "plain"}>Mist {snap.mistOn ? "on" : "off"}</Chip>}
           {running && <PanDial aim={snap.aim} />}
         </div>
       </div>
@@ -1102,7 +1413,6 @@ export default function TrackerPage() {
         )}
         {error && running && <ErrorBanner text={error} onDismiss={() => setError("")} />}
         <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-3xl bg-black/65 p-1.5">
-          <Choice label="Mist" icon={ICON.drop} options={MIST_OPTIONS} value={mistMode} onChange={chooseMist} />
           <div className="flex items-center gap-1.5">
             {cameraCount > 1 && (
               <BarButton
@@ -1146,6 +1456,11 @@ export default function TrackerPage() {
           mirrored={mirrored}
           fullscreen={canFullscreen ? { on: fullscreen, toggle: toggleFullscreen } : null}
           turnNow={snap.turn}
+          testAlarm={() => {
+            closeSettings();
+            unlockSound();
+            raiseAlarm("fall");
+          }}
         />
       )}
 
@@ -1209,6 +1524,15 @@ export default function TrackerPage() {
           </div>
         </div>
       )}
+      {alarm && (
+        <EmergencyScreen
+          alarm={alarm}
+          familyAlerted={!!cloudRef.current && !sendError}
+          onOk={endAlarm}
+          onCallNow={startCall}
+          onEnd={endAlarm}
+        />
+      )}
     </main>
   );
 }
@@ -1226,8 +1550,10 @@ function SettingsPanel(props: {
   fullscreen: { on: boolean; toggle: () => void } | null;
   /** How far the picture is turned for the AI right now. */
   turnNow: Turn;
+  /** Shows the emergency alert now, for rehearsing the demo. */
+  testAlarm: () => void;
 }) {
-  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow } = props;
+  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow, testAlarm } = props;
   // The test buttons go by the screen. On a mirrored picture the screen's left is the camera's right.
   const side = mirrored ? -1 : 1;
 
@@ -1298,6 +1624,43 @@ function SettingsPanel(props: {
           </fieldset>
 
           <fieldset className="space-y-2">
+            <legend className="font-semibold">Emergency alert</legend>
+            <Choice
+              label="Emergency alert"
+              options={[
+                ["on", "On"],
+                ["off", "Off"],
+              ]}
+              value={s.emergency ? "on" : "off"}
+              onChange={(v) => update({ emergency: v === "on" })}
+            />
+            <Button onClick={testAlarm}>Test the alert</Button>
+            <p className="text-base text-white/90">
+              Watches the person you follow for a fall (on the floor and not getting up) or a seizure (shaking while lying
+              down). Then it asks "Are you OK?" for {EMERGENCY.countdownS} seconds before a pretend emergency call. No
+              real number is ever dialled. A rough guess from the camera, not a medical device.
+            </p>
+          </fieldset>
+
+          <fieldset className="space-y-2">
+            <legend className="font-semibold">Recognise faces</legend>
+            <Choice
+              label="Recognise faces"
+              options={[
+                ["on", "On"],
+                ["off", "Off"],
+              ]}
+              value={s.faces ? "on" : "off"}
+              onChange={(v) => update({ faces: v === "on" })}
+            />
+            <p className="text-base text-white/90">
+              Saves a face fingerprint of the person you tap and uses it to re-find them, even in other clothes. It stays
+              on this phone and is forgotten when you let go. The first time, it downloads about 7 MB.
+              {isIPhone() && " Off at first on iPhones while a page-reload problem is checked."}
+            </p>
+          </fieldset>
+
+          <fieldset className="space-y-2">
             <legend className="font-semibold">Keep people upright for the AI</legend>
             <Choice
               label="Turn the picture"
@@ -1342,7 +1705,7 @@ function SettingsPanel(props: {
           </fieldset>
 
           {slider("Match strictness", "matchLimit", 0.15, 0.7, 0.01, "Lower = harder to fool, but slower to recognise you again. Set it between your own 'closest match' number and a friend's.")}
-          {slider("Aim height", "aimHeight", 0.1, 0.7, 0.05, "Where the camera and mist aim: 0.1 = head, 0.35 = chest, 0.6 = hips.")}
+          {slider("Aim height", "aimHeight", 0.1, 0.7, 0.05, "Where the camera aims: 0.1 = head, 0.35 = chest, 0.6 = hips.")}
           {slider("Camera width (degrees)", "fovH", 40, 100, 1, "How wide the camera sees with the phone sideways. If the stand overshoots you, lower it; if it lags behind, raise it.")}
           {slider("Dead zone (degrees)", "deadZoneDeg", 0.5, 8, 0.5, "Ignore smaller moves. Raise it if the stand twitches while you sit still.")}
 
@@ -1377,7 +1740,7 @@ function SettingsPanel(props: {
           </fieldset>
 
           {/* Resets the tuning; the camera choice stays as it is. */}
-          <Button onClick={() => update({ ...DEFAULT_SETTINGS, camera: s.camera })}>Reset to defaults</Button>
+          <Button onClick={() => update({ ...defaultSettings(), camera: s.camera })}>Reset to defaults</Button>
         </div>
       </div>
     </div>

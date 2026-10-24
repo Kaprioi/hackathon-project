@@ -1,5 +1,7 @@
 # Shopping list
 
+> **Oct 24, 2026:** the humidifier is dropped (parts not obtainable). Skip every humidifier part below (mist maker, fan, tank, tube, MOSFET module).
+
 Last checked Oct 17, 2026. Tick each box once it's actually ordered.
 
 ## Buy

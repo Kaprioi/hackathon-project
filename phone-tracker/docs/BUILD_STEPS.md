@@ -1,10 +1,10 @@
 # Build steps
 
-**Which hardware?** The team is building Kris's **SightLine** head (two radars, iPhone on top). For the base box, the pan-tilt kit, both radars and their wiring, follow Kris's guide: `hardware/build-guide.html` on the `hardware-build-guide` branch. Then come back here for **Part B2 (the humidifier)**, **Part C (firmware)** and **Part D (the website)**.
+**Which hardware?** The team is building Kris's **SightLine** head (one radar for the event, centered under the iPhone). For the base box, the pan-tilt kit, both radars and their wiring, follow Kris's guide: `hardware/build-guide.html` on the `hardware-build-guide` branch. Then come back here for **Part C (firmware)** and **Part D (the website)**. (Part B2, the humidifier, was dropped on Oct 24.)
 
 Parts A and B below are the original single-radar Phone Tracker build. Keep them as a fallback: the website works with either stand.
 
-The one rule that protects the board: the motors, radars, mist maker and fan get power from the 5V supply, never from the ESP32.
+The one rule that protects the board: the motors and radars get power from the 5V supply, never from the ESP32.
 
 ## Install first (all free)
 
@@ -46,6 +46,8 @@ Tools: small Phillips screwdriver, wire strippers or scissors, double-sided foam
 8. **Double-check, then power up.** Compare every wire with the table. Plug the supply into the wall and the ESP32 into the PC with a USB-C data cable.
 
 ## Part B2: the humidifier (both stands)
+
+> **Skip this part (Oct 24, 2026):** the humidifier was dropped because the parts can't be obtained. Leave pin A0 unconnected. Kept for history.
 
 The mist maker and its fan sit in a closed tank **beside** the base box, never inside it. A tube carries the mist up to a nozzle on the head. Geometry and a hole-by-hole breadboard layout are in the 3D mockup: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD. If the mist parts aren't ready, build the same head without it (A0 left unconnected; the website still tracks): https://claude.ai/artifact/S6Zg89U4N5bQv58RC92Qv3
 
@@ -93,6 +95,7 @@ On a phone, held in your hand (a quick test before the stand):
 - Either way up works, also sideways with auto-rotate off on Android: the page reads the motion sensor and turns the picture upright for the AI (Settings → "Keep people upright for the AI" shows what it's doing; pick a turn by hand if Auto gets it wrong). On an iPhone, turn auto-rotate on instead. Pick **Front** or **Back** on the start screen; while it runs, **Flip** in the bottom bar switches cameras (and lets go of the person, since the picture changes).
 - Tap a person with a quick tap. A thumb resting on the screen or a drag is ignored. Android phones buzz briefly when it locks on.
 - **Release** sits next to the state at the top left. **Show log** there lists the last decisions.
+- **Emergency alert:** Settings → **Test the alert** shows the "Are you OK?" countdown and then the pretend emergency call (no real number is dialled). For the real thing, tap the person, then have them fall and stay down (about 3 s), or lie down and shake. Press **I'm OK** to cancel.
 - **Full screen** (Android and PCs) hides the browser bars. iPhones don't allow it from a web page.
 20. To check the tracking logic without a camera: `npm run test:tracker`.
 
@@ -110,7 +113,7 @@ All of these are on the page's **Settings** panel and are saved in the browser.
 25. **Feel.** If it overshoots and swings back past you, lower **Camera width**. If it lags behind you, raise it. If it twitches while you sit still, raise **Dead zone** to 4–5.
 26. **Hiding.** Get under a blanket within about 3 m. The box should turn dashed and say HIDDEN within about half a second. In HLKRadarTool, cap the radar's range at about 3 m.
 27. **Re-finding.** Every box shows a number: how much that person looks like the one you tapped (0.00 = same clothes colours). It turns green when it's under **Match strictness**, meaning "that's them". Note your own number as you walk around the room, then a teammate's. Set **Match strictness** between the two.
-28. **Mist aim.** **Aim height** 0.35 aims at the chest. For someone lying in bed, try 0.2–0.3. Don't aim straight at the face.
+28. **Aim.** **Aim height** 0.35 aims at the chest. For someone lying in bed, try 0.2–0.3.
 
 ## Backup: the native iPhone app (needs the Mac)
 
@@ -133,16 +136,15 @@ Only if the website can't be used on the iPhone. It has no mist control and no F
 | "The camera stopped" | Another app took the camera (FaceTime, the Camera app) | Close that app, then **Restart camera** |
 | "Turn the phone sideways" banner | Rotation lock on | Turn it off in Control Center |
 | Misses people, or one big box around several, with the phone sideways | The picture reaches the AI on its side (auto-rotate off, and no motion sensor reading: iPhone, or Auto turned off) | Turn auto-rotate on, or Settings → "Keep people upright for the AI" → pick 90° or 270° |
-| Very low fps | Slow graphics, or the phone is hot | Close other apps; check the fps chip |
+| Very low fps | Slow graphics, or the phone is hot | Close other apps; check the fps chip (it also says GPU or CPU) |
+| The page reloads by itself after a while (seen on an iPhone) | Probably iOS ending the page for memory or graphics load | Keep Recognise faces off; add `?cpu` (default on iPhones) or `?gpu` to the address to compare; tell Claude which one held up |
+| "Face AI unavailable" | The face models couldn't download (no internet, or jsDelivr blocked) | Check the connection; tracking still works by clothes colours |
 | Motors twitch or buzz | ESP32 GND not on the – rail | Add the GND wire |
 | ESP32 restarts when a motor moves | Motors powered from the ESP32 | Move both red wires to the 5V rail |
 | Upload fails | Charge-only cable, wrong port, or something on pin 12 | Another cable; the port that appears when you plug in; keep pin 12 clear |
 | LightBlue doesn't see the stand | Firmware not running, or the website is connected | Press reset; disconnect the website |
 | Stand turns away from you | Motor direction flipped | Settings → Flip left/right (or up/down) |
 | Swings past you and back | Camera width setting too high | Lower it (Part E step 25) |
-| Mist never turns on | MOSFET not logic-level, or wired to the wrong pin | Check step 11; test with LightBlue (step 12) |
-| Mist stops after 3 s | Website not repeating `1` | Keep the page open in front; check the Mist chip says on |
-| Water on the radars | Nozzle too close or above them | Move the tip forward and outward (Part B2 step 10) |
 | Radar always reads someone there | It sees people behind the target | Cap its range at about 3 m; aim away from crowds |
 | Radar reads 0 under the blanket | Too far, aimed wrong, or metal in front | Stay within 3 m; keep metal away |
 | Flickers between TRACKING and HIDDEN | Detector missing frames | Better light; fewer people in view |

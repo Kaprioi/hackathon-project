@@ -29,11 +29,31 @@ export interface PersonDetector {
   close(): void;
 }
 
-export async function createPersonDetector(): Promise<PersonDetector> {
+/**
+ * Where to run the model: "GPU" (graphics chip, faster) or "CPU". On iPhones the page asks
+ * for the CPU: on Kris's iPhone 14 the page reloaded itself after tracking a while, and a
+ * WebKit bug report describes that with this model on the graphics chip next to a live camera
+ * (bugs.webkit.org/show_bug.cgi?id=321693; not confirmed to be our cause).
+ * Add ?gpu or ?cpu to the page's address to choose by hand.
+ */
+export function preferredDelegate(): "GPU" | "CPU" {
+  const q = new URLSearchParams(location.search);
+  if (q.has("gpu")) return "GPU";
+  if (q.has("cpu")) return "CPU";
+  return isIPhone() ? "CPU" : "GPU";
+}
+
+/** iPhone or iPad, in any browser (they all run on Apple's WebKit). */
+export function isIPhone(): boolean {
+  return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+export async function createPersonDetector(first: "GPU" | "CPU" = "GPU"): Promise<PersonDetector> {
   const files = await FilesetResolver.forVisionTasks(WASM_URL);
   let lastError: unknown = null;
   // The GPU is faster, but not every browser allows it, so fall back to the CPU.
-  for (const delegate of ["GPU", "CPU"] as const) {
+  const order = first === "GPU" ? (["GPU", "CPU"] as const) : (["CPU"] as const);
+  for (const delegate of order) {
     try {
       const detector = await ObjectDetector.createFromOptions(files, {
         baseOptions: { modelAssetPath: MODEL_URL, delegate },

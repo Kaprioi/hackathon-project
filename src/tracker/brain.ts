@@ -51,6 +51,12 @@ export interface FrameInput {
    * pose). Only used to keep following the target right where it already is.
    */
   weak?: Box[];
+  /**
+   * Face checks that just finished (they can be a frame or two old): the person's box at
+   * the time, and whether their face matches the target's. A match re-finds the target
+   * whatever their clothes; a clear mismatch rules that person out.
+   */
+  faces?: { box: Box; same: boolean }[];
 }
 
 export interface BrainOutput {
@@ -67,6 +73,24 @@ export interface BrainOutput {
   matches: (number | null)[];
   /** -1 = left the picture on the left, 1 = on the right, 0 = not following. */
   exitSide: -1 | 0 | 1;
+  /** For each person in `FrameInput.people`: true = their face matched the target's, false = it didn't, null = not known. */
+  faces: (boolean | null)[];
+  /** True on the frame a tap locked onto someone (a new target). */
+  picked: boolean;
+}
+
+/** The person whose box overlaps `box` the most, if more than `min`; else -1. */
+function bestOverlap(people: Box[], box: Box, min: number): number {
+  let best = -1;
+  let bestO = min;
+  people.forEach((p, i) => {
+    const o = iou(p, box);
+    if (o > bestO) {
+      bestO = o;
+      best = i;
+    }
+  });
+  return best;
 }
 
 export class Brain {
@@ -117,6 +141,19 @@ export class Brain {
   /** Someone who's been a steadily better match than the person we're on: since when, and their box. */
   private betterSince: number | null = null;
   private betterBox: Box | null = null;
+  /** What face checks said about people, each following that person's box from frame to frame. */
+  private faceNotes: { box: Box; same: boolean; t: number; seenT: number }[] = [];
+  /** This frame: which people a face check ruled out, and which it confirmed as the target. */
+  private ruledOut = new Set<number>();
+  private faceKnown = new Set<number>();
+  /**
+   * People who were in view at the same time as the target (while we were sure of the
+   * target), followed box to box. They can't be the target, so when the target hides behind
+   * a pillar, the person standing next to it isn't taken instead.
+   */
+  private others: { box: Box; seenT: number }[] = [];
+  /** This frame: which people are such "others". */
+  private seenWith = new Set<number>();
 
   private followDir = 0; // +1 or -1, in servo degrees
   private followSpeed = 0;
@@ -132,6 +169,11 @@ export class Brain {
     return this.mode;
   }
 
+  /** Face recognition switched off: drop what face checks said. */
+  forgetFaces(): void {
+    this.faceNotes = [];
+  }
+
   /** Stop following anyone. */
   release(): void {
     this.mode = "idle";
@@ -142,17 +184,60 @@ export class Brain {
     this.lastBox = null;
     this.aim = null;
     this.lump.stop();
+    this.faceNotes = [];
+    this.others = [];
     this.note = "Released. Tap a person to lock on.";
   }
 
   update(frameIn: FrameInput): BrainOutput {
     const strongCount = frameIn.people.length;
+    // After a long pause (page hidden, phone locked) people may have moved: don't carry notes over.
+    if (frameIn.t - this.prevT > TUNING.longGapMs) {
+      this.faceNotes = [];
+      this.others = [];
+    }
     const f = this.withWeakTarget(frameIn);
-    const looks = f.people.map((p) => (f.image ? lookOf(f.image, p) : null));
+    const allLooks = f.people.map((p) => (f.image ? lookOf(f.image, p) : null));
     let target: Box | null = null;
     let match: number | null = null;
 
-    if (f.tap) this.pick(f, looks);
+    // A tap that picks someone starts afresh: what faces said, and who was "someone else",
+    // was about the old target. (A tap that hits nobody changes nothing.)
+    const picked = f.tap ? this.pick(f, allLooks) : false;
+    if (picked) {
+      this.faceNotes = [];
+      this.others = [];
+    }
+
+    // Faces: someone whose face matched is the target, whatever their clothes; someone whose
+    // face clearly didn't is ruled out (they can't be re-found or kept by their colours).
+    const faceOf = this.mode === "idle" ? f.people.map(() => null) : this.readFaces(f, picked ? [] : (f.faces ?? []));
+    this.ruledOut = new Set(faceOf.flatMap((v, i) => (v === false ? [i] : [])));
+    this.faceKnown = new Set(faceOf.flatMap((v, i) => (v === true ? [i] : [])));
+    // People seen at the same time as the target: follow them on to this frame (a face match beats this).
+    this.seenWith = this.mode === "idle" ? new Set() : this.carryOthers(f);
+    for (const i of this.faceKnown) this.seenWith.delete(i);
+    if (this.mode !== "idle") {
+      // The person we're on: the one whose box best continues the target's (not just anyone touching it).
+      const onIdx = this.mode === "tracking" && this.lastBox ? bestOverlap(f.people, this.lastBox, 0.3) : -1;
+      const known = faceOf.findIndex((v, i) => v === true && i !== onIdx);
+      if (known >= 0) {
+        this.vel = { pan: 0, tilt: 0 };
+        this.lockOn(f, known, "Recognised your face. Locked back on.");
+        this.chainTrusted = true; // the face says it's them, whatever the colours say
+        this.doubtSince = null;
+        this.doubtSpent = false;
+      } else if (onIdx >= 0 && faceOf[onIdx] === false) {
+        // We were following the wrong person, so who was "in view at the same time" means nothing.
+        this.others = [];
+        this.seenWith.clear();
+        this.goLost(f, "That face isn't yours. Looking for you.");
+      }
+    }
+    // While the target is missing, the others can't be re-found by their colours. (While
+    // tracking, a clearly better match may still take over: we might be on the wrong person.)
+    const hideOthers = this.mode !== "tracking";
+    const looks = allLooks.map((l, i) => (this.ruledOut.has(i) || (hideOthers && this.seenWith.has(i)) ? null : l));
 
     switch (this.mode) {
       case "idle":
@@ -175,6 +260,14 @@ export class Brain {
     }
     if (this.mode === "searching" || this.mode === "following") match = this.bestMatch(looks).d;
 
+    // Sure it's the target this frame? Then everyone else in view is someone else: remember them.
+    if (this.mode === "tracking" && target) {
+      const ti = f.people.indexOf(target);
+      const d = ti >= 0 ? this.dist(allLooks[ti]) : null;
+      const sure = ti >= 0 && (this.faceKnown.has(ti) || (d !== null && d <= this.settings.matchLimit * 0.8));
+      if (sure) this.noteOthers(f, target);
+    }
+
     // Seen properly this frame (not only as a weak detection)? Then the weak-detection clock restarts.
     const seenStrong = target !== null && f.people.indexOf(target) >= 0 && f.people.indexOf(target) < strongCount;
     if (seenStrong || (this.mode !== "tracking" && this.mode !== "hidden")) this.weakSince = null;
@@ -183,8 +276,93 @@ export class Brain {
     this.prevCamera = { ...f.camera };
     const exitSide =
       this.mode === "following" ? ((Math.sign(this.followDir * this.settings.panSign) || 0) as -1 | 0 | 1) : 0;
-    const matches = this.mode === "idle" ? looks.map(() => null) : looks.map((l) => this.dist(l));
-    return { mode: this.mode, target, aim: this.aim, note: this.note, match, matches, exitSide };
+    const matches = this.mode === "idle" ? allLooks.map(() => null) : allLooks.map((l) => this.dist(l));
+    const faces = this.mode === "idle" ? f.people.map(() => null) : faceOf;
+    return { mode: this.mode, target, aim: this.aim, note: this.note, match, matches, exitSide, faces, picked };
+  }
+
+  /**
+   * Moves each remembered "other" person along to their box in this frame, and returns which
+   * people they are. Two people overlapping = can't tell who's who, so that one is forgotten.
+   */
+  private carryOthers(f: FrameInput): Set<number> {
+    const found = new Set<number>();
+    for (const n of this.others) {
+      if (f.t - n.seenT > TUNING.othersKeepMs) continue; // out of sight too long to be sure who's who
+      const hits = this.carryHits(f, n.box);
+      if (hits.length === 1) {
+        n.box = f.people[hits[0]];
+        n.seenT = f.t;
+        found.add(hits[0]);
+      } else if (hits.length > 1) {
+        n.seenT = -Infinity; // forget them
+      }
+    }
+    this.others = this.others.filter((n) => f.t - n.seenT < TUNING.othersKeepMs);
+    return found;
+  }
+
+  /**
+   * Who a note about the person in `box` (the previous frame) can be about now: someone whose
+   * box overlaps it by more than carryOverlap, allowing for the camera's own turn. If the target
+   * was seen in the previous frame, a note about someone else never moves onto the target's own
+   * track, and a note about the target never moves off it (someone passing behind the target
+   * and vanishing must not hand their note to the target).
+   */
+  private carryHits(f: FrameInput, box: Box): number[] {
+    const shift = this.cameraShift(f.camera);
+    const move = (b: Box): Box => ({ ...b, x: b.x + shift.x, y: b.y + shift.y });
+    const was = move(box);
+    const targetBefore = this.mode === "tracking" && this.lastBox && this.lastSeenT >= this.prevT ? this.lastBox : null;
+    const targetNow = targetBefore ? move(targetBefore) : null;
+    const aboutTarget = !!targetBefore && iou(box, targetBefore) > TUNING.carryOverlap;
+    return f.people.flatMap((p, i) => {
+      if (iou(p, was) <= TUNING.carryOverlap) return [];
+      if (targetNow && iou(p, targetNow) > TUNING.carryOverlap !== aboutTarget) return [];
+      return [i];
+    });
+  }
+
+  /** Everyone in view apart from the target is someone else (a box mostly over the target's may be the target counted twice). */
+  private noteOthers(f: FrameInput, target: Box): void {
+    for (const p of f.people) {
+      if (p === target || iou(p, target) > 0.3) continue;
+      const known = this.others.find((n) => n.box === p || iou(n.box, p) > 0.3);
+      if (known) {
+        known.box = p;
+        known.seenT = f.t;
+      } else {
+        this.others.push({ box: p, seenT: f.t });
+      }
+    }
+  }
+
+  /**
+   * Adds the face checks that just finished, moves every earlier one along to wherever that
+   * person's box is now, and returns what's known about each person in this frame.
+   */
+  private readFaces(f: FrameInput, verdicts: { box: Box; same: boolean }[]): (boolean | null)[] {
+    for (const v of verdicts) {
+      // A newer verdict about the same person replaces the old one.
+      this.faceNotes = this.faceNotes.filter((n) => iou(n.box, v.box) < 0.3);
+      this.faceNotes.push({ box: v.box, same: v.same, t: f.t, seenT: f.t });
+    }
+    const out: (boolean | null)[] = f.people.map(() => null);
+    for (const n of this.faceNotes) {
+      // Only from one frame to the next, and only when it's clear who's who. A verdict whose
+      // person dropped out of view must not jump to whoever steps into that spot (on Apple's
+      // phone, a turning camera slid another person into it and they got "face ✓").
+      if (n.seenT < this.prevT) continue;
+      const hits = this.carryHits(f, n.box);
+      if (hits.length === 1) {
+        n.box = f.people[hits[0]];
+        n.seenT = f.t;
+        out[hits[0]] = n.same;
+      }
+    }
+    // Forget verdicts whose person wasn't followed into this frame, and old ones (people turn, swap seats).
+    this.faceNotes = this.faceNotes.filter((n) => n.seenT === f.t && f.t - n.t < TUNING.faceVerdictMs);
+    return out;
   }
 
   /**
@@ -225,7 +403,8 @@ export class Brain {
 
   // ---------- picking someone ----------
 
-  private pick(f: FrameInput, looks: (Look | null)[]): void {
+  /** Locks onto the person under the tap. Returns false (and changes nothing) if nobody is there. */
+  private pick(f: FrameInput, looks: (Look | null)[]): boolean {
     const { x, y } = f.tap!;
     let chosen = -1;
     // The smallest box under the finger (so tapping a child in front of an adult picks the child).
@@ -245,7 +424,7 @@ export class Brain {
     }
     if (chosen < 0) {
       this.note = "Nobody there. Tap inside one of the boxes.";
-      return;
+      return false;
     }
     this.anchor = looks[chosen];
     this.look = looks[chosen];
@@ -254,6 +433,7 @@ export class Brain {
     this.chainTrusted = true;
     this.vel = { pan: 0, tilt: 0 };
     this.lockOn(f, chosen, "Locked on. I'll keep you in view, even if you hide.");
+    return true;
   }
 
   /** Start (or resume) tracking person `i` of this frame. */
@@ -282,10 +462,12 @@ export class Brain {
     // looks clearly less like them (a coat on a chair, a passer-by)? Go with the look.
     const limit = this.settings.matchLimit;
     const di = i >= 0 ? this.dist(looks[i]) : null;
-    const best = this.bestMatch(looks);
+    // With the target out of sight, people seen alongside them can't be them.
+    const best = this.bestMatch(i < 0 ? looks.map((l, k) => (this.seenWith.has(k) ? null : l)) : looks);
     // Jumping away from where we expect them needs a stronger match than re-finding
     // them after they're lost: in a crowd, a stranger often scores under matchLimit.
-    if (best.i >= 0 && best.i !== i && best.d !== null && best.d <= limit * TUNING.switchStrict) {
+    // (Never by colours away from someone whose face says they're the target.)
+    if (!this.faceKnown.has(i) && best.i >= 0 && best.i !== i && best.d !== null && best.d <= limit * TUNING.switchStrict) {
       const muchBetter = i < 0 || (di !== null && (di > limit || best.d + TUNING.switchMargin < di));
       // Better, but not by much (the one we're on also roughly matches)? Switch only if it
       // stays that way for a moment, so a single lucky frame can't pull the box away.
@@ -377,7 +559,11 @@ export class Brain {
       this.aim = this.clampAim(lead);
     }
     const unsure = d !== null && d > this.settings.matchLimit;
-    const note = unsure ? "Not sure that's you (the colours don't match). Checking..." : "Tracking you.";
+    const note = this.faceKnown.has(i)
+      ? "Tracking you. Recognised your face."
+      : unsure
+        ? "Not sure that's you (the colours don't match). Checking..."
+        : "Tracking you.";
     this.setMode("tracking", f.t, this.mode === "tracking" ? note : this.note);
   }
 
@@ -390,6 +576,7 @@ export class Brain {
     let best = -1;
     let bestScore = Infinity;
     f.people.forEach((p, i) => {
+      if (this.ruledOut.has(i) || this.seenWith.has(i)) return; // their face isn't the target's, or they were in view with the target
       const w = this.toWorld(p, f.camera);
       const dist = Math.hypot(w.pan - expected.pan, (w.tilt - expected.tilt) * 0.5);
       if (dist > gate) return;
@@ -529,6 +716,7 @@ export class Brain {
     let best = -1;
     let bestOverlap = TUNING.coverPersonOverlap;
     f.people.forEach((p, i) => {
+      if (this.ruledOut.has(i) || this.seenWith.has(i)) return; // their face isn't the target's, or they were in view with the target
       const o = iou(p, cover);
       if (o > bestOverlap) {
         bestOverlap = o;
@@ -544,8 +732,9 @@ export class Brain {
     let best = -1;
     let bestD = Infinity;
     f.people.forEach((p, i) => {
+      if (this.ruledOut.has(i) || this.seenWith.has(i)) return; // their face isn't the target's, or they were in view with the target
       const w = this.toWorld(p, f.camera);
-      const near = Math.abs(w.pan - this.bearing.pan) < TUNING.gateDeg * 2;
+      const near = Math.abs(w.pan - this.bearing.pan) < TUNING.gateDeg; // stepping back out where they hid
       const d = this.dist(looks[i]) ?? (near ? 0 : Infinity);
       const ok = (near && !this.doubtSpent && d < limit * TUNING.trackLookSlack) || d < limit;
       if (ok && d < bestD) {
