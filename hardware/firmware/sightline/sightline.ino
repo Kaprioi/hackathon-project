@@ -13,11 +13,13 @@
 //
 // Also talks Bluetooth to the Phone Tracker website (the /tracker page in this
 // repo, running on the iPhone in the Bluefy browser):
-//   - The website is the boss of the motors while it sends "pan,tilt" aims: when
-//     it can see the person, and also when it turns toward where the radar hears
-//     them (it reads the radar loudness below). When the aims stop for
-//     CAMERA_HOLD_MS (person lost, page closed) or Bluetooth drops, the radars
-//     steer again on their own, exactly as before.
+//   - While the website is connected over Bluetooth, it is the only boss of the
+//     motors: the head goes where its "pan,tilt" aims say (when it can see the
+//     person, and when it turns toward where the radar hears them; it reads the
+//     radar loudness below), and holds still when they stop. The head never
+//     wiggles or sweeps on its own then, so the two can't fight.
+//   - Only once Bluetooth is gone (page closed, phone out of range) do the radars
+//     steer on their own again, exactly as before.
 //   - The website switches the humidifier mist on and off (pin A0; the
 //     humidifier was dropped, so the website keeps it off).
 //   - The head reports radar readings and its angle back to the website.
@@ -91,7 +93,7 @@ const uint32_t FOUND_CONFIRM_MS = 1000;  // must be seen this long to count as "
 #define MOVE_UUID    "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  // website writes "pan,tilt"
 #define RADAR_UUID   "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  // we notify "presence,left,right,pan,tilt"
 #define MIST_UUID    "6e400004-b5a3-f393-e0a9-e50e24dcca9e"  // website writes "1" (on) or "0" (off)
-const uint32_t CAMERA_HOLD_MS = 700;     // camera steers while its aims keep arriving this often
+const uint32_t CAMERA_HOLD_MS = 700;     // the website's aims count as "person in view" (for alerts) this long
 const uint32_t CAMERA_TICK_MS = 20;      // camera steering: move 15% of the way every 20 ms
 const float CAMERA_EASE = 0.15;          // (the website's motor model assumes exactly this)
 const uint32_t MIST_TIMEOUT_MS = 3000;   // no "1" from the website for this long: mist off (safety)
@@ -112,6 +114,7 @@ uint32_t lastCameraTick = 0, lastReport = 0;
 // Written by the Bluetooth callbacks, read by loop().
 volatile float cameraPan = PAN_CENTER, cameraTilt = TILT_LEVEL;
 volatile uint32_t lastCameraMove = 0;    // 0 = the website hasn't steered yet
+volatile bool websiteConnected = false;  // true while the website is connected: it's the boss of the motors
 volatile bool mistWanted = false;
 volatile uint32_t lastMistCommand = 0;
 BLECharacteristic *radarReport = nullptr;
@@ -297,8 +300,14 @@ class MistCallback : public BLECharacteristicCallbacks {
 };
 
 class ConnectionCallback : public BLEServerCallbacks {
-  void onConnect(BLEServer *s) override { Serial.println("Bluetooth: website connected"); }
+  void onConnect(BLEServer *s) override {
+    Serial.println("Bluetooth: website connected (it steers now; the radars only report)");
+    cameraPan = pan;                   // hold still where we are until the website says otherwise
+    cameraTilt = tilt;
+    websiteConnected = true;
+  }
   void onDisconnect(BLEServer *s) override {
+    websiteConnected = false;
     Serial.println("Bluetooth: website disconnected");
     mistWanted = false;                // phone gone: no mist
     lastCameraMove = 0;                // and the radars steer again right away
@@ -399,10 +408,12 @@ void loop() {
   bool mistOn = mistWanted && (int32_t)(now - lastMistCommand) < (int32_t)MIST_TIMEOUT_MS;
   digitalWrite(MIST_PIN, mistOn ? HIGH : LOW);
 
-  // Camera steering: while the website's aims keep arriving, follow them smoothly.
+  // While the website is connected it steers: follow its aims smoothly, and hold
+  // still at the last one when they stop (it's waiting, or has let go).
+  bool websiteSteers = websiteConnected;
   uint32_t cameraAt = lastCameraMove;
   bool cameraSteering = cameraAt != 0 && (int32_t)(now - cameraAt) < (int32_t)CAMERA_HOLD_MS;
-  if (cameraSteering && now - lastCameraTick >= CAMERA_TICK_MS) {
+  if (websiteSteers && now - lastCameraTick >= CAMERA_TICK_MS) {
     lastCameraTick = now;
     pan += (cameraPan - pan) * CAMERA_EASE;
     tilt += (cameraTilt - tilt) * CAMERA_EASE;
@@ -436,9 +447,9 @@ void loop() {
     if (seenSince == 0) seenSince = now;
     // Two radars: turn toward the one that hears the person better. Radar L
     // points left of center, so a stronger left signal means "turn left".
-    // (Skipped while the website is steering: it's the boss then.)
+    // (Skipped while the website is connected: it's the boss then.)
     // One radar: the wiggle below.
-    if (!cameraSteering && radarCount == 2) {
+    if (!websiteSteers && radarCount == 2) {
       if (seenL && seenR) {
         int diff = l - r;
         if (abs(diff) > DEADBAND) movePan(constrain(diff * GAIN, -MAX_STEP, MAX_STEP));
@@ -459,7 +470,7 @@ void loop() {
       wig.active = false;
       Serial.println("-> SEARCHING");
     }
-    if (state != TRACKING) {
+    if (state != TRACKING && !websiteSteers) {
       // Sweep side to side looking for them.
       if (pan >= PAN_MAX) sweepDir = -1;
       if (pan <= PAN_MIN) sweepDir = 1;
@@ -474,8 +485,8 @@ void loop() {
 
   // One radar: keep wiggling while tracking by radar, including the short grace
   // period after a brief miss, so the head keeps homing in on the person. While
-  // the website steers, stop, and start afresh from wherever it left the head.
-  if (cameraSteering) wig.active = false;
+  // the website is connected, stop, and start afresh from wherever it left the head.
+  if (websiteSteers) wig.active = false;
   else if (radarCount == 1 && state == TRACKING) wiggleStep(now, l);
 
   // LED: solid = tracking, slow blink = searching, fast blink = alert sent.
@@ -488,6 +499,6 @@ void loop() {
     Serial.printf("L=%3d R=%3d pan=%3d dist=%3dcm %s WiFi=%s steer=%s mist=%s\n", l, r, (int)pan,
                   (radarCount == 1 || radarL.presenceDetected()) ? radarL.detectionDistance() : radarR.detectionDistance(),
                   names[state], WiFi.status() == WL_CONNECTED ? "on" : "off",
-                  cameraSteering ? "camera" : "radar", mistOn ? "on" : "off");
+                  websiteSteers ? "website" : "radar", mistOn ? "on" : "off");
   }
 }

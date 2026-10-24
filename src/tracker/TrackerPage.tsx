@@ -167,6 +167,12 @@ function defaultSettings(): Settings {
   return { ...DEFAULT_SETTINGS, faces: !isIPhone() };
 }
 
+/** True if the camera turns with the stand (the phone on it), false for a computer's webcam beside it. */
+function cameraTurnsWithStand(s: Settings): boolean {
+  if (s.cameraOnStand !== "auto") return s.cameraOnStand === "yes";
+  return window.matchMedia?.("(pointer: coarse)").matches ?? false; // phones and tablets
+}
+
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -1112,11 +1118,16 @@ export default function TrackerPage() {
       // While nobody is being followed, keep the hand-held angle at straight ahead, so a new pick
       // starts from the middle. (Never mid-tracking: every remembered position would jump.)
       if (!stand.connected && brainRef.current.currentMode === "idle") handheld.reset();
-      const camera = stand.connected
-        ? servo.at(t - TUNING.latencyMs)
-        : handheld.active
-          ? handheld.at(t - TUNING.latencyMs)
-          : { pan: LIMITS.center, tilt: LIMITS.center };
+      // A computer's webcam beside the stand doesn't turn when the motor does: then the camera
+      // always looks straight ahead, and the brain is told separately where the head points.
+      const onStand = cameraTurnsWithStand(s);
+      const head = servo.at(t - TUNING.latencyMs);
+      const camera =
+        stand.connected && onStand
+          ? head
+          : !stand.connected && handheld.active
+            ? handheld.at(t - TUNING.latencyMs)
+            : { pan: LIMITS.center, tilt: LIMITS.center };
 
       // Held upright, the picture's width is the camera's narrow side, so swap the two
       // camera angles. Then a step to the side counts the same either way up.
@@ -1132,6 +1143,7 @@ export default function TrackerPage() {
         radar: stand.connected ? stand.radar : null,
         radarEnergy: stand.connected ? stand.energy : null,
         camera,
+        head: stand.connected && !onStand ? head : undefined,
         tap,
         weak,
         faces: s.faces ? faceWatcher.takeVerdicts() : [],
@@ -1634,6 +1646,25 @@ function SettingsPanel(props: {
             <p className="text-base text-white/90">
               Front for the SightLine stand, where the screen faces the person. The front camera is shown mirrored, like
               a selfie.
+            </p>
+          </fieldset>
+
+          <fieldset className="space-y-2">
+            <legend className="font-semibold">Camera turns with the stand</legend>
+            <Choice
+              label="Camera turns with the stand"
+              options={[
+                ["auto", "Auto"],
+                ["yes", "Yes"],
+                ["no", "No"],
+              ]}
+              value={s.cameraOnStand}
+              onChange={(cameraOnStand) => update({ cameraOnStand })}
+            />
+            <p className="text-base text-white/90">
+              Yes when this phone sits on the stand. No when testing with a computer's webcam next to the stand: then
+              the motor still turns toward you, but the page doesn't think the picture turned with it. Auto picks yes on
+              phones, no on computers. Now: {cameraTurnsWithStand(s) ? "yes" : "no"}.
             </p>
           </fieldset>
 

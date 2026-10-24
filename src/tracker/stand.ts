@@ -45,7 +45,8 @@ export type StandStatus = "unsupported" | "disconnected" | "connecting" | "conne
 
 const MOVE_EVERY_MS = 50; // at most 20 moves a second
 // While the camera is steering, repeat the aim this often even if it hasn't changed.
-// A two-radar (SightLine) stand lets its radars steer once these stop arriving.
+// (Older SightLine firmware let its radars steer once these stopped for 700 ms; the
+// current one holds still while the page is connected.)
 const MOVE_REPEAT_MS = 250;
 const MIST_REPEAT_MS = 1000; // repeat the mist setting every second; the firmware turns mist off after 3 s of silence
 
@@ -119,7 +120,7 @@ export class Stand {
     this.pump();
   }
 
-  /** Stop steering. The stand stays put, or (on a two-radar stand) its radars take over. */
+  /** Stop steering. The stand stays put (older SightLine firmware: its radars take over). */
   releaseControl(): void {
     this.wantMove = null;
   }

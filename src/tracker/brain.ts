@@ -57,6 +57,13 @@ export interface FrameInput {
   radarEnergy?: RadarEnergy | null;
   /** Where the camera was pointing when this frame was taken. */
   camera: Angles;
+  /**
+   * Where the stand's head points, only when the camera does NOT turn with it (a laptop's
+   * webcam beside the stand). Then turning the head can't bring anyone into view, so the
+   * brain doesn't sweep the room for the camera; it just points the head where the radar
+   * hears them. Missing = the camera rides on the head (the phone on the stand).
+   */
+  head?: Angles;
   /** Where the user tapped (0-1 image coordinates), if they tapped this frame. */
   tap?: { x: number; y: number } | null;
   /**
@@ -113,7 +120,7 @@ export interface Whereabouts {
  */
 export function whereaboutsText(w: Whereabouts, mirrored: boolean): string {
   const radar = w.radar === true ? " (the radar hears you)" : w.radar === false ? " (the radar hears nobody)" : "";
-  if (w.checking) return `Out of view - the radar says here. Checking who it is${radar}`;
+  if (w.checking) return `Out of view - the radar says you're where the stand points${radar}`;
   if (w.side === 0) return `Out of view - not sure which side${radar}`;
   const left = mirrored ? w.side > 0 : w.side < 0;
   return `Out of view - to your ${left ? "left" : "right"}${radar}`;
@@ -209,6 +216,10 @@ export class Brain {
   private radarParkSince: number | null = null;
   /** Saw someone who isn't the target while pointed where the radar says. */
   private radarSomeoneElse = false;
+  /** Whether this radar search started knowing which way they went (else the first stop tells). */
+  private radarDirKnown = false;
+  /** Camera not on the stand: since when the radar has been clearly quieter where we point. */
+  private radarFadeSince: number | null = null;
   /** How many radar searches or extra sweeps since the target was last seen (at most RADAR.rounds). */
   private radarRounds = 0;
   /** Where the target hid under the cover (to tell which way the cover went). */
@@ -875,7 +886,9 @@ export class Brain {
     const atLimit = this.aim.pan <= LIMITS.panMin || this.aim.pan >= LIMITS.panMax;
     if (atLimit) this.limitSince ??= f.t;
     if ((atLimit && f.t - this.limitSince! > TUNING.limitPauseMs) || elapsed > TUNING.followMaxMs) {
-      this.startSearching(f);
+      // The camera doesn't turn with the head: sweeping the room can't bring you into view.
+      if (f.head) this.goLost(f, "Out of the camera's view. Waiting for you to come back.");
+      else this.startSearching(f);
     }
     return null;
   }
@@ -930,17 +943,21 @@ export class Brain {
   private startRadar(f: FrameInput, dir: number, note: string): void {
     const e = f.radarEnergy!;
     // Don't know which way? Two radars say; else try the side with more room.
-    const guess = (e.radars === 2 ? louderSide(e) : 0) || (f.camera.pan < LIMITS.center ? 1 : -1);
+    const head = (f.head ?? f.camera).pan;
+    const guess = (e.radars === 2 ? louderSide(e) : 0) || (head < LIMITS.center ? 1 : -1);
     this.followDir = dir || guess; // also used by a sweep afterwards
-    this.believedDir = this.followDir;
+    // One radar with no idea which way: don't claim a side until the first stop has been heard.
+    this.radarDirKnown = !!dir || e.radars === 2;
+    this.believedDir = this.radarDirKnown ? this.followDir : 0;
+    this.radarFadeSince = null;
     this.radarRounds++;
     this.radarParkSince = null;
     this.radarSomeoneElse = false;
     this.radarEmptySince = null;
     // One radar and no idea which way: note how loud it is here, to compare with the first step.
     const here = dir ? undefined : loudest(e);
-    this.radarSweep = e.radars === 1 ? new ListeningSweep(f.camera.pan, this.followDir, f.t, here) : null;
-    this.aim = this.clampAim({ pan: f.camera.pan, tilt: this.aim?.tilt ?? this.bearing.tilt });
+    this.radarSweep = e.radars === 1 ? new ListeningSweep(head, this.followDir, f.t, here) : null;
+    this.aim = this.clampAim({ pan: head, tilt: this.aim?.tilt ?? this.bearing.tilt });
     this.setMode("radar", f.t, note);
   }
 
@@ -967,16 +984,16 @@ export class Brain {
     const tilt = this.aim?.tilt ?? this.bearing.tilt;
     let pointed: boolean;
     if (this.radarSweep) {
-      this.aim = this.clampAim({ pan: this.radarSweep.update(f.t, f.camera.pan, quiet ? 0 : e.left), tilt });
+      this.aim = this.clampAim({ pan: this.radarSweep.update(f.t, (f.head ?? f.camera).pan, quiet ? 0 : e.left), tilt });
       pointed = this.radarSweep.parkedAt !== null;
       if (!pointed) {
-        this.believedDir = this.radarSweep.direction;
+        if (this.radarDirKnown || this.radarSweep.heard.length >= 2) this.believedDir = this.radarSweep.direction;
         this.note = "The radar hears someone. Turning and listening for where they are.";
       }
     } else {
       const side = quiet ? 0 : louderSide(e);
       const dt = Math.max(0, f.t - this.prevT) / 1000;
-      const from = this.aim?.pan ?? f.camera.pan;
+      const from = this.aim?.pan ?? (f.head ?? f.camera).pan;
       this.aim = this.clampAim({ pan: from + side * RADAR.turnSpeed * dt, tilt });
       const stuck = (side < 0 && this.aim.pan <= LIMITS.panMin) || (side > 0 && this.aim.pan >= LIMITS.panMax);
       pointed = side === 0 || stuck;
@@ -1005,6 +1022,21 @@ export class Brain {
       : quiet
         ? "The radar has gone quiet. Looking here a moment..."
         : "The radar says someone's here. Looking...";
+    if (f.head) {
+      // The camera doesn't turn with the head, so a sweep can't help. Keep pointing where the
+      // radar hears them, and listen again only once it's clearly quieter here (they moved).
+      if (this.radarSweep && (quiet || loudest(e) < this.radarSweep.peak - RADAR.fadeDrop)) {
+        this.radarFadeSince ??= f.t;
+        if (f.t - this.radarFadeSince > RADAR.fadeMs) {
+          this.radarRounds = 0; // following them by radar, not searching: no limit
+          this.startRadar(f, 0, "You moved, out of the camera's view. Listening again with the radar.");
+        }
+      } else {
+        this.radarFadeSince = null;
+      }
+      if (!this.radarSomeoneElse) this.note = quiet ? this.note : "Out of the camera's view. The radar says you're over here.";
+      return null;
+    }
     if (f.t - this.radarParkSince > RADAR.parkMs) {
       this.startSearching(
         f,

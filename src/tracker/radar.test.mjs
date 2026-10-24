@@ -80,9 +80,11 @@ function realMotor() {
  * `radars`: 1 (facing ahead), 2 (toed out 25° each way), or null (no radar connected).
  * The radar reports the loudest person, like the real one, and hears its own motion
  * while the head turns. `quiet`: it hears nobody. `loudness: false`: an old stand that
- * only says yes or no.
+ * only says yes or no. `webcam`: the camera is a laptop's webcam beside the stand, always
+ * looking straight ahead ("fixed": the page knows; "fixed-unknown": the page thinks the
+ * camera turns with the head, as before the "Camera turns with the stand" setting).
  */
-function room({ radars = 1, quiet = false, loudness: withLoudness = true } = {}) {
+function room({ radars = 1, quiet = false, loudness: withLoudness = true, webcam = null } = {}) {
   const motor = realMotor();
   const guess = new ServoModel(); // where the page thinks the camera points
   guess.step(0);
@@ -118,7 +120,8 @@ function room({ radars = 1, quiet = false, loudness: withLoudness = true } = {})
       sim.t += FRAME_MS;
       motor.step(sim.t);
       guess.step(sim.t);
-      const real = motor.at(sim.t - TUNING.latencyMs); // the picture shows where the camera really was
+      // The picture shows where the camera really was.
+      const real = webcam ? { pan: LIMITS.center, tilt: LIMITS.center } : motor.at(sim.t - TUNING.latencyMs);
       const img = { width: W, height: H, data: new Uint8ClampedArray(W * H * 4).fill(128) };
       const boxes = [];
       for (const p of sim.people) {
@@ -130,8 +133,10 @@ function room({ radars = 1, quiet = false, loudness: withLoudness = true } = {})
         fillRect(img, x0, x1, 0.5, 0.8, p.bottom);
         boxes.push({ x: x0, y: 0.2, w: x1 - x0, h: 0.6 });
       }
-      const camera = guess.at(sim.t - TUNING.latencyMs);
-      const out = brain.update({ t: sim.t, people: boxes, image: img, camera, tap, ...sim.radar() });
+      const head = guess.at(sim.t - TUNING.latencyMs);
+      const fixed = webcam === "fixed";
+      const camera = fixed ? { pan: LIMITS.center, tilt: LIMITS.center } : head;
+      const out = brain.update({ t: sim.t, people: boxes, image: img, camera, head: fixed ? head : undefined, tap, ...sim.radar() });
       if (out.aim && CAMERA_STEERS_IN.includes(out.mode)) {
         motor.setTarget(out.aim);
         guess.setTarget(out.aim);
@@ -152,7 +157,7 @@ function room({ radars = 1, quiet = false, loudness: withLoudness = true } = {})
 
     /** Taps the person at `pan` (in view) and tracks them for a second. */
     lockOn(person) {
-      const x = 0.5 + (person.pan - motor.current.pan) / FOV;
+      const x = 0.5 + (person.pan - (webcam ? LIMITS.center : motor.current.pan)) / FOV;
       const out = sim.step({ x, y: 0.5 });
       assert.equal(out.mode, "tracking");
       sim.run(1000);
@@ -238,6 +243,8 @@ test("one radar: you walk out on the left, the head turns left and finds you", (
   assert.match(whereaboutsText(where, true), /to your right/, "a mirrored (selfie) picture flips the words");
   const last = sim.log.at(-1);
   assert.equal(last.mode, "tracking", `should have found you, ended ${last.mode}: ${last.note}`);
+  // The page never lets go of the motor while it searches (no gap for the stand to fill in).
+  for (const l of lost) assert.ok(l.aim && CAMERA_STEERS_IN.includes(l.mode), `no aim at ${l.t} ms in ${l.mode}`);
   assert.ok(Math.abs(sim.motor.current.pan - 35) < 8, `should face you at 35°, faces ${sim.motor.current.pan.toFixed(0)}°`);
 });
 
@@ -372,3 +379,54 @@ test("Bluetooth drops during a radar search: it sweeps the room the usual way", 
   const out = sim.run(200);
   assert.ok(out.mode === "searching" || out.mode === "lost", `ended ${out.mode}`);
 });
+
+// ---------- a laptop's webcam beside the stand (the camera doesn't turn with the motor) ----------
+
+test("laptop webcam: the motor turns to face you and stays there (it ran off to the end before)", () => {
+  const face = (webcam) => {
+    const sim = room({ radars: 1, webcam });
+    const me = you(110);
+    sim.people.push(me);
+    sim.lockOn(me);
+    sim.run(4000); // you stand still
+    return sim.motor.current.pan;
+  };
+  const fixed = face("fixed");
+  assert.ok(Math.abs(fixed - 110) < 4, `should point at you (110°), points at ${fixed.toFixed(0)}°`);
+  // The bug: the page thought the picture turned with the motor, so you seemed to keep
+  // moving away, and the motor chased you to its end stop.
+  const before = face("fixed-unknown");
+  assert.ok(before > 160, `reproduces the old runaway: ${before.toFixed(0)}°`);
+});
+
+test("laptop webcam: you step out on the left, the motor turns left toward you, no blind sweeping", () => {
+  const sim = room({ radars: 1, webcam: "fixed" });
+  const me = you(90);
+  sim.people.push(me);
+  sim.lockOn(me);
+  const from = sim.t;
+  // Walk left out of the webcam's view and stop at 35°, where only the radar hears you.
+  sim.run(15000, (p) => {
+    p.pan = Math.max(35, p.pan - (60 * FRAME_MS) / 1000);
+  });
+  const after = sim.log.filter((l) => l.t > from && l.mode !== "tracking");
+  assert.ok(after.some((l) => l.mode === "radar"), "the radar should guide the motor");
+  assert.ok(!after.some((l) => l.mode === "searching"), "no sweeping: it can't bring you into the webcam's view");
+  const where = after.find((l) => l.out.whereabouts).out.whereabouts;
+  assert.equal(whereaboutsText(where, false).includes("to your left"), true, "the screen says you're to the left");
+  const pans = sim.motor.history.filter((h) => h.t > from).map((h) => h.pan);
+  assert.ok(Math.max(...pans) < 100, `the motor never swings off the other way (reached ${Math.max(...pans).toFixed(0)}°)`);
+  assert.ok(pans.some((p) => Math.abs(p - 35) < 15), "the motor points toward you at some point");
+  // Off round behind the stand to 150° (out of the webcam's view, out of the radar's hearing
+  // where it points): it listens again and follows you there.
+  me.pan = 150;
+  sim.run(12000);
+  assert.equal(sim.log.at(-1).mode, "radar", `ended ${sim.log.at(-1).mode}: ${sim.log.at(-1).note}`);
+  assert.ok(Math.abs(sim.motor.current.pan - 150) < 15, `should point at you (150°), points at ${sim.motor.current.pan.toFixed(0)}°`);
+  // Back into the webcam's view: locked straight back on.
+  sim.run(2000, (p) => {
+    p.pan = Math.min(85, p.pan + (60 * FRAME_MS) / 1000);
+  });
+  assert.equal(sim.log.at(-1).mode, "tracking");
+});
+

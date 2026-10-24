@@ -82,6 +82,11 @@ export class ListeningSweep {
     return this.dir;
   }
 
+  /** The loudest it has heard at any stop (0 before the first). */
+  get peak(): number {
+    return this.best()?.energy ?? 0;
+  }
+
   /**
    * Call every frame with where the camera points now and how loud the radar is.
    * Returns where the head should point.

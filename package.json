@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/tracker/handheld.test.mjs src/tracker/faces.test.mjs src/tracker/emergency.test.mjs src/tracker/radar.test.mjs src/family/status.test.mjs",
-    "test:tracker": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/tracker/handheld.test.mjs src/tracker/faces.test.mjs src/tracker/emergency.test.mjs src/tracker/radar.test.mjs"
+    "test": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/tracker/handheld.test.mjs src/tracker/faces.test.mjs src/tracker/emergency.test.mjs src/tracker/radar.test.mjs src/tracker/stand.test.mjs src/family/status.test.mjs",
+    "test:tracker": "node --test src/tracker/brain.test.mjs src/tracker/events.test.mjs src/tracker/orientation.test.mjs src/tracker/handheld.test.mjs src/tracker/faces.test.mjs src/tracker/emergency.test.mjs src/tracker/radar.test.mjs src/tracker/stand.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/nunito": "^5.3.0",

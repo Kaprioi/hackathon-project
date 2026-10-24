@@ -58,6 +58,12 @@ export interface Settings {
   faces: boolean;
   /** Watch the tracked person for a fall or seizure and raise the emergency alert (emergency.ts). */
   emergency: boolean;
+  /**
+   * Does the camera turn with the stand? Yes for the phone on the stand. No for a laptop's
+   * webcam beside the stand (testing on a PC): then the page must not think the picture
+   * turns when the motor does. "auto" = yes on phones and tablets, no on computers.
+   */
+  cameraOnStand: "auto" | "yes" | "no";
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -72,6 +78,7 @@ export const DEFAULT_SETTINGS: Settings = {
   turn: "auto",
   faces: true, // the page starts with false on iPhones (see TrackerPage loadSettings)
   emergency: true,
+  cameraOnStand: "auto",
 };
 
 /** Timing and behaviour of the tracking brain. */
@@ -199,6 +206,12 @@ export const RADAR = {
   /** Pointed where the radar says, and the camera doesn't see them there for this long: sweep the room instead. */
   parkMs: 2500,
   /**
+   * Camera not on the stand (a laptop's webcam): stay pointed where the radar is loudest
+   * until it's this much quieter than it was there for `fadeMs` (they moved), then listen again.
+   */
+  fadeDrop: 15,
+  fadeMs: 1000,
+  /**
    * After a sweep, look again (radar search or another sweep) while the radar still hears
    * someone, up to this many times. Then LOST, so a dog or a fan can't keep it searching forever.
    */
@@ -271,8 +284,9 @@ export const DETECT_WIDTH = 640;
 /**
  * Which tracking states let the phone steer the stand (RADAR SEARCH steers by the radar's
  * loudness, but it's still the phone deciding). In the others (TAP A PERSON and LOST) the
- * website stops sending moves, and a SightLine stand steers by radar on its own instead,
- * which also works in the dark. HIDDEN also stops sending moves once it loses track of the
- * cover while the radar still senses someone, if the stand doesn't report radar loudness.
+ * website stops sending moves and the stand holds still. (The SightLine firmware only
+ * steers by radar on its own once Bluetooth is gone; older firmware did it whenever moves
+ * stopped, so HIDDEN still stops sending moves when it loses the cover and the stand
+ * doesn't report radar loudness.)
  */
 export const CAMERA_STEERS_IN = ["tracking", "hidden", "following", "searching", "radar"] as const;
