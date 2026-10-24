@@ -4,9 +4,12 @@
 //
 // How the pieces fit:
 //   camera frame -> detector.ts (find people) -> brain.ts (decide) -> stand.ts (Bluetooth to the ESP32)
+//                                               -> events.ts (small text events) -> cloud.ts (Supabase, for the family page)
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, CSSProperties, PointerEvent, ReactNode } from "react";
+import { Link } from "react-router";
+import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
 import { Brain, MODE_LABEL } from "./brain.ts";
 import type { Settings } from "./config.ts";
@@ -19,8 +22,11 @@ import {
   MIST_FOLLOW_MODES,
   TUNING,
 } from "./config.ts";
+import { Cloud } from "./cloud.ts";
 import type { PersonDetector } from "./detector.ts";
 import { createPersonDetector } from "./detector.ts";
+import type { MovementEvent } from "./events.ts";
+import { Reporter } from "./events.ts";
 import type { Angles, Box } from "./geometry.ts";
 import { centerX, centerY, contains } from "./geometry.ts";
 import { ServoModel } from "./servoModel.ts";
@@ -45,6 +51,26 @@ interface LogLine {
   time: string;
   mode: Mode;
   note: string;
+}
+
+/** Is someone signed in, so updates can go to the family page? */
+type Account = "checking" | "signed-in" | "signed-out" | "no-database";
+
+/** Plain words for the "family sees" line. */
+const EVENT_WORDS: Record<MovementEvent["kind"], string> = {
+  moving: "Moving around",
+  still: "Staying still",
+  nobody: "Nobody in view",
+  fall: "Possible fall",
+  heartbeat: "Still watching",
+  started: "Started watching",
+  stopped: "Stopped watching",
+};
+
+function describe(e: MovementEvent): string {
+  return [EVENT_WORDS[e.kind], e.zone && `${e.zone} side`, e.posture && e.posture !== "unknown" && e.posture]
+    .filter(Boolean)
+    .join(" - ");
 }
 
 const SETTINGS_KEY = "phoneTracker.settings.v1";
@@ -263,6 +289,7 @@ const ICON = {
   drop: <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z" />,
   expand: <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />,
   shrink: <path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" />,
+  stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
 };
 
 function Icon({ children, className = "size-6" }: { children: ReactNode; className?: string }) {
@@ -291,7 +318,7 @@ function PanDial({ aim }: { aim: Angles | null }) {
   const ny = 40 - 30 * Math.sin(angle);
   return (
     <div
-      className="flex items-center gap-1.5 rounded-2xl bg-black/65 px-2 py-1 text-xs"
+      className="flex items-center gap-1.5 rounded-2xl bg-black/65 px-2 py-1 text-sm"
       aria-label={`Stand pointing at ${pan.toFixed(0)} degrees`}
     >
       <svg width="56" height="32" viewBox="0 0 80 46" aria-hidden="true">
@@ -301,7 +328,7 @@ function PanDial({ aim }: { aim: Angles | null }) {
       </svg>
       <div className="leading-tight whitespace-nowrap">
         <div>Pan {pan.toFixed(0)}°</div>
-        <div className="text-white/70">Tilt {(aim?.tilt ?? LIMITS.center).toFixed(0)}°</div>
+        <div className="text-white/90">Tilt {(aim?.tilt ?? LIMITS.center).toFixed(0)}°</div>
       </div>
     </div>
   );
@@ -309,7 +336,7 @@ function PanDial({ aim }: { aim: Angles | null }) {
 
 function Chip({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "good" }) {
   const toneClass = tone === "good" ? "bg-leaf text-white" : "bg-black/65 text-white";
-  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${toneClass}`}>{children}</span>;
+  return <span className={`rounded-full px-2.5 py-0.5 text-sm font-semibold ${toneClass}`}>{children}</span>;
 }
 
 function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
@@ -333,7 +360,7 @@ function BarButton(
   return (
     <button
       {...rest}
-      className={`flex min-h-12 min-w-14 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-1 text-xs leading-none font-bold transition-transform active:scale-95 disabled:opacity-40 ${color} ${className}`}
+      className={`flex min-h-12 min-w-14 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-1 text-sm leading-none font-bold transition-transform active:scale-95 disabled:opacity-40 ${color} ${className}`}
     >
       <Icon className="size-5">{icon}</Icon>
       <span>{label}</span>
@@ -354,7 +381,7 @@ function Choice<T extends string>(props: {
   return (
     <div role="group" aria-label={label} className="flex items-center gap-1 rounded-2xl bg-white/10 p-1">
       {icon && (
-        <span className="flex items-center gap-1 px-1.5 text-xs font-bold">
+        <span className="flex items-center gap-1 px-1.5 text-sm font-bold">
           <Icon className="size-5">{icon}</Icon>
           {label}
         </span>
@@ -383,7 +410,7 @@ function ErrorBanner({ text, onDismiss }: { text: string; onDismiss: () => void 
       className="pointer-events-auto flex max-w-xl flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-2xl bg-red-700 px-4 py-2 text-sm font-semibold text-white"
     >
       <span>{text}</span>
-      <button className="min-h-9 underline" onClick={onDismiss}>
+      <button className="min-h-11 px-2 underline" onClick={onDismiss}>
         Dismiss
       </button>
     </div>
@@ -410,8 +437,15 @@ export default function TrackerPage() {
   const lastAimRef = useRef<Angles | null>(null);
   const testingRef = useRef(false); // true while the motor test buttons are in charge
   const mirroredRef = useRef(settingsRef.current.camera === "front");
+  const reporterRef = useRef<Reporter>(new Reporter());
+  const cloudRef = useRef<Cloud | null>(null);
+  const sendChainRef = useRef<Promise<void>>(Promise.resolve());
+  const watchingRef = useRef(false); // true from "Start watching" until "Stop watching" (flips don't count)
 
   const [running, setRunning] = useState(false);
+  const [account, setAccount] = useState<Account>(supabase ? "checking" : "no-database");
+  const [lastSent, setLastSent] = useState("");
+  const [sendError, setSendError] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [settings, setSettings] = useState<Settings>(settingsRef.current);
@@ -450,6 +484,29 @@ export default function TrackerPage() {
     return () => {
       stand.onChange = () => {};
     };
+  }, []);
+
+  // Check whether someone is signed in (the family page only works for signed-in people).
+  useEffect(() => {
+    if (!supabase) return;
+    void supabase.auth.getSession().then(({ data }) => setAccount(data.session ? "signed-in" : "signed-out"));
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => setAccount(session ? "signed-in" : "signed-out"));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  /** Queue one small text event for the family page. Sent in order; failures are shown, not thrown. */
+  const report = useCallback((event: MovementEvent) => {
+    const cloud = cloudRef.current;
+    if (!cloud) return;
+    sendChainRef.current = sendChainRef.current.then(() =>
+      cloud.send(event).then(
+        () => {
+          setLastSent(describe(event));
+          setSendError("");
+        },
+        (e: unknown) => setSendError(e instanceof Error ? e.message : String(e)),
+      ),
+    );
   }, []);
 
   // While this page is open: use the whole screen (under the notch too, with the
@@ -563,6 +620,20 @@ export default function TrackerPage() {
             return;
           }
         }
+        // First start (not a camera flip or a wake-up): connect to the family page and say so.
+        if (!watchingRef.current) {
+          if (supabase && !cloudRef.current) {
+            try {
+              cloudRef.current = await Cloud.connect(supabase);
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              setSendError(msg);
+              setError(`Your family won't see updates: ${msg}`);
+            }
+          }
+          watchingRef.current = true;
+          report(reporterRef.current.start(performance.now()));
+        }
         void keepScreenOn();
         setRunning(true);
       } catch (e) {
@@ -571,8 +642,21 @@ export default function TrackerPage() {
         if (request === cameraRequestRef.current) setLoading(false);
       }
     },
-    [stopCamera, keepScreenOn],
+    [stopCamera, keepScreenOn, report],
   );
+
+  const stopWatching = useCallback(() => {
+    if (watchingRef.current) report(reporterRef.current.stop());
+    watchingRef.current = false;
+    cameraRequestRef.current++; // cancel a camera start that's still under way
+    stopCamera();
+    brainRef.current.release();
+    setRunning(false);
+    setLoading(false);
+    setCameraStopped(false);
+    void wakeLockRef.current?.release();
+    wakeLockRef.current = null;
+  }, [stopCamera, report]);
 
   /** Switch to the front or back camera. The picture changes completely, so let go of the target. */
   const chooseCamera = useCallback(
@@ -605,6 +689,8 @@ export default function TrackerPage() {
   useEffect(() => {
     const stand = standRef.current;
     return () => {
+      if (watchingRef.current) report(reporterRef.current.stop());
+      watchingRef.current = false;
       stopCamera();
       detectorRef.current?.close();
       detectorRef.current = null;
@@ -612,7 +698,7 @@ export default function TrackerPage() {
       stand.disconnect();
       void wakeLockRef.current?.release();
     };
-  }, [stopCamera]);
+  }, [stopCamera, report]);
 
   // The main loop: once per new camera frame.
   useEffect(() => {
@@ -712,6 +798,8 @@ export default function TrackerPage() {
         tap,
       });
 
+      for (const event of reporterRef.current.update(t, people, vw / vh)) report(event);
+
       // A short buzz when a tap locks on (Android phones; iPhones can't vibrate from a web page).
       if (tap && out.mode === "tracking" && out.target) {
         const b = out.target;
@@ -766,7 +854,7 @@ export default function TrackerPage() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [running]);
+  }, [running, report]);
 
   // Tapping a person. Only a quick, still touch counts: a thumb resting on the edge
   // while you hold the phone, a drag, or a pinch is ignored.
@@ -872,9 +960,26 @@ export default function TrackerPage() {
         </div>
       )}
 
-      {/* Top: what it's doing on the left, readings on the right */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2" style={SAFE_TOP}>
-        <section className="pointer-events-auto max-w-[min(30rem,62vw)] min-w-0 rounded-2xl bg-black/65 px-3 py-2" aria-live="polite">
+      {/* Top: the privacy sign (always on screen while the camera is on), then what it's
+          doing on the left and readings on the right */}
+      <div className="pointer-events-none absolute inset-x-0 top-0">
+        {running && (
+          <div
+            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 bg-leaf px-3 py-1.5 text-center font-extrabold text-white"
+            style={{ ...SIDES, paddingTop: "max(0.375rem, env(safe-area-inset-top))" }}
+          >
+            <span className="text-base">● Camera on - video stays on this phone</span>
+            <span className="text-sm font-bold">
+              {sendError
+                ? "Family can't see updates right now"
+                : cloudRef.current
+                  ? `Family sees: ${lastSent || "starting..."}`
+                  : "Not signed in: family can't see updates"}
+            </span>
+          </div>
+        )}
+      <div className="flex items-start justify-between gap-2 pt-2" style={running ? SIDES : SAFE_TOP}>
+        <section className="pointer-events-auto max-w-[min(30rem,62vw)] min-w-0 rounded-2xl bg-black/70 px-3 py-2" aria-live="polite">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full px-2.5 py-0.5 font-mono text-sm font-extrabold ${MODE_STYLE[snap.mode].pill}`}>
               {MODE_LABEL[snap.mode]}
@@ -888,16 +993,16 @@ export default function TrackerPage() {
               </button>
             )}
           </div>
-          <p className="mt-1 text-sm leading-snug">{running ? snap.note : "Start the camera to begin."}</p>
+          <p className="mt-1 text-base leading-snug">{running ? snap.note : "Start the camera to begin."}</p>
           {snap.match !== null && (snap.mode === "lost" || snap.mode === "searching" || snap.mode === "following") && (
-            <p className="text-xs text-white/75">
+            <p className="text-sm text-white/90">
               Closest match {snap.match.toFixed(2)} (locks on below{" "}
               {(settings.matchLimit * (snap.mode === "following" ? TUNING.followLookSlack : 1)).toFixed(2)})
             </p>
           )}
           {log.length > 0 && (
             <button
-              className="min-h-8 text-xs font-semibold text-white/75 underline underline-offset-2"
+              className="min-h-9 text-sm font-semibold text-white/90 underline underline-offset-2"
               onClick={() => setShowLog((v) => !v)}
               aria-expanded={showLog}
             >
@@ -905,9 +1010,9 @@ export default function TrackerPage() {
             </button>
           )}
           {showLog && (
-            <ol className="space-y-0.5 border-t border-white/15 pt-1 text-xs" aria-label="What the tracker decided">
+            <ol className="space-y-0.5 border-t border-white/15 pt-1 text-sm" aria-label="What the tracker decided">
               {log.map((l, i) => (
-                <li key={`${l.time}-${i}`} className={i === 0 ? "" : "text-white/60"}>
+                <li key={`${l.time}-${i}`} className={i === 0 ? "" : "text-white/80"}>
                   <span className="font-mono">{l.time}</span> {l.note}
                 </li>
               ))}
@@ -924,6 +1029,7 @@ export default function TrackerPage() {
           {(connected || mistMode !== "off") && <Chip tone={snap.mistOn ? "good" : "plain"}>Mist {snap.mistOn ? "on" : "off"}</Chip>}
           {running && <PanDial aim={snap.aim} />}
         </div>
+      </div>
       </div>
 
       {/* Bottom: messages, then the controls */}
@@ -971,14 +1077,7 @@ export default function TrackerPage() {
                 setShowSettings((v) => !v);
               }}
             />
-            {canFullscreen && (
-              <BarButton
-                icon={fullscreen ? ICON.shrink : ICON.expand}
-                label="Full screen"
-                aria-pressed={fullscreen}
-                onClick={toggleFullscreen}
-              />
-            )}
+            {running && <BarButton icon={ICON.stop} label="Stop" aria-label="Stop watching" onClick={stopWatching} />}
           </div>
         </div>
       </div>
@@ -993,18 +1092,23 @@ export default function TrackerPage() {
           chooseCamera={chooseCamera}
           cameraBusy={loading}
           mirrored={mirrored}
+          fullscreen={canFullscreen ? { on: fullscreen, toggle: toggleFullscreen } : null}
         />
       )}
 
       {!running && (
-        <div className="absolute inset-0 z-10 overflow-y-auto bg-black/85" style={SAFE_ALL}>
-          <div className="mx-auto flex min-h-full max-w-lg flex-col items-center justify-center gap-4 px-2 py-6 text-center">
-            <h1 className="text-2xl font-extrabold sm:text-3xl">Phone Tracker</h1>
-            <p className="text-base">
-              Keeps a person in view, and the humidifier's mist pointed at them, as they move around the room. Even
-              when they hide under a blanket or walk out of the picture.
+        <div className="absolute inset-0 z-10 overflow-y-auto bg-black" style={SAFE_ALL}>
+          <div className="mx-auto flex min-h-full max-w-lg flex-col items-center justify-center gap-3 px-2 py-3 text-center [@media(min-height:600px)]:gap-4 [@media(min-height:600px)]:py-6">
+            <h1 className="text-2xl font-extrabold [@media(min-height:600px)]:text-3xl">Phone camera</h1>
+            <p className="text-base [@media(min-height:600px)]:text-xl">
+              Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a
+              few words, how things are going.
             </p>
-            {isTouch && (
+            <p className="rounded-2xl bg-white px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
+              Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or
+              pictures ever leave it.
+            </p>
+            {isTouch && account !== "signed-out" && (
               <Choice
                 label="Which camera"
                 options={[
@@ -1016,18 +1120,39 @@ export default function TrackerPage() {
                 disabled={loading}
               />
             )}
-            <Button onClick={() => void startCamera()} disabled={loading} className="w-full max-w-xs text-lg">
-              {loading ? "Starting..." : "Start camera"}
-            </Button>
-            {loading && <p className="text-sm text-white/75">The first start downloads the AI model (a few MB).</p>}
+            {account === "signed-out" ? (
+              <div className="space-y-3">
+                <p className="text-base [@media(min-height:600px)]:text-xl">Please sign in first, so your family can see the updates.</p>
+                <Link
+                  to="/login"
+                  className="inline-flex min-h-14 items-center justify-center rounded-2xl bg-white px-8 text-xl font-extrabold text-brand no-underline [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl"
+                >
+                  Sign in
+                </Link>
+              </div>
+            ) : (
+              <button
+                onClick={() => void startCamera()}
+                disabled={loading || account === "checking"}
+                className="min-h-14 w-full rounded-2xl bg-white px-8 text-xl font-extrabold text-brand transition-transform active:scale-95 disabled:opacity-60 [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl"
+              >
+                {loading ? "Starting..." : "Start watching"}
+              </button>
+            )}
+            {loading && <p className="text-base text-white/90">The first start downloads the AI model (a few MB).</p>}
             {error && <ErrorBanner text={error} onDismiss={() => setError("")} />}
-            {!Stand.supported() && (
-              <p className="text-sm text-sun">
-                This browser can't use Bluetooth, so it can't move the stand. You can still test the tracking. On
-                iPhone, open this page in the Bluefy app.
+            {account === "no-database" && (
+              <p className="text-base text-sun">
+                The database isn't set up on this website yet, so you can try the camera but your family won't see
+                anything.
               </p>
             )}
-            <p className="text-sm text-white/70">Everything runs on this device. No video is recorded or sent anywhere.</p>
+            {!Stand.supported() && (
+              <p className="text-base text-white/90">
+                Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this
+                page in the Bluefy app.
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -1044,8 +1169,10 @@ function SettingsPanel(props: {
   chooseCamera: (camera: Camera) => void;
   cameraBusy: boolean;
   mirrored: boolean;
+  /** Full screen on/off, where the browser allows it (Android and PCs, not iPhone). */
+  fullscreen: { on: boolean; toggle: () => void } | null;
 }) {
-  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored } = props;
+  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen } = props;
   // The test buttons go by the screen. On a mirrored picture the screen's left is the camera's right.
   const side = mirrored ? -1 : 1;
 
@@ -1073,14 +1200,14 @@ function SettingsPanel(props: {
       </span>
       <input
         type="range"
-        className="h-9 w-full accent-[#3ddc97]"
+        className="h-12 w-full accent-[#3ddc97]"
         min={min}
         max={max}
         step={step}
         value={s[key]}
         onChange={(e) => update({ [key]: Number(e.target.value) } as Partial<Settings>)}
       />
-      <span className="text-sm text-white/70">{help}</span>
+      <span className="text-base text-white/90">{help}</span>
     </label>
   );
 
@@ -1109,15 +1236,25 @@ function SettingsPanel(props: {
                 </Button>
               ))}
             </div>
-            <p className="text-sm text-white/70">
+            <p className="text-base text-white/90">
               Front for the SightLine stand, where the screen faces the person. The front camera is shown mirrored, like
               a selfie.
             </p>
           </fieldset>
 
+          {fullscreen && (
+            <fieldset className="space-y-2">
+              <legend className="font-semibold">Screen</legend>
+              <Button active={fullscreen.on} onClick={fullscreen.toggle}>
+                {fullscreen.on ? "Leave full screen" : "Full screen"}
+              </Button>
+              <p className="text-base text-white/90">Hides the browser's bars, so the camera picture is bigger.</p>
+            </fieldset>
+          )}
+
           <fieldset className="space-y-2">
             <legend className="font-semibold">Motor directions</legend>
-            <p className="text-sm text-white/70">If the stand turns away from you, flip that direction.</p>
+            <p className="text-base text-white/90">If the stand turns away from you, flip that direction.</p>
             <div className="flex flex-wrap gap-2">
               <Button active={s.panSign === -1} onClick={() => update({ panSign: s.panSign === 1 ? -1 : 1 })}>
                 Flip left/right

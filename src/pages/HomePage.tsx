@@ -9,12 +9,19 @@ import {
   HeroIllustration,
   MovementIcon,
   PhoneOnTableIcon,
-  PillIcon,
 } from "../components/illustrations";
 
-// There is no sign-up page yet, so "Get started" goes to the login page for now.
-const GET_STARTED = "/login";
+// The About Us page at "/". "Get started" opens the login page on its "Create your account" form.
+const GET_STARTED = "/login?mode=sign-up";
 const LOG_IN = "/login";
+
+// The only pages in the app. Shown in the header on every screen size.
+const navLinks = [
+  { to: "/", label: "About Us" },
+  { to: "/login", label: "Sign in" },
+  { to: "/tracker", label: "Phone camera" },
+  { to: "/dashboard", label: "Family" },
+];
 
 const steps = [
   {
@@ -27,13 +34,13 @@ const steps = [
     icon: <MovementIcon />,
     bubble: "bg-lilac",
     title: "CareNest watches for movement",
-    text: "The phone follows movement around the room — left and right, up and down — and learns what a normal day looks like.",
+    text: "The phone notices if someone is moving, sitting still, or may have fallen, and which side of the room they are in.",
   },
   {
     icon: <FamilyPhoneIcon />,
     bubble: "bg-mint",
-    title: "Family hears first",
-    text: "If something seems wrong, family and carers get a message on their phone right away.",
+    title: "Family sees how things are",
+    text: "Family open the CareNest family page and see, in plain words, what is happening right now.",
   },
 ];
 
@@ -42,25 +49,25 @@ const features = [
     icon: <AlertIcon />,
     bg: "bg-peach",
     title: "Fall & quiet alerts",
-    text: "If the phone sees a fall, or no movement for too long, family is told at once.",
+    text: "If the phone thinks someone may have fallen, or it stops checking in, the family page says so in big letters.",
   },
   {
     icon: <CheckInIcon />,
     bg: "bg-mint",
-    title: "“I’m okay” button",
-    text: "One big, happy tap to say good morning to everyone.",
-  },
-  {
-    icon: <PillIcon />,
-    bg: "bg-sun",
-    title: "Pill reminders",
-    text: "Gentle reminders at the right time, ticked off when taken.",
+    title: "Video stays on the phone",
+    text: "The camera picture never leaves the phone. Only short notes like “moving around, left side” are sent.",
   },
   {
     icon: <DashboardIcon />,
     bg: "bg-lilac",
-    title: "Family dashboard",
-    text: "One simple page shows how the day is going, for the whole family.",
+    title: "Family page",
+    text: "One simple page shows what is happening right now and a short list of today’s news.",
+  },
+  {
+    icon: <MovementIcon />,
+    bg: "bg-sun",
+    title: "Updates by itself",
+    text: "The family page changes the moment something happens. No need to reload or ring round.",
   },
 ];
 
@@ -86,12 +93,22 @@ export default function HomePage() {
         Skip to main content
       </a>
 
-      <header className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
+      <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-5">
         <Logo />
-        <nav aria-label="Account">
-          <ButtonLink to={LOG_IN} variant="outline">
-            Log in
-          </ButtonLink>
+        <nav aria-label="Main">
+          <ul className="flex flex-wrap gap-2">
+            {navLinks.map((link) => (
+              <li key={link.to}>
+                <Link
+                  to={link.to}
+                  aria-current={link.to === "/" ? "page" : undefined}
+                  className="inline-flex min-h-12 items-center rounded-2xl px-4 text-lg font-extrabold text-brand no-underline hover:bg-lilac aria-[current=page]:bg-lilac aria-[current=page]:text-ink"
+                >
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
         </nav>
       </header>
 
@@ -100,7 +117,8 @@ export default function HomePage() {
         <section className="px-6 pb-20 pt-8" aria-labelledby="hero-title">
           <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
             <div>
-              <h1 id="hero-title" className="text-4xl font-extrabold leading-tight md:text-5xl">
+              <p className="text-lg font-extrabold uppercase tracking-wide text-brand">About Us</p>
+              <h1 id="hero-title" className="mt-2 text-4xl font-extrabold leading-tight md:text-5xl">
                 Stay close to the people you love,{" "}
                 <mark className="bg-transparent bg-[linear-gradient(transparent_55%,var(--color-sun)_55%)] px-1 text-inherit">
                   even from far away
@@ -108,17 +126,17 @@ export default function HomePage() {
                 .
               </h1>
               <p className="mt-5 max-w-[34ch] text-xl text-muted">
-                A phone on the table quietly keeps an eye on the room. If Grandma has a fall or a very quiet day, you'll
-                know straight away — and she stays independent at home.
+                CareNest turns a spare phone on the table into a gentle helper. It notices movement in the room, and
+                family can see on their own phone that all is well — so Grandma can stay independent at home.
               </p>
               <div className="mt-8 flex flex-wrap gap-4">
                 <ButtonLink to={GET_STARTED}>Get started</ButtonLink>
                 <ButtonLink to={LOG_IN} variant="outline">
-                  Log in
+                  Sign in
                 </ButtonLink>
               </div>
               <ul className="mt-8 flex flex-wrap gap-3" aria-label="Why families choose CareNest">
-                {["Just a phone on a table", "Easy 10-minute setup", "Private by default"].map((item) => (
+                {["Just a phone on a table", "Nothing to wear", "Video stays on the phone"].map((item) => (
                   <li key={item} className="rounded-full border-2 border-mint bg-white px-4 py-2 font-bold text-leaf">
                     <span aria-hidden="true">✓ </span>
                     {item}
@@ -137,7 +155,7 @@ export default function HomePage() {
               How it works
             </h2>
             <p className="mx-auto mb-12 mt-3 max-w-[40ch] text-center text-xl text-muted">
-              From a phone on the table to a message on your phone.
+              From a phone on the table to an update on your phone.
             </p>
             <div className="relative">
               {/* Dashed line joining the three steps (wide screens only) */}
@@ -195,11 +213,24 @@ export default function HomePage() {
                 Everyone in the loop
               </h2>
               <p className="mb-8 mt-4 text-xl text-muted">
-                Invite children, grandchildren, neighbours or a carer. Everyone sees the same simple update, so nobody
-                has to ring round to check.
+                Add children, grandchildren, neighbours or a carer to your CareNest home. Everyone sees the same simple
+                update, so nobody has to ring round to check.
               </p>
               <ButtonLink to={GET_STARTED}>Get started</ButtonLink>
             </div>
+          </div>
+        </section>
+
+        {/* Who we are */}
+        <section className="px-6 pb-20" aria-labelledby="team-title">
+          <div className="mx-auto max-w-3xl rounded-[40px] bg-white px-8 py-12 text-center">
+            <h2 id="team-title" className="text-4xl font-extrabold">
+              Who we are
+            </h2>
+            <p className="mt-4 text-xl text-muted">
+              We are a small hackathon team. Many of us have parents and grandparents who live alone, and we wanted a
+              simple, kind way to stay close without cameras sending pictures anywhere or gadgets to wear.
+            </p>
           </div>
         </section>
 
@@ -209,13 +240,13 @@ export default function HomePage() {
             <h2 id="cta-title" className="text-4xl font-extrabold">
               Ready to feel closer?
             </h2>
-            <p className="mt-3 text-xl">Set up in about 10 minutes. We'll guide you every step.</p>
+            <p className="mt-3 text-xl">Make an account, stand a phone on the table and press “Start watching”.</p>
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <ButtonLink to={GET_STARTED} variant="inverse">
                 Get started
               </ButtonLink>
               <ButtonLink to={LOG_IN} variant="inverse-outline">
-                Log in
+                Sign in
               </ButtonLink>
             </div>
           </div>

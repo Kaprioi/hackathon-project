@@ -7,3 +7,6 @@ build/
 .next/
 .DS_Store
 *.log
+hardware/firmware/**/secrets.h
+__pycache__/
+supabase/.temp/

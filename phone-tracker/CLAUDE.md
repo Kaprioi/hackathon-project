@@ -122,7 +122,9 @@ Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on
 
 - Plan: website + SightLine head + mist that follows you. Plain version first.
 - Website: works end to end in Chrome on Apple's PC with a still photo fed in as the camera. It locks on from behind, follows off the edge, sweeps, re-finds by clothes, and holds HIDDEN. 13 automated tests pass. Not yet tried on a real phone (Samsung in Chrome, iPhone in Bluefy) or with the real stand.
-- Oct 24: the page was reworked for phones (bottom control bar, front/back **Flip**, mirrored selfie view, taps that ignore a resting thumb, either way up, safe areas, camera recovery after switching apps). Checked at phone sizes in Chrome with a fake camera; not on a real phone yet. The wall fix is pushed to PR #6.
+- Oct 24: the page was reworked for phones (bottom control bar, front/back **Flip**, mirrored selfie view, taps that ignore a resting thumb, either way up, safe areas, camera recovery after switching apps). Checked at phone sizes in Chrome with a fake camera; not on a real phone yet.
+- Oct 24: Kris merged PR #6 into `main` (1:48 AM), plus #8 (login, family dashboard) and #10 (the phone sends short movement events, including "Possible fall", to Supabase for the family page). Today's work (wall fix, phone page, blanket tracking) was combined with that on branch `tracker-phone-friendly`, in a new PR into `main`. The page now has Kris's privacy banner, sign-in and Stop watching.
+- Plan (Oct 24): pivot the pitch toward elderly care. Apple chose "fall alert + face check": fall detection from body pose on the tracked person, an "I'm OK" countdown, an alert to the family, and face recognition to confirm it's the elderly person. Not built yet.
 - Firmware: the single-radar `.ino` got the mist switch; never compiled or run on hardware. The SightLine merge is written as a proposal PR for Kris; not compiled.
 - 3D mockup of SightLine + mist, with a hole-by-hole breadboard layout: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD. Fallback without mist: https://claude.ai/artifact/S6Zg89U4N5bQv58RC92Qv3 (both made in a separate session).
 - Apple's first live webcam test (Oct 23): after hiding behind a wall, the box got stuck on something nearby and never followed again. Fixed: the target's look is now kept from the moment of the tap, a "sort of" match is only trusted for 1.5 s, a clearly better match anywhere wins, and the colour fingerprint was made finer (it used to score red, orange and brown as identical). Each box now shows its match number.
@@ -133,7 +135,7 @@ Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on
 
 1. Which iPhone goes on the rig (Apple's friend's), and in which case? SightLine assumes an iPhone 14 in a case.
 2. Does Bluefy on that iPhone allow the camera? Test: open https://webrtc.github.io/samples/src/content/getusermedia/gum/ in Bluefy.
-3. How does the phone get an https link to `/tracker`? The repo is already connected to Vercel (project `carenest` in the team's "Hackathon project" Vercel account). Vercel blocks preview builds of dennisliang07's commits because that account isn't a team member, so PR #6 has no preview link. The owner merging with a normal merge commit (not squash) should deploy it from `main`; likely, not yet confirmed. Alternatives: the owner adds Apple to the Vercel team (needs Pro), or a tunnel from the PC.
+3. How does the phone get an https link to `/tracker`? The repo is already connected to Vercel (project `carenest` in the team's "Hackathon project" Vercel account). Vercel blocks preview builds of dennisliang07's commits because that account isn't a team member, so PRs have no preview link. PR #6 is merged, so `main` should now deploy `/tracker`; not yet confirmed. Alternatives: the owner adds Apple to the Vercel team (needs Pro), or a tunnel from the PC.
 4. Will Kris accept the firmware merge PR (Bluetooth + mist added to SightLine, pan range widened to 10–170°)?
 5. Which orders were placed? Tick them in `docs/SHOPPING_LIST.md`. The humidifier parts need approval before buying.
 6. What are the event's real length, date and rules on pre-built hardware and code?
@@ -141,7 +143,7 @@ Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on
 ## Next steps
 
 1. Test the phone-friendly page through the Cloudflare tunnel (`docs/HANDOFF_2026-10-24.md`): the Samsung in Chrome, the iPhone in Bluefy (also answers open question 2). Check tapping, Flip, both ways up, and the fps chip.
-2. Ask the repo owner to merge PR #4 and PR #6 (website), then open the deployed `/tracker` on the iPhone in Bluefy. Check the frame rate.
+2. Kris reviews and merges the `tracker-phone-friendly` PR; then open the deployed `/tracker` on the iPhone in Bluefy. Check the frame rate.
 3. Try `/tracker` with the PC webcam: walk out of view, hide behind a chair, come back.
 4. Kris reviews the firmware merge, PR #7 (into `hardware-build-guide`); upload it and test with the website (`docs/BUILD_STEPS.md`).
 5. Approve and buy the humidifier parts; test the mist reach and whether droplets reach the radars.
