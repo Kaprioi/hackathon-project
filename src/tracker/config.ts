@@ -8,7 +8,9 @@ export const BLE = {
   name: "PhoneTracker",
   service: "6e400001-b5a3-f393-e0a9-e50e24dcca9e",
   move: "6e400002-b5a3-f393-e0a9-e50e24dcca9e", // write "pan,tilt", like "90,90"
-  radar: "6e400003-b5a3-f393-e0a9-e50e24dcca9e", // notifies "1" (someone there) or "0"
+  // notifies "1" (someone there) or "0" (old one-radar stand), or
+  // "presence,left,right,pan,tilt[,radars]" like "1,42,0,95.0,90.0,1" (SightLine, see RADAR below)
+  radar: "6e400003-b5a3-f393-e0a9-e50e24dcca9e",
   // write "1" (mist on) or "0" (off). The humidifier was dropped on Oct 24, so the page
   // never turns it on; kept so the website and firmware still match.
   mist: "6e400004-b5a3-f393-e0a9-e50e24dcca9e",
@@ -163,6 +165,47 @@ export const TUNING = {
 };
 
 /**
+ * The radar on the stand's head (radarGuide.ts). When the person is out of the picture but
+ * the radar still hears someone, the phone turns the head where the radar is loudest and the
+ * camera checks who it is. Starting points, not yet measured on the real head.
+ */
+export const RADAR = {
+  /**
+   * How many radars the head has: 1 = one facing straight ahead (the SightLine head on main),
+   * 2 = a left and a right one. The config switch: a stand that reports its count (the
+   * SightLine firmware in this repo does) overrides it.
+   */
+  count: 1 as 1 | 2,
+  /**
+   * Two radars: which way the head turns (in motor degrees, +1 or -1) when the LEFT radar is
+   * louder. +1 matches the firmware ("a stronger left signal means turn left" with
+   * PAN_DIRECTION = 1). Flip it if the head turns away from the louder radar.
+   */
+  leftPan: 1 as 1 | -1,
+  /** 0-100. Below this a radar hears nobody (the firmware's MIN_ENERGY). */
+  minEnergy: 15,
+  /** Ignore loudness differences smaller than this (the firmware's DEADBAND). */
+  deadband: 8,
+  /** One radar, the listening sweep: turn this far between stops (about half the camera's width)... */
+  stepDeg: 30,
+  /** ...wait this long once there (the radar hears its own motion while the head turns)... */
+  settleMs: 250,
+  /** ...then listen this long, averaging the loudness. */
+  listenMs: 350,
+  /** Stop waiting for the head to reach a stop after this long (it may be stuck at an end). */
+  moveMaxMs: 1200,
+  /** Two radars: turn toward the louder one at this speed (degrees/second). */
+  turnSpeed: 45,
+  /** Pointed where the radar says, and the camera doesn't see them there for this long: sweep the room instead. */
+  parkMs: 2500,
+  /**
+   * After a sweep, look again (radar search or another sweep) while the radar still hears
+   * someone, up to this many times. Then LOST, so a dog or a fan can't keep it searching forever.
+   */
+  rounds: 3,
+};
+
+/**
  * Face fingerprints (faces.ts). Distances are face-api's: 0 = the same picture; it suggests
  * 0.6 as the line between the same person and someone else. These are starting points to
  * tune on real faces, not measured yet.
@@ -226,9 +269,10 @@ export const DETECT_WIDTH = 640;
 
 
 /**
- * Which tracking states let the camera steer the stand. In the others (TAP A PERSON
- * and LOST) the website stops sending moves, and a two-radar SightLine stand
- * steers by radar instead, which also works in the dark. HIDDEN also stops sending
- * moves once it loses track of the cover while the radar still senses someone.
+ * Which tracking states let the phone steer the stand (RADAR SEARCH steers by the radar's
+ * loudness, but it's still the phone deciding). In the others (TAP A PERSON and LOST) the
+ * website stops sending moves, and a SightLine stand steers by radar on its own instead,
+ * which also works in the dark. HIDDEN also stops sending moves once it loses track of the
+ * cover while the radar still senses someone, if the stand doesn't report radar loudness.
  */
-export const CAMERA_STEERS_IN = ["tracking", "hidden", "following", "searching"] as const;
+export const CAMERA_STEERS_IN = ["tracking", "hidden", "following", "searching", "radar"] as const;

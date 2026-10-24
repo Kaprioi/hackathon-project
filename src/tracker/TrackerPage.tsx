@@ -12,7 +12,7 @@ import type { ButtonHTMLAttributes, CSSProperties, PointerEvent, ReactNode } fro
 import { Link } from "react-router";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
-import { Brain, MODE_LABEL } from "./brain.ts";
+import { Brain, MODE_LABEL, whereaboutsText } from "./brain.ts";
 import type { Settings } from "./config.ts";
 import {
   ANALYSIS_WIDTH,
@@ -41,6 +41,7 @@ import { centerX, centerY, contains, iou } from "./geometry.ts";
 import { ServoModel } from "./servoModel.ts";
 import type { StandStatus } from "./stand.ts";
 import { Stand } from "./stand.ts";
+import type { RadarEnergy } from "./radarGuide.ts";
 
 type Camera = Settings["camera"];
 
@@ -60,6 +61,8 @@ interface Snapshot {
   posture: "standing" | "sitting" | "lying" | null;
   /** Why no face was read lately: none where the head should be, or too far away. */
   faceMiss: ReadMiss | null;
+  /** Where the target is believed to be while out of view, in words ("Out of view - to your left"). */
+  whereabouts: string | null;
 }
 
 /** Face recognition: not wanted, still loading its AI, ready, or couldn't load. */
@@ -263,6 +266,7 @@ const MODE_STYLE: Record<Mode, { pill: string; stroke: string }> = {
   hidden: { pill: "bg-sun text-ink", stroke: "#ffd84d" },
   following: { pill: "bg-coral text-ink", stroke: "#ff9f7a" },
   searching: { pill: "bg-coral text-ink", stroke: "#ff9f7a" },
+  radar: { pill: "bg-lilac text-ink", stroke: "#b9a4f5" },
   lost: { pill: "bg-red-700 text-white", stroke: "#ff6b6b" },
 };
 
@@ -355,8 +359,9 @@ function drawOverlay(
     ctx.setLineDash([]);
   }
 
-  // Ran out of the picture: a big arrow on that side (left/right of the upright picture).
-  if (out.mode === "following" && out.exitSide !== 0) {
+  // Ran out of the picture, or the radar hears them off to one side: a big arrow on that
+  // side (left/right of the upright picture).
+  if ((out.mode === "following" || out.mode === "radar") && out.exitSide !== 0) {
     const left = out.exitSide < 0;
     const tip = pointToScreen(left ? 0.02 : 0.98, 0.5);
     const a = pointToScreen(left ? 0.1 : 0.9, 0.42);
@@ -637,6 +642,7 @@ export default function TrackerPage() {
   const [showLog, setShowLog] = useState(() => window.matchMedia?.("(min-width: 1024px)").matches ?? false);
   const [standStatus, setStandStatus] = useState<StandStatus>(standRef.current.status);
   const [radar, setRadar] = useState<boolean | null>(null);
+  const [radarEnergy, setRadarEnergy] = useState<RadarEnergy | null>(null);
   const [mirrored, setMirrored] = useState(mirroredRef.current);
   const [cameraCount, setCameraCount] = useState(0);
   const [cameraStopped, setCameraStopped] = useState(false);
@@ -655,6 +661,7 @@ export default function TrackerPage() {
     facesSaved: 0,
     posture: null,
     faceMiss: null,
+    whereabouts: null,
   });
   const [faceStatus, setFaceStatus] = useState<FaceStatus>("off");
   const [delegate, setDelegate] = useState(""); // "GPU" or "CPU": where the person detector runs
@@ -668,6 +675,7 @@ export default function TrackerPage() {
     stand.onChange = () => {
       setStandStatus(stand.status);
       setRadar(stand.radar);
+      setRadarEnergy(stand.energy);
     };
     return () => {
       stand.onChange = () => {};
@@ -1122,6 +1130,7 @@ export default function TrackerPage() {
         people,
         image,
         radar: stand.connected ? stand.radar : null,
+        radarEnergy: stand.connected ? stand.energy : null,
         camera,
         tap,
         weak,
@@ -1195,6 +1204,7 @@ export default function TrackerPage() {
           facesSaved: faceWatcher.saved,
           posture: emergencyRef.current.posture,
           faceMiss: faceWatcher.miss,
+          whereabouts: out.whereabouts ? whereaboutsText(out.whereabouts, mirroredRef.current) : null,
         });
       }
     };
@@ -1337,8 +1347,9 @@ export default function TrackerPage() {
               </button>
             )}
           </div>
+          {running && snap.whereabouts && <p className="mt-1 text-lg font-extrabold leading-snug">{snap.whereabouts}</p>}
           <p className="mt-1 text-base leading-snug">{running ? snap.note : "Start the camera to begin."}</p>
-          {snap.match !== null && (snap.mode === "lost" || snap.mode === "searching" || snap.mode === "following") && (
+          {snap.match !== null && (snap.mode === "lost" || snap.mode === "searching" || snap.mode === "following" || snap.mode === "radar") && (
             <p className="text-sm text-white/90">
               Closest match {snap.match.toFixed(2)} (locks on below{" "}
               {(settings.matchLimit * (snap.mode === "following" ? TUNING.followLookSlack : 1)).toFixed(2)})
@@ -1388,6 +1399,9 @@ export default function TrackerPage() {
           {connected && (
             <Chip tone={radar ? "good" : "plain"}>
               {radar === null ? "Radar: -" : radar ? "Radar: someone" : "Radar: empty"}
+              {/* How loud: one number with one radar, left and right with two. */}
+              {radarEnergy &&
+                (radarEnergy.radars === 2 ? ` (L ${radarEnergy.left} · R ${radarEnergy.right})` : ` (${radarEnergy.left})`)}
             </Chip>
           )}
           {running && <PanDial aim={snap.aim} />}

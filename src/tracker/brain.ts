@@ -8,8 +8,13 @@
 //                 A person shape that walks along with the cover is them. If the cover
 //                 is lost but the radar still senses them, let the radars steer.
 //   FOLLOWING     they ran out of the frame. Keep turning the way they went.
-//   SEARCHING     not found where expected: sweep across the room once.
-//   LOST          give up moving; watch for someone who looks like them.
+//   SEARCHING     not found where expected: sweep across the room once (again while
+//                 the radar still senses someone, a few times at most).
+//   RADAR SEARCH  out of the picture, but the radar hears someone: turn where the radar
+//                 is loudest (radarGuide.ts) and let the camera say who it is. The target
+//                 locks back on; anyone else is "someone else" and the search goes on.
+//   LOST          give up moving; watch for someone who looks like them. If the radar
+//                 goes quiet and then hears someone again, turn to see who it is.
 //
 // This file has no camera, Bluetooth or screen code, so it can be tested on a PC
 // (see brain.test.ts).
@@ -17,12 +22,14 @@
 import type { Look, RgbaImage } from "./appearance.ts";
 import { blendLook, lookDistance, lookOf } from "./appearance.ts";
 import type { Settings } from "./config.ts";
-import { LIMITS, TUNING } from "./config.ts";
+import { LIMITS, RADAR, TUNING } from "./config.ts";
 import type { Angles, Box } from "./geometry.ts";
 import { area, centerX, centerY, clamp, contains, iou } from "./geometry.ts";
 import { LumpTracker, toGray } from "./lump.ts";
+import type { RadarEnergy } from "./radarGuide.ts";
+import { ListeningSweep, loudest, louderSide } from "./radarGuide.ts";
 
-export type Mode = "idle" | "tracking" | "hidden" | "following" | "searching" | "lost";
+export type Mode = "idle" | "tracking" | "hidden" | "following" | "searching" | "radar" | "lost";
 
 export const MODE_LABEL: Record<Mode, string> = {
   idle: "TAP A PERSON",
@@ -30,6 +37,7 @@ export const MODE_LABEL: Record<Mode, string> = {
   hidden: "HIDDEN",
   following: "FOLLOWING",
   searching: "SEARCHING",
+  radar: "RADAR SEARCH",
   lost: "LOST",
 };
 
@@ -42,6 +50,11 @@ export interface FrameInput {
   image: RgbaImage | null;
   /** The radar: true = someone there, false = nobody, null = no radar connected. */
   radar: boolean | null;
+  /**
+   * How loud the radar(s) hear someone, if the stand reports it (SightLine firmware).
+   * Used to turn toward someone who is out of the picture. Null or missing = only yes/no.
+   */
+  radarEnergy?: RadarEnergy | null;
   /** Where the camera was pointing when this frame was taken. */
   camera: Angles;
   /** Where the user tapped (0-1 image coordinates), if they tapped this frame. */
@@ -71,12 +84,39 @@ export interface BrainOutput {
   match: number | null;
   /** For each person in `FrameInput.people`: how much they look like the target (0 = same), or null. */
   matches: (number | null)[];
-  /** -1 = left the picture on the left, 1 = on the right, 0 = not following. */
+  /**
+   * Following them out of the picture, or turning where the radar hears them: -1 = they're
+   * believed to be off the left of the picture, 1 = off the right, 0 = neither.
+   */
   exitSide: -1 | 0 | 1;
+  /** Where the target is believed to be while out of view (null while in view, or nobody picked). */
+  whereabouts: Whereabouts | null;
   /** For each person in `FrameInput.people`: true = their face matched the target's, false = it didn't, null = not known. */
   faces: (boolean | null)[];
   /** True on the frame a tap locked onto someone (a new target). */
   picked: boolean;
+}
+
+/** Where the target is believed to be while out of view. */
+export interface Whereabouts {
+  /** -1 = off the left of the picture, 1 = off the right, 0 = not sure which side. */
+  side: -1 | 0 | 1;
+  /** The radar: true = it hears someone, false = quiet, null = no radar. */
+  radar: boolean | null;
+  /** Pointed where the radar says they are; the camera is checking who's there. */
+  checking: boolean;
+}
+
+/**
+ * The words for the screen, like "Out of view - to your left (the radar hears you)".
+ * `mirrored`: the picture is shown flipped (selfie), so the screen's left is the picture's right.
+ */
+export function whereaboutsText(w: Whereabouts, mirrored: boolean): string {
+  const radar = w.radar === true ? " (the radar hears you)" : w.radar === false ? " (the radar hears nobody)" : "";
+  if (w.checking) return `Out of view - the radar says here. Checking who it is${radar}`;
+  if (w.side === 0) return `Out of view - not sure which side${radar}`;
+  const left = mirrored ? w.side > 0 : w.side < 0;
+  return `Out of view - to your ${left ? "left" : "right"}${radar}`;
 }
 
 /** The person whose box overlaps `box` the most, if more than `min`; else -1. */
@@ -156,10 +196,23 @@ export class Brain {
   private seenWith = new Set<number>();
 
   private followDir = 0; // +1 or -1, in servo degrees
+  /** Which way (+1 or -1 servo degrees) we believe the target is while out of view: the edge they left by, or the radar's side. */
+  private believedDir = 0;
   private followSpeed = 0;
   private followFrom: Angles = { pan: LIMITS.center, tilt: LIMITS.center };
   private limitSince: number | null = null;
   private sweepGoals: number[] = [];
+
+  /** RADAR SEARCH with one radar: the stop-and-listen sweep (null with two radars). */
+  private radarSweep: ListeningSweep | null = null;
+  /** Pointed where the radar says: since when (null while still turning). */
+  private radarParkSince: number | null = null;
+  /** Saw someone who isn't the target while pointed where the radar says. */
+  private radarSomeoneElse = false;
+  /** How many radar searches or extra sweeps since the target was last seen (at most RADAR.rounds). */
+  private radarRounds = 0;
+  /** Where the target hid under the cover (to tell which way the cover went). */
+  private coverStartPan = LIMITS.center;
 
   constructor(settings: Settings) {
     this.settings = settings;
@@ -254,11 +307,14 @@ export class Brain {
       case "searching":
         target = this.searching(f, looks);
         break;
+      case "radar":
+        target = this.radarSearch(f, looks);
+        break;
       case "lost":
         ({ target, match } = this.lost(f, looks));
         break;
     }
-    if (this.mode === "searching" || this.mode === "following") match = this.bestMatch(looks).d;
+    if (this.mode === "searching" || this.mode === "following" || this.mode === "radar") match = this.bestMatch(looks).d;
 
     // Sure it's the target this frame? Then everyone else in view is someone else: remember them.
     if (this.mode === "tracking" && target) {
@@ -274,11 +330,14 @@ export class Brain {
 
     this.prevT = f.t;
     this.prevCamera = { ...f.camera };
-    const exitSide =
-      this.mode === "following" ? ((Math.sign(this.followDir * this.settings.panSign) || 0) as -1 | 0 | 1) : 0;
+    const checking = this.mode === "radar" && this.radarParkSince !== null;
+    const towards = this.mode === "following" || (this.mode === "radar" && !checking);
+    const exitSide = towards ? ((Math.sign(this.believedDir * this.settings.panSign) || 0) as -1 | 0 | 1) : 0;
+    const outOfView = this.mode === "following" || this.mode === "radar" || this.mode === "searching" || this.mode === "lost";
+    const whereabouts: Whereabouts | null = outOfView && !target ? { side: exitSide, radar: f.radar, checking } : null;
     const matches = this.mode === "idle" ? allLooks.map(() => null) : allLooks.map((l) => this.dist(l));
     const faces = this.mode === "idle" ? f.people.map(() => null) : faceOf;
-    return { mode: this.mode, target, aim: this.aim, note: this.note, match, matches, exitSide, faces, picked };
+    return { mode: this.mode, target, aim: this.aim, note: this.note, match, matches, exitSide, whereabouts, faces, picked };
   }
 
   /**
@@ -444,6 +503,7 @@ export class Brain {
     this.lastSeenT = f.t;
     this.aim = this.clampAim(this.bearing);
     this.radarEmptySince = null;
+    this.radarRounds = 0;
     this.lump.stop();
     this.chainTrusted = false; // until a clear colour match confirms it's them
     this.setMode("tracking", f.t, note);
@@ -627,6 +687,7 @@ export class Brain {
     this.aim = this.clampAim(this.bearing);
     this.radarEmptySince = null;
     this.coverSeenT = f.t;
+    this.coverStartPan = this.bearing.pan;
     this.coverEverSeen = false;
     this.onCoverSince = null;
     this.radarSteering = false;
@@ -681,9 +742,19 @@ export class Brain {
     }
 
     // 4. Lost the cover after following it (they moved off faster than it could keep up)?
-    // If the radar still senses someone, stop aiming, so a two-radar stand steers by radar.
+    // If the radar still senses someone, turn where it's loudest (if the stand says how
+    // loud), or else stop aiming, so the stand steers by radar on its own.
     if (coverSure) this.radarSteering = false;
-    else if (this.coverEverSeen && f.radar === true && f.t - this.coverSeenT > TUNING.coverLostMs) this.radarSteering = true;
+    else if (this.coverEverSeen && f.radar === true && f.t - this.coverSeenT > TUNING.coverLostMs) {
+      if (this.radarCanGuide(f)) {
+        this.lump.stop();
+        this.coverBox = null;
+        const dir = Math.sign(this.bearing.pan - this.coverStartPan);
+        this.startRadar(f, dir, "Lost track of the cover, but the radar still hears you. Turning to look.");
+        return null;
+      }
+      this.radarSteering = true;
+    }
     if (this.radarSteering) {
       this.aim = null;
       this.bearing = { ...f.camera }; // the radars turn the head toward them
@@ -749,11 +820,32 @@ export class Brain {
 
   private startFollowing(f: FrameInput, dir: number): void {
     this.followDir = dir;
+    this.believedDir = dir;
     this.followSpeed = clamp(Math.abs(this.vel.pan), TUNING.followMinSpeed, TUNING.followMaxSpeed);
     this.followFrom = this.aim ? { ...this.aim } : { ...this.bearing };
     this.limitSince = null;
     const side = dir * this.settings.panSign < 0 ? "left" : "right";
     this.setMode("following", f.t, `You left the picture on the ${side}. Turning to follow.`);
+    this.followByRadar(f, side);
+  }
+
+  /**
+   * Out of the picture, and the radar hears someone? Then let it guide the turn: one radar
+   * listens its way that way; two radars turn toward the louder one (even if that's the
+   * other way: they doubled back). Two radars hearing the same keep following the edge.
+   */
+  private followByRadar(f: FrameInput, side: string): boolean {
+    if (!this.radarCanGuide(f)) return false;
+    const e = f.radarEnergy!;
+    if (e.radars === 2 && louderSide(e) === 0) return false;
+    this.startRadar(
+      f,
+      this.followDir,
+      e.radars === 1
+        ? `You left the picture on the ${side}. Turning that way, listening with the radar.`
+        : "Out of the picture. Turning toward the louder radar.",
+    );
+    return true;
   }
 
   private following(f: FrameInput, looks: (Look | null)[]): Box | null {
@@ -776,6 +868,7 @@ export class Brain {
       this.lockOn(f, found, "There you are. Locked back on.");
       return f.people[found];
     }
+    if (this.followByRadar(f, exitImageSide < 0 ? "left" : "right")) return null;
     const elapsed = f.t - this.modeSince;
     const pan = this.followFrom.pan + (this.followDir * this.followSpeed * elapsed) / 1000;
     this.aim = this.clampAim({ pan, tilt: this.followFrom.tilt });
@@ -789,12 +882,12 @@ export class Brain {
 
   // ---------- SEARCHING (sweep the room once) ----------
 
-  private startSearching(f: FrameInput): void {
+  private startSearching(f: FrameInput, note = "Not where I expected. Sweeping the room."): void {
     const ahead = this.followDir < 0 ? LIMITS.panMin : LIMITS.panMax;
     const behind = this.followDir < 0 ? LIMITS.panMax : LIMITS.panMin;
     // Finish turning the way they went, sweep all the way back, then return to where they were last seen.
     this.sweepGoals = [ahead, behind, clamp(this.bearing.pan, LIMITS.panMin, LIMITS.panMax)];
-    this.setMode("searching", f.t, "Not where I expected. Sweeping the room.");
+    this.setMode("searching", f.t, note);
   }
 
   private searching(f: FrameInput, looks: (Look | null)[]): Box | null {
@@ -811,7 +904,114 @@ export class Brain {
     this.aim = this.clampAim({ pan: next, tilt: this.aim?.tilt ?? this.bearing.tilt });
     if (next === goal) this.sweepGoals.shift();
     if (this.sweepGoals.length === 0) {
-      this.goLost(f, "Swept the whole room and didn't find you. Waiting for you to come back.");
+      // The radar still senses someone: look again, a few times at most.
+      if (f.radar === true && this.radarRounds < RADAR.rounds) {
+        if (this.radarCanGuide(f)) {
+          this.startRadar(f, this.followDir, "Swept the room, but the radar still hears someone. Listening for where.");
+        } else {
+          this.radarRounds++;
+          this.startSearching(f, "Swept the room, but the radar still senses someone. Sweeping again.");
+        }
+      } else {
+        this.goLost(f, "Swept the whole room and didn't find you. Waiting for you to come back.");
+      }
+    }
+    return null;
+  }
+
+  // ---------- RADAR SEARCH (out of the picture, but the radar hears someone) ----------
+
+  /** True if the radar hears someone and says how loud, and we haven't looked too often already. */
+  private radarCanGuide(f: FrameInput): boolean {
+    return f.radar === true && !!f.radarEnergy && loudest(f.radarEnergy) > 0 && this.radarRounds < RADAR.rounds;
+  }
+
+  /** `dir` (+1/-1 motor degrees, or 0 = don't know): which way they most likely went. */
+  private startRadar(f: FrameInput, dir: number, note: string): void {
+    const e = f.radarEnergy!;
+    // Don't know which way? Two radars say; else try the side with more room.
+    const guess = (e.radars === 2 ? louderSide(e) : 0) || (f.camera.pan < LIMITS.center ? 1 : -1);
+    this.followDir = dir || guess; // also used by a sweep afterwards
+    this.believedDir = this.followDir;
+    this.radarRounds++;
+    this.radarParkSince = null;
+    this.radarSomeoneElse = false;
+    this.radarEmptySince = null;
+    // One radar and no idea which way: note how loud it is here, to compare with the first step.
+    const here = dir ? undefined : loudest(e);
+    this.radarSweep = e.radars === 1 ? new ListeningSweep(f.camera.pan, this.followDir, f.t, here) : null;
+    this.aim = this.clampAim({ pan: f.camera.pan, tilt: this.aim?.tilt ?? this.bearing.tilt });
+    this.setMode("radar", f.t, note);
+  }
+
+  private radarSearch(f: FrameInput, looks: (Look | null)[]): Box | null {
+    // 1. The camera decides who it is: the target (by clothes or face) locks back on.
+    const found = this.recognised(looks, 1);
+    if (found >= 0) {
+      this.lockOn(f, found, "The radar led me to you. Locked back on.");
+      return f.people[found];
+    }
+
+    // 2. Radar gone (Bluetooth dropped)?
+    const e = f.radarEnergy;
+    if (f.radar === null || !e) {
+      this.startSearching(f, "Lost the radar. Sweeping the room.");
+      return null;
+    }
+    if (f.radar === false) this.radarEmptySince ??= f.t;
+    else this.radarEmptySince = null;
+    const quiet = this.radarEmptySince !== null;
+
+    // 3. Turn where the radar is loudest. (One radar going quiet mid-sweep is just a quiet
+    // stop: the sweep carries on. Two radars that both go quiet hold still.)
+    const tilt = this.aim?.tilt ?? this.bearing.tilt;
+    let pointed: boolean;
+    if (this.radarSweep) {
+      this.aim = this.clampAim({ pan: this.radarSweep.update(f.t, f.camera.pan, quiet ? 0 : e.left), tilt });
+      pointed = this.radarSweep.parkedAt !== null;
+      if (!pointed) {
+        this.believedDir = this.radarSweep.direction;
+        this.note = "The radar hears someone. Turning and listening for where they are.";
+      }
+    } else {
+      const side = quiet ? 0 : louderSide(e);
+      const dt = Math.max(0, f.t - this.prevT) / 1000;
+      const from = this.aim?.pan ?? f.camera.pan;
+      this.aim = this.clampAim({ pan: from + side * RADAR.turnSpeed * dt, tilt });
+      const stuck = (side < 0 && this.aim.pan <= LIMITS.panMin) || (side > 0 && this.aim.pan >= LIMITS.panMax);
+      pointed = side === 0 || stuck;
+      if (side !== 0) this.believedDir = side;
+      if (!pointed) {
+        const words = side * this.settings.panSign < 0 ? "left" : "right";
+        this.note = `The radar hears someone to the ${words}. Turning there.`;
+      }
+    }
+    if (!pointed) {
+      this.radarParkSince = null;
+      return null;
+    }
+
+    // 4. Pointed where the radar says. Radar quiet for a while: they've left the room.
+    if (quiet && f.t - this.radarEmptySince! > TUNING.lostAfterMs) {
+      this.goLost(f, "The radar hears nobody now, so you've left. Waiting for you to come back.");
+      return null;
+    }
+    // Anyone in view who isn't the target is someone else: keep looking for the target
+    // (after a moment, so a face check can still re-find them).
+    this.radarParkSince ??= f.t;
+    if (f.people.length > 0) this.radarSomeoneElse = true;
+    this.note = this.radarSomeoneElse
+      ? "Someone else is there, not you. Still looking for you."
+      : quiet
+        ? "The radar has gone quiet. Looking here a moment..."
+        : "The radar says someone's here. Looking...";
+    if (f.t - this.radarParkSince > RADAR.parkMs) {
+      this.startSearching(
+        f,
+        this.radarSomeoneElse
+          ? "That was someone else. Sweeping the room for you."
+          : "The radar led me here, but I can't see you. Sweeping the room.",
+      );
     }
     return null;
   }
@@ -821,6 +1021,7 @@ export class Brain {
   private goLost(f: FrameInput, note: string): void {
     this.lump.stop();
     this.coverBox = null;
+    if (f.radar !== false) this.radarEmptySince = null; // (keep counting how long the radar's been quiet)
     this.setMode("lost", f.t, note);
   }
 
@@ -829,6 +1030,18 @@ export class Brain {
     if (i >= 0 && d !== null && d < this.settings.matchLimit) {
       this.lockOn(f, i, "That's you. Locked back on.");
       return { target: f.people[i], match: d };
+    }
+    // The radar was quiet for a while (nobody around) and now hears someone: maybe it's them
+    // coming back. Turn to see who it is.
+    if (f.radar === false) {
+      this.radarEmptySince ??= f.t;
+    } else if (f.radar === true && f.radarEnergy && loudest(f.radarEnergy) > 0) {
+      const arrived = this.radarEmptySince !== null && f.t - this.radarEmptySince >= TUNING.lostAfterMs;
+      this.radarEmptySince = null;
+      if (arrived) {
+        this.radarRounds = 0;
+        this.startRadar(f, 0, "The radar hears someone coming. Turning to see who it is.");
+      }
     }
     return { target: null, match: d };
   }
