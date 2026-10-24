@@ -1,7 +1,9 @@
 // Extra helpers for the family page: the sentence "Read aloud" speaks, each
 // person's alert settings (which alerts to highlight, quiet hours), and the
 // "Sam is checking on it" line. No React here, so it can be tested with `npm test`.
+// The sentence helpers take an optional `t` to translate them (English if left out).
 
+import { english, type Translate } from "../i18n/translate.ts";
 import { whatHappened, whereInRoom, type EventRow, type Summary } from "./status.ts";
 
 // ---------------------------------------------------------------------------
@@ -9,16 +11,16 @@ import { whatHappened, whereInRoom, type EventRow, type Summary } from "./status
 // ---------------------------------------------------------------------------
 
 /** How "Read aloud" says what is happening, a bit friendlier than the screen. */
-function spokenActivity(e: Pick<EventRow, "kind" | "posture">): string {
+function spokenActivity(e: Pick<EventRow, "kind" | "posture">, t: Translate): string {
   switch (e.kind) {
     case "moving":
-      return "moving about";
+      return t("moving about");
     case "still":
-      if (e.posture === "lying") return "lying down, resting";
-      if (e.posture === "standing") return "standing still";
-      return "sitting still";
+      if (e.posture === "lying") return t("lying down, resting");
+      if (e.posture === "standing") return t("standing still");
+      return t("sitting still");
     default:
-      return whatHappened(e).toLowerCase();
+      return whatHappened(e, t).toLowerCase();
   }
 }
 
@@ -27,30 +29,37 @@ function spokenActivity(e: Pick<EventRow, "kind" | "posture">): string {
  * "Mum is okay, moving about. Last update at 10:38."
  * `clock` turns a time into words like "10:38".
  */
-export function spokenStatus(summary: Summary, who: string, clock: (iso: string) => string): string {
+export function spokenStatus(
+  summary: Summary,
+  who: string,
+  clock: (iso: string) => string,
+  t: Translate = english,
+): string {
   const { latest } = summary;
-  if (!latest) return "There is no news from the phone yet.";
+  if (!latest) return t("There is no news from the phone yet.");
   const at = clock(latest.created_at);
   if (latest.kind === "fall")
-    return `The phone thinks ${who} may have fallen, at ${at}. Please call or visit to check they are okay.`;
+    return t("The phone thinks {who} may have fallen, at {at}. Please call or visit to check they are okay.", { who, at });
   if (summary.phoneSilent && summary.lastHeard)
-    return `The phone has not checked in since ${clock(summary.lastHeard.created_at)}. Please check it is switched on and charging.`;
-  if (latest.kind === "stopped") return `The phone stopped watching at ${at}.`;
-  if (latest.kind === "started") return `The phone started watching at ${at}.`;
-  if (latest.kind === "nobody") return `Nobody is in view of the phone. Last update at ${at}.`;
-  return `${who} is okay, ${spokenActivity(latest)}. Last update at ${at}.`;
+    return t("The phone has not checked in since {at}. Please check it is switched on and charging.", {
+      at: clock(summary.lastHeard.created_at),
+    });
+  if (latest.kind === "stopped") return t("The phone stopped watching at {at}.", { at });
+  if (latest.kind === "started") return t("The phone started watching at {at}.", { at });
+  if (latest.kind === "nobody") return t("Nobody is in view of the phone. Last update at {at}.", { at });
+  return t("{who} is okay, {activity}. Last update at {at}.", { who, activity: spokenActivity(latest, t), at });
 }
 
 /** The sentence spoken for one line of Recent news, e.g. "Possible fall, left side, at 10:38." */
-export function spokenEvent(e: EventRow, clock: (iso: string) => string): string {
-  const where = e.kind === "nobody" ? null : whereInRoom(e.zone);
-  return `${[whatHappened(e), where].filter(Boolean).join(", ")}, at ${clock(e.created_at)}.`;
+export function spokenEvent(e: EventRow, clock: (iso: string) => string, t: Translate = english): string {
+  const where = e.kind === "nobody" ? null : whereInRoom(e.zone, t);
+  return t("{what}, at {at}.", { what: [whatHappened(e, t), where].filter(Boolean).join(", "), at: clock(e.created_at) });
 }
 
 /** The name to use when speaking: what the Care profile calls them, else "Your loved one". */
-export function whoToSpeakOf(savedName: unknown): string {
+export function whoToSpeakOf(savedName: unknown, t: Translate = english): string {
   const name = typeof savedName === "string" ? savedName.trim() : "";
-  return name || "Your loved one";
+  return name || t("Your loved one");
 }
 
 // ---------------------------------------------------------------------------
@@ -58,13 +67,15 @@ export function whoToSpeakOf(savedName: unknown): string {
 // ---------------------------------------------------------------------------
 
 /** The kinds of worrying news a person can choose to have highlighted. */
-export type AlertType = "fall" | "outOfSight";
+export type AlertType = "fall" | "outOfSight" | "cameraOff";
 
 export interface AlertSettings {
   /** Highlight possible falls. */
   falls: boolean;
   /** Highlight "Nobody in view" (out of sight / no movement seen). */
   outOfSight: boolean;
+  /** Highlight (and say, with spoken alerts) when the phone camera stops watching. */
+  cameraOff: boolean;
   /** Quiet hours: highlights are toned down between `quietFrom` and `quietTo`. */
   quietHours: boolean;
   /** "22:00" style times. */
@@ -75,6 +86,7 @@ export interface AlertSettings {
 export const DEFAULT_ALERT_SETTINGS: AlertSettings = {
   falls: true,
   outOfSight: true,
+  cameraOff: true,
   quietHours: false,
   quietFrom: "22:00",
   quietTo: "07:00",
@@ -92,6 +104,7 @@ export function cleanAlertSettings(saved: unknown): AlertSettings {
   return {
     falls: bool("falls"),
     outOfSight: bool("outOfSight"),
+    cameraOff: bool("cameraOff"),
     quietHours: bool("quietHours"),
     quietFrom: time("quietFrom"),
     quietTo: time("quietTo"),
@@ -102,6 +115,7 @@ export function cleanAlertSettings(saved: unknown): AlertSettings {
 export function alertType(e: Pick<EventRow, "kind">): AlertType | null {
   if (e.kind === "fall") return "fall";
   if (e.kind === "nobody") return "outOfSight";
+  if (e.kind === "stopped") return "cameraOff";
   return null;
 }
 
@@ -121,7 +135,7 @@ export function isQuietTime(settings: AlertSettings, when: Date): boolean {
 export function highlightFor(e: EventRow, settings: AlertSettings): "highlight" | "quiet" | "none" {
   const type = alertType(e);
   if (!type) return "none";
-  const wanted = type === "fall" ? settings.falls : settings.outOfSight;
+  const wanted = type === "fall" ? settings.falls : type === "outOfSight" ? settings.outOfSight : settings.cameraOff;
   if (!wanted) return "none";
   return isQuietTime(settings, new Date(e.created_at)) ? "quiet" : "highlight";
 }
@@ -145,10 +159,64 @@ export function shortName(profile: { display_name?: string | null; email?: strin
 }
 
 /** "Sam is checking on it", "You and Sam are checking on it", "Sam, Ali and Jo are checking on it". */
-export function checkingLine(names: string[]): string {
+export function checkingLine(names: string[], t: Translate = english): string {
   if (names.length === 0) return "";
-  const list =
-    names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  const verb = names.length === 1 && names[0] !== "You" ? "is" : "are";
-  return `${list} ${verb} checking on it`;
+  // "You" and "Someone..." come from the page in English; real names stay as they are.
+  const shown = names.map((n) => (n === "You" || n === "Someone" || n === "Someone in the family" ? t(n) : n));
+  if (names.length === 1)
+    return names[0] === "You" ? t("You are checking on it") : t("{name} is checking on it", { name: shown[0] });
+  const list = t("{first} and {last}", { first: shown.slice(0, -1).join(", "), last: shown[shown.length - 1] });
+  return t("{names} are checking on it", { names: list });
+}
+
+// ---------------------------------------------------------------------------
+// Spoken alerts (the page says new alerts out loud by itself)
+// ---------------------------------------------------------------------------
+
+/** Only news this fresh is spoken, so old alerts are never replayed. */
+export const SPEAK_FRESH_MS = 2 * 60_000;
+/** A possible fall is said again after this long, unless someone is checking on it. */
+export const REPEAT_FALL_AFTER_MS = 30_000;
+
+/**
+ * Should spoken alerts say this news out loud? Only for news that has just
+ * arrived live (`now` minus a little) and hasn't been said yet. Possible falls are
+ * always spoken, even in quiet hours; other alerts (nobody in view) follow the
+ * Alert settings and quiet hours, like the highlights in Recent news.
+ */
+export function shouldSpeak(e: EventRow, settings: AlertSettings, now: number, spoken: ReadonlySet<number>): boolean {
+  if (spoken.has(e.id)) return false;
+  if (now - Date.parse(e.created_at) > SPEAK_FRESH_MS) return false;
+  if (e.kind === "fall") return true;
+  return highlightFor(e, settings) === "highlight";
+}
+
+/**
+ * Should spoken alerts say that the phone went quiet (no news, not even a
+ * heartbeat, for a while)? Like other non-fall alerts, it follows the Alert
+ * settings and quiet hours, checked at the moment it is noticed (`now`).
+ */
+export function shouldSpeakSilence(settings: AlertSettings, now: number): boolean {
+  return settings.cameraOff && !isQuietTime(settings, new Date(now));
+}
+
+/**
+ * What spoken alerts say, e.g. "CareNest alert. Possible fall, left side, at 3:42 pm.
+ * Please check on Mum." `again` is for the reminder said 30 seconds later.
+ */
+export function spokenAlert(
+  e: EventRow,
+  who: string,
+  clock: (iso: string) => string,
+  t: Translate = english,
+  again = false,
+): string {
+  const parts = [again ? t("Reminder from CareNest.") : t("CareNest alert."), spokenEvent(e, clock, t)];
+  if (e.kind === "fall") parts.push(t("Please check on {who}.", { who }));
+  return parts.join(" ");
+}
+
+/** Reads the saved on/off for spoken alerts. Off unless it was turned on. */
+export function cleanSpokenAlerts(saved: unknown): boolean {
+  return saved === true;
 }

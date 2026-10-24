@@ -3,7 +3,7 @@
 //
 // The Reporter is fed every frame (people boxes from the detector) and now and then
 // says "send this": when the person starts or stops moving, changes side of the
-// room, sits down or lies down, leaves the room, or once a minute as a heartbeat.
+// room, sits down or lies down, leaves the room, or every 30 seconds as a heartbeat.
 
 import type { Box } from "./geometry.ts";
 import { area, centerX } from "./geometry.ts";
@@ -19,8 +19,8 @@ export interface MovementEvent {
 }
 
 export const REPORT = {
-  /** How often the phone says "I'm still watching". */
-  heartbeatMs: 60_000,
+  /** How often the phone says "I'm still watching" (the family page counts it as stopped after 2 minutes of silence). */
+  heartbeatMs: 30_000,
   /** A change has to last this long before it's reported (stops flicker). */
   settleMs: 2_000,
   /** No one in the picture for this long = "nobody". */

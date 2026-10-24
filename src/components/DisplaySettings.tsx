@@ -1,20 +1,16 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { systemPrefersLessMotion, useDisplaySettings, type TextSize, type Theme } from "../lib/displaySettings";
+import { useLanguage } from "../i18n/useLanguage";
+import { systemPrefersLessMotion, useDisplaySettings, type TextSize } from "../lib/displaySettings";
 
-// The "Display" button in the header and the small panel it opens: text size
-// (Normal, Large, Extra large), light or dark colours, and "High contrast" and
+// The "Display" button in the header and the small panel it opens: Zoom In and
+// Zoom Out buttons for the text size (Normal, Large, Extra large), and "High contrast" and
 // "Reduce motion" switches. Works on every page.
 
-const sizes: { value: TextSize; label: string; className: string }[] = [
-  { value: "normal", label: "Normal", className: "text-lg" },
-  { value: "large", label: "Large", className: "text-xl" },
-  { value: "extra", label: "Extra large", className: "text-2xl" },
-];
-
-const themes: { value: Theme; label: string; className?: string }[] = [
-  { value: "system", label: "Same as my device" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
+// Smallest to biggest. Zoom In moves one step down this list, Zoom Out one step up.
+const sizes: { value: TextSize; label: string }[] = [
+  { value: "normal", label: "Normal" },
+  { value: "large", label: "Large" },
+  { value: "extra", label: "Extra large" },
 ];
 
 /** The "Aa Display" button that opens and closes the panel. */
@@ -23,6 +19,7 @@ export function DisplayButton({ open, onToggle, buttonRef }: {
   onToggle: () => void;
   buttonRef: React.RefObject<HTMLButtonElement | null>;
 }) {
+  const { t, lang } = useLanguage();
   return (
     <button
       ref={buttonRef}
@@ -35,8 +32,9 @@ export function DisplayButton({ open, onToggle, buttonRef }: {
       <span aria-hidden="true" className="text-xl font-black leading-none">
         Aa
       </span>
-      <span className="sr-only lg:not-sr-only">Display</span>
-      <span className="sr-only">settings</span>
+      {/* The word is only read out in Spanish ("Pantalla"), to leave room for its longer menu words. */}
+      <span className={lang === "es" ? "sr-only" : "sr-only lg:not-sr-only"}>{t("Display")}</span>
+      <span className="sr-only">{t("settings")}</span>
     </button>
   );
 }
@@ -48,6 +46,7 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null);
   const [systemLessMotion] = useState(systemPrefersLessMotion);
   const reduceMotion = settings.reduceMotion ?? systemLessMotion;
+  const { t } = useLanguage();
 
   // Escape closes the panel.
   useEffect(() => {
@@ -58,7 +57,7 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
 
   // Move keyboard focus into the panel when it opens.
   useEffect(() => {
-    panel.current?.querySelector<HTMLInputElement>("input:checked")?.focus();
+    panel.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
   }, []);
 
   return (
@@ -70,23 +69,10 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
       className="absolute inset-x-4 top-full mt-2 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-[28px] border-[3px] border-lilac bg-surface p-5 text-ink shadow-lift sm:left-auto sm:w-[26rem]"
     >
       <h2 id={`${id}-title`} className="text-2xl font-extrabold">
-        Display settings
+        {t("Display settings")}
       </h2>
 
-      <Choices
-        legend="Text size"
-        name={`${id}-size`}
-        options={sizes}
-        value={settings.textSize}
-        onChange={(textSize) => update({ textSize })}
-      />
-      <Choices
-        legend="Colours"
-        name={`${id}-theme`}
-        options={themes}
-        value={settings.theme}
-        onChange={(theme) => update({ theme })}
-      />
+      <Zoom value={settings.textSize} onChange={(textSize) => update({ textSize })} />
 
       <Switch
         label="High contrast"
@@ -106,49 +92,47 @@ export function DisplayPanel({ onClose }: { onClose: () => void }) {
         onClick={onClose}
         className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-brand px-5 text-lg font-extrabold text-on-brand hover:bg-brand-dark"
       >
-        Done
+        {t("Done")}
       </button>
-      <p className="mt-3 text-base text-muted">Saved in this browser.</p>
+      <p className="mt-3 text-base text-muted">{t("Saved in this browser.")}</p>
     </div>
   );
 }
 
-/** A group of big radio buttons. */
-function Choices<T extends string>({
-  legend,
-  name,
-  options,
-  value,
-  onChange,
-}: {
-  legend: string;
-  name: string;
-  options: { value: T; label: string; className?: string }[];
-  value: T;
-  onChange: (value: T) => void;
-}) {
+/** Zoom Out and Zoom In buttons that step the text size down or up, and the size it is now. */
+function Zoom({ value, onChange }: { value: TextSize; onChange: (value: TextSize) => void }) {
+  const { t } = useLanguage();
+  const index = Math.max(0, sizes.findIndex((s) => s.value === value));
+  const zoomButton =
+    "inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border-[3px] border-brand bg-surface px-3 text-lg font-extrabold text-brand transition-colors hover:bg-lilac disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface";
   return (
-    <fieldset className="mt-4">
-      <legend className="text-xl font-extrabold">{legend}</legend>
-      <div className="mt-2 flex flex-col gap-2">
-        {options.map((o) => (
-          <label
-            key={o.value}
-            className="flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl border-[3px] border-lilac px-4 font-bold has-[:checked]:border-brand has-[:checked]:bg-lilac"
-          >
-            <input
-              type="radio"
-              name={name}
-              value={o.value}
-              checked={value === o.value}
-              onChange={() => onChange(o.value)}
-              className="h-6 w-6 shrink-0 accent-brand"
-            />
-            <span className={o.className ?? "text-lg"}>{o.label}</span>
-          </label>
-        ))}
+    <div className="mt-4">
+      <h3 className="text-xl font-extrabold">{t("Text size")}</h3>
+      {/* Read out when the size changes. */}
+      <p aria-live="polite" className="text-base font-bold text-muted">
+        {t("Now: {size}", { size: t(sizes[index].label) })}
+      </p>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          disabled={index === 0}
+          onClick={() => onChange(sizes[index - 1].value)}
+          className={zoomButton}
+        >
+          <span aria-hidden="true" className="text-2xl leading-none">−</span>
+          {t("Zoom Out")}
+        </button>
+        <button
+          type="button"
+          disabled={index === sizes.length - 1}
+          onClick={() => onChange(sizes[index + 1].value)}
+          className={zoomButton}
+        >
+          <span aria-hidden="true" className="text-2xl leading-none">+</span>
+          {t("Zoom In")}
+        </button>
       </div>
-    </fieldset>
+    </div>
   );
 }
 
@@ -164,12 +148,13 @@ function Switch({
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {
+  const { t } = useLanguage();
   return (
-    <label className="mt-4 flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-2xl border-[3px] border-lilac px-4 py-2 has-[:checked]:border-leaf">
+    <label className="mt-4 flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-2xl border-[3px] border-lilac px-4 py-2 has-[:checked]:border-brand">
       <span>
-        <span className="block text-xl font-extrabold">{label}</span>
+        <span className="block text-xl font-extrabold">{t(label)}</span>
         <span className="block text-base text-muted">
-          {hint} <strong className="text-ink">{checked ? "On" : "Off"}</strong>
+          {t(hint)} <strong className="text-ink">{checked ? t("On") : t("Off")}</strong>
         </span>
       </span>
       <input
@@ -181,9 +166,9 @@ function Switch({
       />
       <span
         aria-hidden="true"
-        className="relative h-9 w-16 shrink-0 rounded-full border-[3px] border-ink bg-muted transition-colors peer-checked:bg-leaf peer-focus-visible:outline-4 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-ink peer-checked:[&>span]:translate-x-7"
+        className="relative h-9 w-16 shrink-0 rounded-full border-[3px] border-brand bg-lilac transition-colors peer-checked:bg-brand peer-focus-visible:outline-4 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-ink peer-checked:[&>span]:translate-x-7 peer-checked:[&>span]:bg-surface"
       >
-        <span className="absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-surface transition-transform" />
+        <span className="absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-brand transition-transform" />
       </span>
     </label>
   );

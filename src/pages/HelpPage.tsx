@@ -1,7 +1,11 @@
 import { Link } from "react-router";
 import ButtonLink from "../components/ButtonLink";
+import { GUIDE } from "../lib/guide";
 import SiteLayout, { Blobs } from "../components/SiteLayout";
+import Highlight from "../components/Highlight";
 import { AlertIcon, DashboardIcon, MovementIcon, PhoneOnTableIcon } from "../components/illustrations";
+import type { Translate } from "../i18n/translate";
+import { useLanguage } from "../i18n/useLanguage";
 
 // The Help page: short picture steps for getting started, what the family page
 // means, the privacy promise, and a few common questions.
@@ -11,86 +15,107 @@ function PrivacyIcon() {
   return (
     <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
       <path d="M32 44V32a16 16 0 0 1 32 0v12" stroke="#1f2a37" strokeWidth="7" fill="none" strokeLinecap="round" />
-      <rect x="22" y="42" width="52" height="40" rx="10" fill="#5b3cc4" />
+      <rect x="22" y="42" width="52" height="40" rx="10" fill="var(--color-brand)" />
       <circle cx="48" cy="58" r="6" fill="#fff" />
       <rect x="45" y="60" width="6" height="12" rx="3" fill="#fff" />
     </svg>
   );
 }
 
-const steps = [
+/** The steps, in the chosen language. */
+const getSteps = (t: Translate) => [
   {
     icon: <PhoneOnTableIcon />,
-    title: "Set up the phone on a table",
-    body: "Use a spare phone. Stand it up on a table or shelf where it can see most of the room, and keep it plugged in to charge.",
+    title: t("Set up the phone on a table"),
+    body: t("Use a spare phone. Stand it up on a table or shelf where it can see most of the room, and keep it plugged in to charge."),
   },
   {
     icon: <MovementIcon />,
-    title: "Start watching",
+    title: t("Start watching"),
     body: (
       <>
-        On that phone, sign in and open <Link to="/tracker" className="font-bold text-brand underline">Phone camera</Link>.
-        Press "Start watching". A green "Camera on" sign stays on the screen while it works.
+        {t("On that phone, sign in and open")}{" "}
+        <Link to="/tracker" className="font-bold text-brand underline">
+          {t("Phone camera")}
+        </Link>
+        {t(". ")}
+        {t('Press "Start watching". A green "Camera on" sign stays on the screen while it works.')}
       </>
     ),
   },
   {
     icon: <DashboardIcon />,
-    title: "Add your family",
+    title: t("Add your family"),
     body: (
       <>
-        Each person makes their own CareNest account first. Then, on the{" "}
-        <Link to="/dashboard" className="font-bold text-brand underline">Family page</Link>, type their email under
-        "Add a family member". They will see the same news.
+        {t("Each person makes their own CareNest account first. Then, on the")}{" "}
+        <Link to="/dashboard" className="font-bold text-brand underline">
+          {t("Family page")}
+        </Link>
+        {t(', type their email under "Add a family member". They will see the same news.')}
       </>
     ),
   },
   {
     icon: <AlertIcon />,
-    title: "What the news means",
-    body: "Green means all is well, like \"Moving around\". Red means the phone thinks someone may have fallen: please call or visit. A white box means the phone hasn't checked in for a few minutes — check it is on and charging.",
+    title: t("What the news means"),
+    body: t(
+      "Green means all is well, like \"Moving around\". Red means the phone thinks someone may have fallen: please call or visit. A white box means the phone hasn't checked in for a few minutes — check it is on and charging.",
+    ),
   },
   {
     icon: <PrivacyIcon />,
-    title: "Your privacy",
-    body: "Video and pictures never leave the phone. Family only get short notes in words, like \"Sitting still - left side\". Only the people you add can see them.",
+    title: t("Your privacy"),
+    body: t(
+      "Video and pictures never leave the phone. Family only get short notes in words, like \"Sitting still - left side\". Only the people you add can see them.",
+    ),
   },
 ];
 
-const faqs = [
+/** The questions, in the chosen language. */
+const getFaqs = (t: Translate) => [
   {
-    q: "Does CareNest record video?",
-    a: "No. The phone looks at the room itself and only sends short words, like \"Moving around\". No video or pictures are sent or saved anywhere.",
+    q: t("Does CareNest record video?"),
+    a: t("No. The phone looks at the room itself and only sends short words, like \"Moving around\". No video or pictures are sent or saved anywhere."),
   },
   {
-    q: "Which phone can I use?",
-    a: "Most smartphones from the last few years work. It needs a working camera, Wi-Fi or mobile data, and a charger.",
+    q: t("Which phone can I use?"),
+    a: t("Most smartphones from the last few years work. It needs a working camera, Wi-Fi or mobile data, and a charger."),
   },
   {
-    q: "What happens if the phone thinks someone has fallen?",
-    a: "The \"Right now\" box on the Family page turns red and asks you to call or visit. CareNest does not call emergency services, so if you can't reach them, call someone nearby or the emergency number.",
+    q: t("What happens if the phone thinks someone has fallen?"),
+    a: t("The \"Right now\" box on the Family page turns red and asks you to call or visit. CareNest does not call emergency services, so if you can't reach them, call someone nearby or the emergency number."),
   },
   {
-    q: "The Family page says the phone hasn't checked in. What do I do?",
-    a: "Check the phone is switched on, plugged in, connected to the internet, and still showing the green \"Camera on\" sign. If not, open Phone camera again and press \"Start watching\".",
+    q: t("The Family page says the phone hasn't checked in. What do I do?"),
+    a: t("Check the phone is switched on, plugged in, connected to the internet, and still showing the green \"Camera on\" sign. If not, open Phone camera again and press \"Start watching\"."),
   },
   {
-    q: "I forgot my password.",
+    q: t("I forgot my password."),
     a: (
       <>
-        Use the <Link to="/login?mode=forgot" className="font-bold text-brand underline">reset your password</Link>{" "}
-        form and we'll email you a link. Once you're signed in, you can change your password any time on{" "}
-        <Link to="/account" className="font-bold text-brand underline">Your account</Link>.
+        {t("Use the")}{" "}
+        <Link to="/login?mode=forgot" className="font-bold text-brand underline">
+          {t("reset your password")}
+        </Link>{" "}
+        {t("form and we'll email you a link. Once you're signed in, you can change your password any time on")}{" "}
+        <Link to="/account" className="font-bold text-brand underline">
+          {t("Your account")}
+        </Link>
+        {t(".")}
       </>
     ),
   },
   {
-    q: "Is CareNest a medical device?",
-    a: "No. It is a gentle helper so family can feel closer. It can miss things, so keep calling and visiting as usual.",
+    q: t("Is CareNest a medical device?"),
+    a: t("No. It is a gentle helper so family can feel closer. It can miss things, so keep calling and visiting as usual."),
   },
 ];
 
 export default function HelpPage() {
+  const { t } = useLanguage();
+  const steps = getSteps(t);
+  const faqs = getFaqs(t);
   return (
     <SiteLayout title="Help and how-to">
       <section className="relative isolate px-4 pb-24 pt-6 sm:px-6">
@@ -98,14 +123,17 @@ export default function HelpPage() {
         <div className="mx-auto flex max-w-3xl flex-col gap-10">
           <div>
             <h1 className="text-4xl font-extrabold md:text-5xl">
-              Help and <span className="text-gradient-brand">how&#8209;to</span>
+              <Highlight text={t("Help and *how‑to*")} />
             </h1>
-            <p className="mt-3 text-xl text-muted">Getting started takes about five minutes. Here's how.</p>
+            <p className="mt-3 text-xl text-muted">{t("Getting started takes about five minutes. Here's how.")}</p>
+            <ButtonLink to={GUIDE} arrow className="mt-5">
+              {t("Set up your iPhone step by step")}
+            </ButtonLink>
           </div>
 
           <section aria-labelledby="steps-title">
             <h2 id="steps-title" className="text-3xl font-extrabold">
-              Getting started
+              {t("Getting started")}
             </h2>
             <ol className="mt-5 flex flex-col gap-4">
               {steps.map((step, i) => (
@@ -127,7 +155,7 @@ export default function HelpPage() {
 
           <section aria-labelledby="faq-title">
             <h2 id="faq-title" className="text-3xl font-extrabold">
-              Common questions
+              {t("Common questions")}
             </h2>
             <div className="mt-5 flex flex-col gap-3">
               {faqs.map((faq) => (
@@ -145,12 +173,12 @@ export default function HelpPage() {
           </section>
 
           <div className="rounded-[32px] bg-mint p-6 sm:p-8">
-            <h2 className="text-2xl font-extrabold">Still stuck?</h2>
+            <h2 className="text-2xl font-extrabold">{t("Still stuck?")}</h2>
             <p className="mt-2 text-xl">
-              Ask the family member who set up CareNest, or contact the CareNest team. We're happy to help.
+              {t("Ask the family member who set up CareNest, or contact the CareNest team. We're happy to help.")}
             </p>
             <ButtonLink to="/dashboard" arrow className="mt-5">
-              Go to the Family page
+              {t("Go to the Family page")}
             </ButtonLink>
           </div>
         </div>

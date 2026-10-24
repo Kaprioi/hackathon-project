@@ -1,5 +1,7 @@
 // Checks for the Your account page, kept here (not in the page) so `npm test` can try them.
 
+import { english, type Translate } from "../i18n/translate.ts";
+
 export const MAX_NAME_LENGTH = 60;
 
 /** Tidies a display name: no spaces at the ends, single spaces inside. */
@@ -8,10 +10,10 @@ export function cleanDisplayName(name: string): string {
 }
 
 /** A friendly problem with the display name, or "" if it is fine. */
-export function displayNameProblem(name: string): string {
+export function displayNameProblem(name: string, t: Translate = english): string {
   const clean = cleanDisplayName(name);
-  if (!clean) return "Please type a name, like Sam or Grandma Rose.";
-  if (clean.length > MAX_NAME_LENGTH) return `Please keep your name under ${MAX_NAME_LENGTH} letters.`;
+  if (!clean) return t("Please type a name, like Sam or Grandma Rose.");
+  if (clean.length > MAX_NAME_LENGTH) return t("Please keep your name under {n} letters.", { n: MAX_NAME_LENGTH });
   return "";
 }
 

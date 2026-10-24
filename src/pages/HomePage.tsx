@@ -1,5 +1,6 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useId, useReducer, useRef, useState } from "react";
 import ButtonLink from "../components/ButtonLink";
+import Highlight from "../components/Highlight";
 import Reveal, { useInView } from "../components/Reveal";
 import SiteLayout, { Blobs, LivePill, LogoMark } from "../components/SiteLayout";
 import {
@@ -13,6 +14,9 @@ import {
   PhoneOnTableIcon,
   UpdatesIcon,
 } from "../components/illustrations";
+import { useLanguage } from "../i18n/useLanguage";
+import { motionIsReduced } from "../lib/displaySettings";
+import { checkInviteName, initial, MAX_NAME_LENGTH } from "../lib/inviteName";
 
 // The About Us page at "/", copied from the Lovable design.
 // "Get started" opens the login page on its "Create your account" form.
@@ -47,6 +51,7 @@ const heroCards = [
 ];
 
 function Hero() {
+  const { t } = useLanguage();
   const [card, setCard] = useState(0);
   const [time, setTime] = useState("10:38");
   // How far the mouse is from the middle of the picture, for a gentle 3D feel.
@@ -80,28 +85,31 @@ function Hero() {
                 <span className="absolute inset-0 animate-pulse-ring rounded-full bg-leaf" />
                 <span className="relative h-3 w-3 rounded-full bg-leaf" />
               </span>
-              About Us
+              {t("About Us")}
             </p>
           </Reveal>
           <Reveal delay={100}>
             <h1 id="hero-title" className="mt-5 text-4xl font-extrabold leading-tight">
-              Stay close to the people you love,{" "}
-              <mark className="highlight-sweep bg-transparent px-1 text-inherit">even from far away</mark>.
+              <Highlight
+                text={t("Stay close to the people you love, *even from far away*.")}
+                wrap={(part) => <mark className="highlight-sweep bg-transparent px-1 text-inherit">{part}</mark>}
+              />
             </h1>
           </Reveal>
           <Reveal delay={200}>
             <p className="mt-6 max-w-[36ch] text-xl text-muted">
-              CareNest turns a spare phone on the table into a gentle helper. It notices movement in the room, and family
-              can see on their own phone that all is well — so Grandma can stay independent at home.
+              {t(
+                "CareNest turns a spare phone on the table into a gentle helper. It notices movement in the room, and family can see on their own phone that all is well — so Grandma can stay independent at home.",
+              )}
             </p>
           </Reveal>
           <Reveal delay={300}>
             <div className="mt-8 flex flex-wrap gap-4">
               <ButtonLink to={GET_STARTED} arrow>
-                Get started
+                {t("Get started")}
               </ButtonLink>
               <ButtonLink to={LOG_IN} variant="outline">
-                Sign in
+                {t("Sign in")}
               </ButtonLink>
             </div>
           </Reveal>
@@ -112,7 +120,7 @@ function Hero() {
                   <path d="M4 2.5v11l9-5.5z" fill="currentColor" />
                 </svg>
               </span>
-              Try the family page below
+              {t("Try the family page below")}
             </a>
           </Reveal>
         </div>
@@ -120,14 +128,16 @@ function Hero() {
           <div
             className="relative"
             onMouseMove={(e) => {
+              // "Reduce motion" keeps the picture still.
+              if (motionIsReduced()) return;
               const box = e.currentTarget.getBoundingClientRect();
               setTilt({ x: (e.clientX - box.left) / box.width - 0.5, y: (e.clientY - box.top) / box.height - 0.5 });
             }}
             onMouseLeave={() => setTilt({ x: 0, y: 0 })}
           >
             <HeroIllustration
-              title={shown.title}
-              sub={shown.sub}
+              title={t(shown.title)}
+              sub={t(shown.sub)}
               time={time}
               cardKey={card}
               className="transition-transform duration-300 ease-out"
@@ -161,10 +171,11 @@ const reasons = [
 
 /** A slowly scrolling ribbon of reasons. It pauses while the mouse is over it. */
 function Ribbon() {
+  const { t } = useLanguage();
   return (
     <div
       className="group relative overflow-hidden border-y-2 border-mint bg-surface py-4 mask-fade-x"
-      aria-label="Why families choose CareNest"
+      aria-label={t("Why families choose CareNest")}
     >
       <ul className="flex w-max animate-marquee group-hover:[animation-play-state:paused]">
         {/* The list is shown twice so the scrolling loops without a gap. */}
@@ -175,7 +186,7 @@ function Ribbon() {
             className="mr-4 flex items-center gap-2 whitespace-nowrap rounded-full border-2 border-mint bg-cream px-5 py-2 font-bold text-leaf"
           >
             <span className="grid h-6 w-6 place-items-center rounded-full bg-mint text-sm">✓</span>
-            {reason}
+            {t(reason)}
           </li>
         ))}
       </ul>
@@ -206,6 +217,7 @@ const steps = [
 
 /** The three steps light up one after another. Tapping a step stops on it. */
 function HowItWorks() {
+  const { t } = useLanguage();
   const [active, setActive] = useState(0);
   const [held, setHeld] = useState(false);
   const [ref, inView] = useInView<HTMLDivElement>(0.3);
@@ -221,10 +233,10 @@ function HowItWorks() {
       <div className="mx-auto max-w-6xl">
         <Reveal>
           <h2 id="how-title" className="text-center text-4xl font-extrabold md:text-5xl">
-            How it <span className="text-gradient-brand">works</span>
+            <Highlight text={t("How it *works*")} />
           </h2>
           <p className="mx-auto mb-14 mt-3 max-w-[40ch] text-center text-xl text-muted">
-            From a phone on the table to an update on your phone.
+            {t("From a phone on the table to an update on your phone.")}
           </p>
         </Reveal>
         <div ref={ref} className="relative">
@@ -261,13 +273,13 @@ function HowItWorks() {
                       <span
                         className={`mb-2 inline-block rounded-full px-4 py-1 font-extrabold text-on-brand transition-colors duration-300 ${current ? "bg-brand" : "bg-ink"}`}
                       >
-                        Step {i + 1}
+                        {t("Step {n}", { n: i + 1 })}
                       </span>
-                      <h3 className="text-2xl font-extrabold">{step.title}</h3>
+                      <h3 className="text-2xl font-extrabold">{t(step.title)}</h3>
                       <p
                         className={`mx-auto mt-2 max-w-[28ch] text-muted transition-opacity duration-300 ${current ? "opacity-100" : "opacity-70"}`}
                       >
-                        {step.text}
+                        {t(step.text)}
                       </p>
                     </button>
                     <div className="mx-auto mt-4 h-1.5 w-32 overflow-hidden rounded-full bg-brand/10" aria-hidden="true">
@@ -290,7 +302,7 @@ function HowItWorks() {
                 onClick={() => setHeld(false)}
                 className="rounded-full bg-lilac px-5 py-2 font-extrabold text-brand transition-colors hover:bg-brand hover:text-on-brand"
               >
-                ▶ Keep playing the steps
+                ▶ {t("Keep playing the steps")}
               </button>
             </div>
           )}
@@ -334,6 +346,8 @@ function TiltCard({ className, children }: { className: string; children: React.
   return (
     <div
       onMouseMove={(e) => {
+        // "Reduce motion" keeps the card still.
+        if (motionIsReduced()) return;
         const box = e.currentTarget.getBoundingClientRect();
         setAngle({
           x: ((e.clientY - box.top) / box.height - 0.5) * -10,
@@ -356,15 +370,16 @@ function TiltCard({ className, children }: { className: string; children: React.
 }
 
 function Features() {
+  const { t } = useLanguage();
   return (
     <section className="mx-4 rounded-[48px] bg-surface px-6 py-24 shadow-soft" aria-labelledby="features-title">
       <div className="mx-auto max-w-6xl">
         <Reveal>
           <h2 id="features-title" className="text-center text-4xl font-extrabold md:text-5xl">
-            Little helpers, <span className="text-gradient-brand">big comfort</span>
+            <Highlight text={t("Little helpers, *big comfort*")} />
           </h2>
           <p className="mx-auto mb-12 mt-3 max-w-[40ch] text-center text-xl text-muted">
-            Made to be simple for everyone — grandparents included.
+            {t("Made to be simple for everyone — grandparents included.")}
           </p>
         </Reveal>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -372,8 +387,8 @@ function Features() {
             <Reveal key={f.title} delay={i * 110} className="h-full">
               <TiltCard className={f.bg}>
                 <div className="inline-block group-hover:animate-wiggle">{f.icon}</div>
-                <h3 className="mt-4 text-2xl font-extrabold">{f.title}</h3>
-                <p className="mt-2">{f.text}</p>
+                <h3 className="mt-4 text-2xl font-extrabold">{t(f.title)}</h3>
+                <p className="mt-2">{t(f.text)}</p>
               </TiltCard>
             </Reveal>
           ))}
@@ -411,7 +426,8 @@ interface DemoState {
   minutes: number;
   nextId: number;
   shake: number;
-  feed: { id: number; time: string; text: string; mode: DemoMode }[];
+  // `text` is English with a {side} gap, so it can be translated when shown.
+  feed: { id: number; time: string; text: string; side: "left" | "right"; mode: DemoMode }[];
 }
 
 const demoStart: DemoState = {
@@ -421,8 +437,8 @@ const demoStart: DemoState = {
   nextId: 3,
   shake: 0,
   feed: [
-    { id: 2, time: "10:38", text: "Moving around, left side", mode: "moving" },
-    { id: 1, time: "10:21", text: "Sitting still, right side", mode: "sitting" },
+    { id: 2, time: "10:38", text: "Moving around, {side} side", side: "left", mode: "moving" },
+    { id: 1, time: "10:21", text: "Sitting still, {side} side", side: "right", mode: "sitting" },
   ],
 };
 
@@ -432,23 +448,24 @@ function demoStep(state: DemoState, action: DemoAction): DemoState {
   const minutes = state.minutes + (action === "fall" ? 1 : 4);
   const text =
     action === "sit"
-      ? `Sitting still, ${side} side`
+      ? "Sitting still, {side} side"
       : action === "fall"
-        ? `May have fallen, ${side} side`
+        ? "May have fallen, {side} side"
         : action === "okay"
-          ? `Up and moving again, ${side} side`
-          : `Moving around, ${side} side`;
+          ? "Up and moving again, {side} side"
+          : "Moving around, {side} side";
   return {
     mode,
     side,
     minutes,
     nextId: state.nextId + 1,
     shake: action === "fall" ? state.shake + 1 : state.shake,
-    feed: [{ id: state.nextId, time: clockFromMinutes(minutes), text, mode }, ...state.feed].slice(0, 4),
+    feed: [{ id: state.nextId, time: clockFromMinutes(minutes), text, side, mode }, ...state.feed].slice(0, 4),
   };
 }
 
 function Demo() {
+  const { t } = useLanguage();
   const [state, act] = useReducer(demoStep, demoStart);
   const [playing, setPlaying] = useState(true);
   const scriptPosition = useRef(0);
@@ -471,13 +488,14 @@ function Demo() {
       <div ref={ref} className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
         <div>
           <Reveal>
-            <p className="text-lg font-extrabold uppercase tracking-wide text-brand">Try it yourself</p>
+            <p className="text-lg font-extrabold uppercase tracking-wide text-brand">{t("Try it yourself")}</p>
             <h2 id="demo-title" className="mt-2 text-4xl font-extrabold md:text-5xl">
-              See the family page <span className="text-gradient-brand">come alive</span>
+              <Highlight text={t("See the family page *come alive*")} />
             </h2>
             <p className="mt-4 max-w-[44ch] text-xl text-muted">
-              Tap a button to play out Grandma’s morning and watch the family page update by itself. This is a pretend
-              demo — no camera needed.
+              {t(
+                "Tap a button to play out Grandma’s morning and watch the family page update by itself. This is a pretend demo — no camera needed.",
+              )}
             </p>
           </Reveal>
 
@@ -489,13 +507,13 @@ function Demo() {
             >
               <div className="absolute inset-y-6 left-1/2 border-l-[3px] border-dashed border-brand/20" />
               <span className="absolute bottom-3 left-4 text-sm font-extrabold uppercase tracking-wide text-muted">
-                Left side
+                {t("Left side")}
               </span>
               <span className="absolute bottom-3 right-4 text-sm font-extrabold uppercase tracking-wide text-muted">
-                Right side
+                {t("Right side")}
               </span>
               <svg className="absolute inset-x-0 top-0 h-full w-full" viewBox="0 0 400 220" preserveAspectRatio="none">
-                <path className="animate-scan" d="M200 40 L20 220 L380 220 Z" fill="#5b3cc4" />
+                <path className="animate-scan" d="M200 40 L20 220 L380 220 Z" fill="var(--color-brand)" />
               </svg>
               <div className="absolute left-1/2 top-3 flex -translate-x-1/2 flex-col items-center">
                 <div className="grid h-9 w-6 place-items-center rounded-md bg-ink">
@@ -539,7 +557,7 @@ function Demo() {
                   className="flex min-h-14 items-center gap-3 rounded-2xl border-[3px] border-lilac bg-surface px-3 py-2 text-left text-base font-extrabold leading-tight text-ink transition-all duration-200 hover:-translate-y-0.5 hover:border-brand hover:shadow-soft active:translate-y-0.5"
                 >
                   <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg ${b.tone}`}>{b.icon}</span>
-                  {b.label}
+                  {t(b.label)}
                 </button>
               ))}
               <button
@@ -548,7 +566,7 @@ function Demo() {
                 onClick={() => setPlaying((p) => !p)}
                 className="flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-brand px-4 font-extrabold text-on-brand transition-colors hover:bg-brand-dark"
               >
-                {playing ? "❚❚ Pause demo" : "▶ Play demo"}
+                {playing ? `❚❚ ${t("Pause demo")}` : `▶ ${t("Play demo")}`}
               </button>
             </div>
           </Reveal>
@@ -557,33 +575,41 @@ function Demo() {
         {/* The pretend family page, on a phone. It shakes when someone may have fallen. */}
         <Reveal delay={150}>
           <p className="sr-only" role="status" aria-live="polite">
-            {playing ? "" : `Grandma right now: ${look.label}. ${look.detail}, ${state.side} side.`}
+            {playing
+              ? ""
+              : t("Grandma right now: {label}. {detail}, {side} side.", {
+                  label: t(look.label),
+                  detail: t(look.detail),
+                  side: t(state.side),
+                })}
           </p>
           <div key={state.shake} className={state.shake > 0 && state.mode === "fall" ? "animate-shake" : ""}>
             <div className="mx-auto w-full max-w-[340px] rounded-[48px] border-[10px] border-ink bg-cream p-4 shadow-lift">
               <div className="mx-auto mb-4 h-5 w-24 rounded-full bg-ink" />
               <div className="flex items-center justify-between px-1">
                 <span className="flex items-center gap-2 font-extrabold">
-                  <LogoMark size={28} /> Family page
+                  <LogoMark size={28} /> {t("Family page")}
                 </span>
                 <LivePill />
               </div>
               <div className={`mt-4 rounded-[28px] p-5 transition-colors duration-500 ${look.card}`}>
-                <p className="text-sm font-bold opacity-80">Grandma · right now</p>
+                <p className="text-sm font-bold opacity-80">{t("Grandma · right now")}</p>
                 <p key={state.nextId} className="mt-1 animate-pop text-3xl font-black">
-                  {look.label}
+                  {t(look.label)}
                 </p>
                 <p className="mt-1 text-lg font-bold">
-                  {look.detail}, {state.side} side
+                  {t("{detail}, {side} side", { detail: t(look.detail), side: t(state.side) })}
                 </p>
-                <p className="mt-3 text-sm font-bold opacity-80">Updated {clockFromMinutes(state.minutes)}</p>
+                <p className="mt-3 text-sm font-bold opacity-80">
+                  {t("Updated {time}", { time: clockFromMinutes(state.minutes) })}
+                </p>
               </div>
-              <p className="mt-5 px-1 text-sm font-extrabold uppercase tracking-wide text-muted">Today’s news</p>
+              <p className="mt-5 px-1 text-sm font-extrabold uppercase tracking-wide text-muted">{t("Today’s news")}</p>
               <ul className="mt-2 space-y-2">
                 {state.feed.map((item) => (
                   <li key={item.id} className="flex animate-slide-in items-center gap-3 rounded-2xl bg-surface px-4 py-3">
                     <span className={`h-3 w-3 shrink-0 rounded-full ${demoLooks[item.mode].dot}`} />
-                    <span className="flex-1 text-sm font-bold">{item.text}</span>
+                    <span className="flex-1 text-sm font-bold">{t(item.text, { side: t(item.side) })}</span>
                     <span className="text-xs font-bold text-muted">{item.time}</span>
                   </li>
                 ))}
@@ -596,17 +622,26 @@ function Demo() {
   );
 }
 
-const invitees = [
-  { name: "Daughter", color: "bg-coral" },
-  { name: "Grandson", color: "bg-brand" },
-  { name: "Neighbour", color: "bg-leaf" },
-  { name: "Carer", color: "bg-sun" },
-];
+// The colours of the little circles, in turn: one for each person typed in.
+const circleColours = ["bg-coral text-ink", "bg-brand text-on-brand", "bg-leaf text-on-brand", "bg-sun text-ink"];
 
 function Family() {
-  const [invited, setInvited] = useState(["Daughter", "Grandson"]);
-  const toggle = (name: string) =>
-    setInvited((list) => (list.includes(name) ? list.filter((n) => n !== name) : [...list, name]));
+  const { t } = useLanguage();
+  const id = useId();
+  // Pretend only: these names stay on this page and are never sent anywhere.
+  const [invited, setInvited] = useState<string[]>([]);
+  const [typed, setTyped] = useState("");
+  const [problem, setProblem] = useState("");
+
+  function add(e: React.FormEvent) {
+    e.preventDefault();
+    const check = checkInviteName(typed, invited);
+    if (!check.ok) return setProblem(check.problem);
+    setInvited((list) => [...list, check.name]);
+    setTyped("");
+    setProblem("");
+  }
+  const remove = (name: string) => setInvited((list) => list.filter((n) => n !== name));
 
   return (
     <section className="px-6 py-24" aria-labelledby="family-title">
@@ -615,70 +650,108 @@ function Family() {
           <div className="relative">
             <FamilyIllustration />
             <div className="absolute -left-2 top-6 animate-float rounded-2xl bg-surface px-4 py-2 text-sm font-extrabold text-leaf shadow-soft md:-left-6">
-              ✓ All is well
+              ✓ {t("All is well")}
             </div>
             <div className="absolute -right-2 bottom-8 animate-float rounded-2xl bg-surface px-4 py-2 text-sm font-extrabold text-brand shadow-soft [animation-delay:-3s] md:-right-6">
-              ♥ Seen by {invited.length + 1}
+              ♥ {t("Seen by {n}", { n: invited.length + 1 })}
             </div>
           </div>
         </Reveal>
         <div>
           <Reveal>
             <h2 id="family-title" className="text-4xl font-extrabold md:text-5xl">
-              Everyone in the <span className="text-gradient-brand">loop</span>
+              <Highlight text={t("Everyone in the *loop*")} />
             </h2>
             <p className="mb-6 mt-4 text-xl text-muted">
-              Add children, grandchildren, neighbours or a carer to your CareNest home. Everyone sees the same simple
-              update, so nobody has to ring round to check.
+              {t(
+                "Add children, grandchildren, neighbours or a carer to your CareNest home. Everyone sees the same simple update, so nobody has to ring round to check.",
+              )}
             </p>
           </Reveal>
           <Reveal delay={120}>
-            <p className="font-extrabold">Who would you invite?</p>
-            <div className="mt-3 flex flex-wrap gap-3">
-              {invitees.map((person) => {
-                const on = invited.includes(person.name);
-                return (
-                  <button
-                    key={person.name}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => toggle(person.name)}
-                    className={`inline-flex min-h-12 items-center gap-2 rounded-full border-[3px] px-4 font-extrabold transition-all duration-200 hover:-translate-y-0.5 ${on ? "border-brand bg-lilac text-brand" : "border-lilac bg-surface text-muted"}`}
+            <form onSubmit={add} noValidate>
+              <label htmlFor={`${id}-name`} className="font-extrabold">
+                {t("Who would you invite?")}
+              </label>
+              <p id={`${id}-hint`} className="text-base text-muted">
+                {t("Type a name or who they are to you, then press Add.")}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <input
+                  id={`${id}-name`}
+                  type="text"
+                  autoComplete="off"
+                  maxLength={MAX_NAME_LENGTH * 2}
+                  placeholder={t("For example: Daughter or Sam")}
+                  value={typed}
+                  onChange={(e) => {
+                    setTyped(e.target.value);
+                    setProblem("");
+                  }}
+                  aria-invalid={problem ? true : undefined}
+                  aria-describedby={problem ? `${id}-hint ${id}-problem` : `${id}-hint`}
+                  className={`min-h-12 min-w-0 flex-1 basis-56 rounded-2xl border-[3px] bg-surface px-4 text-lg text-ink transition-colors ${problem ? "border-error" : "border-lilac hover:border-brand focus:border-brand"}`}
+                />
+                <button
+                  type="submit"
+                  className="inline-flex min-h-12 items-center gap-2 rounded-2xl border-[3px] border-brand bg-brand px-5 font-extrabold text-on-brand transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-dark"
+                >
+                  <span aria-hidden="true">+</span> {t("Add")}
+                </button>
+              </div>
+              {problem && (
+                <p id={`${id}-problem`} role="alert" className="mt-2 font-bold text-error">
+                  {t(problem)}
+                </p>
+              )}
+            </form>
+            {invited.length > 0 && (
+              <ul className="mt-4 flex flex-wrap gap-2" aria-label={t("People you'd invite")}>
+                {invited.map((name) => (
+                  <li
+                    key={name}
+                    className="inline-flex min-h-12 animate-pop items-center gap-2 rounded-full border-[3px] border-brand bg-lilac py-1 pl-4 pr-1 font-extrabold text-brand"
                   >
-                    <span
-                      className={`grid h-6 w-6 place-items-center rounded-full text-xs transition-transform duration-300 ${on ? `${person.color} scale-110 text-on-brand` : "bg-lilac text-brand"}`}
+                    {name}
+                    <button
+                      type="button"
+                      onClick={() => remove(name)}
+                      aria-label={t("Remove {name}", { name })}
+                      className="grid h-10 w-10 place-items-center rounded-full text-xl leading-none hover:bg-surface"
                     >
-                      {on ? "✓" : "+"}
-                    </span>
-                    {person.name}
-                  </button>
-                );
-              })}
-            </div>
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="mt-6 flex items-center gap-4">
               <div className="flex -space-x-3">
                 <span className="grid h-12 w-12 place-items-center rounded-full border-4 border-cream bg-peach font-black text-ink">
                   G
                 </span>
-                {invited.map((name) => (
+                {invited.map((name, i) => (
                   <span
                     key={name}
-                    className={`grid h-12 w-12 animate-pop place-items-center rounded-full border-4 border-cream font-black text-on-brand ${invitees.find((p) => p.name === name)?.color ?? "bg-brand"}`}
+                    aria-hidden="true"
+                    className={`grid h-12 w-12 animate-pop place-items-center rounded-full border-4 border-cream font-black ${circleColours[i % circleColours.length]}`}
                   >
-                    {name[0]}
+                    {initial(name)}
                   </span>
                 ))}
               </div>
               <p className="font-bold text-muted">
                 {invited.length === 0
-                  ? "Invite someone to share the updates"
-                  : `${invited.length} ${invited.length === 1 ? "person sees" : "people see"} the same update`}
+                  ? t("Invite someone to share the updates")
+                  : invited.length === 1
+                    ? t("1 person sees the same update")
+                    : t("{n} people see the same update", { n: invited.length })}
               </p>
             </div>
           </Reveal>
           <Reveal delay={200}>
             <ButtonLink to={GET_STARTED} arrow className="mt-8">
-              Get started
+              {t("Get started")}
             </ButtonLink>
           </Reveal>
         </div>
@@ -688,6 +761,7 @@ function Family() {
 }
 
 function WhoWeAre() {
+  const { t } = useLanguage();
   return (
     <section className="px-6 pb-24" aria-labelledby="team-title">
       <Reveal>
@@ -697,11 +771,12 @@ function WhoWeAre() {
               ♥
             </span>
             <h2 id="team-title" className="text-4xl font-extrabold">
-              Who we are
+              {t("Who we are")}
             </h2>
             <p className="mt-4 text-xl text-muted">
-              We are a small hackathon team. Many of us have parents and grandparents who live alone, and we wanted a
-              simple, kind way to stay close without cameras sending pictures anywhere or gadgets to wear.
+              {t(
+                "We are a small hackathon team. Many of us have parents and grandparents who live alone, and we wanted a simple, kind way to stay close without cameras sending pictures anywhere or gadgets to wear.",
+              )}
             </p>
           </div>
         </div>
@@ -731,12 +806,13 @@ const questions = [
 
 function Questions() {
   const [open, setOpen] = useState<number | null>(0);
+  const { t } = useLanguage();
   return (
     <section className="px-6 pb-24" aria-labelledby="faq-title">
       <div className="mx-auto max-w-3xl">
         <Reveal>
           <h2 id="faq-title" className="mb-8 text-center text-4xl font-extrabold">
-            Good questions
+            {t("Good questions")}
           </h2>
         </Reveal>
         <div className="space-y-3">
@@ -756,7 +832,7 @@ function Questions() {
                       onClick={() => setOpen(isOpen ? null : i)}
                       className="flex min-h-16 w-full items-center justify-between gap-4 px-6 py-4 text-left text-xl font-extrabold"
                     >
-                      {item.q}
+                      {t(item.q)}
                       <span
                         aria-hidden="true"
                         className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-xl transition-all duration-300 ${isOpen ? "rotate-45 bg-brand text-on-brand" : "bg-lilac text-brand"}`}
@@ -772,7 +848,7 @@ function Questions() {
                     className={`grid transition-all duration-300 ease-out ${isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
                   >
                     <div className="overflow-hidden">
-                      <p className="px-6 pb-6 text-lg text-muted">{item.a}</p>
+                      <p className="px-6 pb-6 text-lg text-muted">{t(item.a)}</p>
                     </div>
                   </div>
                 </div>
@@ -796,6 +872,7 @@ const risingHearts = [
 ];
 
 function CallToAction() {
+  const { t } = useLanguage();
   return (
     <section className="px-6 pb-20" aria-labelledby="cta-title">
       <Reveal>
@@ -816,15 +893,15 @@ function CallToAction() {
           </div>
           <div className="relative">
             <h2 id="cta-title" className="text-4xl font-extrabold md:text-5xl">
-              Ready to feel closer?
+              {t("Ready to feel closer?")}
             </h2>
-            <p className="mt-3 text-xl">Make an account, stand a phone on the table and press “Start watching”.</p>
+            <p className="mt-3 text-xl">{t("Make an account, stand a phone on the table and press “Start watching”.")}</p>
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <ButtonLink to={GET_STARTED} variant="inverse" arrow>
-                Get started
+                {t("Get started")}
               </ButtonLink>
               <ButtonLink to={LOG_IN} variant="inverse-outline">
-                Sign in
+                {t("Sign in")}
               </ButtonLink>
             </div>
           </div>

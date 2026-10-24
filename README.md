@@ -2,7 +2,7 @@
 
 **CareNest**: a phone standing on a table watches the room with its camera (all on the phone), and family see in plain words how their loved one is doing. No video or pictures ever leave the phone.
 
-The site has seven pages:
+The site has eight pages:
 
 | Page | Address | What it is |
 | --- | --- | --- |
@@ -13,6 +13,7 @@ The site has seven pages:
 | Care profile | `/profile` | A few questions about the person being cared for (age, routine, who they live with), then how likely a fall is and the times to keep an eye on |
 | Help | `/help` | Picture steps for getting started, what the Family page means, privacy, and common questions |
 | Your account | `/account` | Your email, the name family see, change your password, your family circles, and log out (signed-in only) |
+| Set up your iPhone | `/get-started` | Step-by-step guide shown right after signing in: turns an iPhone into the phone camera on the table (with a QR code to open it on the iPhone). Signed-in only |
 
 The "forgot password" email also brings people to `/reset-password` to choose a new password.
 
@@ -123,6 +124,8 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    Then open the address it prints (usually http://localhost:5173).
 
+   The "Read aloud" buttons and spoken alerts speak with our ElevenLabs voices through the small server function in `api/tts.ts`. It needs these Vercel environment variables (already set for production, preview and development): `ELEVENLABS_API_KEY` (secret, stays on the server), and the voice IDs `ELEVENLABS_VOICE_EN`, `ELEVENLABS_VOICE_ES` and `ELEVENLABS_VOICE_ZH`. It also reads the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as the site, because only logged-in people can use it (at most 30 readings every 10 minutes each, spoken alerts included). Everything said out loud uses an ElevenLabs voice (the browser's own voices are never used); if that voice can't be reached, the page just says "Read aloud isn't available right now". `npm run dev` doesn't run that function, so locally you'll see that note. To hear the ElevenLabs voices on your computer, run `vercel dev` (after `vercel link`) instead of `npm run dev`.
+
 5. Check that it builds for production (Vercel runs this too):
 
    ```bash
@@ -139,11 +142,13 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
 Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, and colours and fonts in `src/index.css`. `vercel.json` makes links like `/login`, `/dashboard` and `/reset-password` work when the site is deployed.
 
-Logging in: `/login` has log in, create an account, and "forgot your password". Creating an account logs people straight in and takes them to `/dashboard`. The "forgot password" email brings people back to `/reset-password` to choose a new password (and if "Confirm email" is turned back on, the confirmation email brings them to `/dashboard`). `/dashboard` is the family page (below) and sends people to `/login` if they aren't logged in.
+Logging in: `/login` has log in, create an account, and "forgot your password". Until someone signs in, the **Sign In** link in the header glows with a yellow "Start here" bubble pointing at it. After logging in or creating an account, people go to the iPhone setup guide at `/get-started` (one step at a time, with a glowing **Next** button); once they finish or skip it, later log-ins on that browser go straight to `/dashboard`. A link like `/login?next=/tracker` brings people back to that page after logging in instead (the Phone camera page uses this, so an iPhone that signs in goes straight back to the camera). The "forgot password" email brings people back to `/reset-password` to choose a new password (and if "Confirm email" is turned back on, the confirmation email brings them to `/dashboard`). `/dashboard` is the family page (below) and sends people to `/login` if they aren't logged in.
 
 ## Phone Tracker page (`/tracker`)
 
-The phone camera page. Stand a phone on a table, sign in, open `/tracker` and press **Start watching**. A green "Camera on - video stays on this phone" sign stays on screen while it watches. The phone finds people with its camera (all on the phone) and sends only short text notes to the `movement_events` table: what happened (moving, still, nobody, possible fall), which side of the room (left/middle/right), posture (standing/sitting/lying) and the time, plus a "still watching" heartbeat every minute. No video or pictures ever leave the phone. If nobody is signed in it asks you to sign in first; without Supabase keys you can still try the camera, but nothing is sent.
+The phone camera page. Stand a phone on a table, sign in, open `/tracker` and press **Start watching**. A green "Camera on - video stays on this phone" sign stays on screen while it watches. The phone finds people with its camera (all on the phone) and sends only short text notes to the `movement_events` table: what happened (moving, still, nobody, possible fall), which side of the room (left/middle/right), posture (standing/sitting/lying) and the time, plus a "still watching" heartbeat every 30 seconds. No video or pictures ever leave the phone. If nobody is signed in it asks you to sign in first; without Supabase keys you can still try the camera, but nothing is sent.
+
+When it stops watching it tells the family page: when you press **Stop watching**, close the tab, or leave the page hidden (another tab, another app, or the screen turned off) for 15 seconds, because a hidden page can't watch. Only one tab watches at a time: starting the camera in a new tab stops it in the old one.
 
 It also still drives the optional Phone Tracker stand: it follows the person you tap and aims the stand and its humidifier mist at them. The code is in `src/tracker/` (see `src/tracker/README.md`); the hardware, firmware and build guide are in `phone-tracker/`.
 
@@ -156,7 +161,7 @@ It also still drives the optional Phone Tracker stand: it follows the person you
 
 Where family members see how things are. After logging in, the login page brings you here; if nobody is logged in it sends you to `/login`. It shows:
 
-- **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns red with a "please call or visit" note if the phone thinks someone may have fallen, and warns you if the phone has not checked in for over 3 minutes (it normally sends a heartbeat every minute).
+- **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns red with a "please call or visit" note if the phone thinks someone may have fallen, Once the camera stops (Stop watching, a closed tab, or nothing heard from it for 2 minutes, for example a flat battery or no internet; it normally sends a heartbeat every 30 seconds) it says "The phone stopped watching at 3:42 pm." and the **Live** badge changes to **Camera off**.
 - **Recent news**: the last 10 events with their times.
 - **Add a family member** (only for the circle's owner): type the email of someone who already has a CareNest account, and they will see the same page. For privacy the page gives the same answer whether or not that email has an account. A family member's page shows the circle with the newest news, so they see the phone of the person they were added for.
 

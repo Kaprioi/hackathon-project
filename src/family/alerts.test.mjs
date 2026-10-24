@@ -5,14 +5,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { summarise } from "./status.ts";
+import { speechParts } from "./readAloud.ts";
+import { translate } from "../i18n/translate.ts";
+import es from "../i18n/es.ts";
+import zh from "../i18n/zh.ts";
 import {
   DEFAULT_ALERT_SETTINGS,
   canCheckOn,
   checkingLine,
   cleanAlertSettings,
+  cleanSpokenAlerts,
   highlightFor,
   isQuietTime,
   shortName,
+  shouldSpeak,
+  shouldSpeakSilence,
+  spokenAlert,
   spokenEvent,
   spokenStatus,
   whoToSpeakOf,
@@ -52,6 +60,9 @@ test("the spoken name comes from the Care profile, or a kind default", () => {
 test("broken saved alert settings fall back to the defaults", () => {
   assert.deepEqual(cleanAlertSettings(null), DEFAULT_ALERT_SETTINGS);
   assert.deepEqual(cleanAlertSettings("nonsense"), DEFAULT_ALERT_SETTINGS);
+  // Settings saved before "camera stopped" existed keep it switched on.
+  assert.equal(cleanAlertSettings({ falls: true, outOfSight: false }).cameraOff, true);
+  assert.equal(cleanAlertSettings({ cameraOff: false }).cameraOff, false);
   assert.deepEqual(cleanAlertSettings({ falls: false, quietFrom: "25:00", quietTo: "06:30", quietHours: "yes" }), {
     ...DEFAULT_ALERT_SETTINGS,
     falls: false,
@@ -77,6 +88,9 @@ test("alert settings decide what is highlighted", () => {
   assert.equal(highlightFor(e("nobody", 12), DEFAULT_ALERT_SETTINGS), "highlight");
   assert.equal(highlightFor(e("moving", 12), DEFAULT_ALERT_SETTINGS), "none");
   assert.equal(highlightFor(e("nobody", 12), { ...DEFAULT_ALERT_SETTINGS, outOfSight: false }), "none");
+  assert.equal(highlightFor(e("stopped", 12), DEFAULT_ALERT_SETTINGS), "highlight");
+  assert.equal(highlightFor(e("stopped", 12), { ...DEFAULT_ALERT_SETTINGS, cameraOff: false }), "none");
+  assert.equal(highlightFor(e("started", 12), DEFAULT_ALERT_SETTINGS), "none");
   assert.equal(highlightFor(e("fall", 23), { ...DEFAULT_ALERT_SETTINGS, quietHours: true }), "quiet");
 });
 
@@ -94,4 +108,78 @@ test("who is checking on it reads naturally", () => {
   assert.equal(shortName({ display_name: "Sam", email: "s@x.com" }), "Sam");
   assert.equal(shortName({ display_name: null, email: "ali.k@x.com" }), "ali.k");
   assert.equal(shortName(undefined), "Someone");
+});
+
+// Spoken alerts take a time in the viewer's own clock, like the page.
+const evAt = (kind, when) => ({ id: nextId++, kind, zone: "left", posture: null, created_at: when.toISOString() });
+
+test("spoken alerts say new alerts only, never old ones or the same one twice", () => {
+  const settings = DEFAULT_ALERT_SETTINGS;
+  const none = new Set();
+  const fresh = ev("fall", 0.5);
+  assert.equal(shouldSpeak(fresh, settings, NOW, none), true);
+  // Already in the list when the page opened (or a reload brought it back): stay quiet.
+  assert.equal(shouldSpeak(ev("fall", 10), settings, NOW, none), false);
+  assert.equal(shouldSpeak(fresh, settings, NOW, new Set([fresh.id])), false);
+  // Ordinary news is never spoken.
+  for (const kind of ["moving", "still", "started", "heartbeat"])
+    assert.equal(shouldSpeak(ev(kind, 0), settings, NOW, none), false, kind);
+});
+
+test("the camera stopping is an alert that follows the Alert settings and quiet hours", () => {
+  const none = new Set();
+  const stopped = { ...evAt("stopped", local(12)), zone: null }; // the phone sends "stopped" without a side
+  const noon = local(12).getTime();
+  assert.equal(highlightFor(stopped, DEFAULT_ALERT_SETTINGS), "highlight");
+  assert.equal(shouldSpeak(stopped, DEFAULT_ALERT_SETTINGS, noon, none), true);
+  assert.equal(shouldSpeak(stopped, { ...DEFAULT_ALERT_SETTINGS, cameraOff: false }, noon, none), false);
+  assert.equal(canCheckOn(stopped), false);
+  assert.match(spokenAlert(stopped, "Mum", clock), /^CareNest alert\. Phone stopped watching, at 10:38\.$/);
+
+  // No "stopped" message (closed tab, flat battery): said once it goes quiet, unless switched off or in quiet hours.
+  const quiet = { ...DEFAULT_ALERT_SETTINGS, quietHours: true, quietFrom: "22:00", quietTo: "07:00" };
+  assert.equal(shouldSpeakSilence(DEFAULT_ALERT_SETTINGS, local(23, 30).getTime()), true);
+  assert.equal(shouldSpeakSilence(quiet, local(23, 30).getTime()), false);
+  assert.equal(shouldSpeakSilence(quiet, local(12).getTime()), true);
+  assert.equal(shouldSpeakSilence({ ...DEFAULT_ALERT_SETTINGS, cameraOff: false }, local(12).getTime()), false);
+});
+
+test("possible falls are always spoken; other alerts follow the Alert settings and quiet hours", () => {
+  const night = local(23, 30);
+  const quiet = { ...DEFAULT_ALERT_SETTINGS, quietHours: true, quietFrom: "22:00", quietTo: "07:00" };
+  const none = new Set();
+  // A fall in quiet hours, or with fall highlights switched off, is still said out loud.
+  assert.equal(shouldSpeak(evAt("fall", night), quiet, night.getTime(), none), true);
+  assert.equal(shouldSpeak(evAt("fall", night), { ...quiet, falls: false }, night.getTime(), none), true);
+  // "Nobody in view" is quiet in quiet hours, or when its highlight is off.
+  assert.equal(shouldSpeak(evAt("nobody", night), quiet, night.getTime(), none), false);
+  assert.equal(shouldSpeak(evAt("nobody", night), DEFAULT_ALERT_SETTINGS, night.getTime(), none), true);
+  const noon = local(12, 0);
+  assert.equal(shouldSpeak(evAt("nobody", noon), quiet, noon.getTime(), none), true);
+  assert.equal(shouldSpeak(evAt("nobody", noon), { ...quiet, outOfSight: false }, noon.getTime(), none), false);
+});
+
+test("spoken alerts sound like an alarm, in each language", () => {
+  const fall = { id: 1, kind: "fall", zone: "left", posture: null, created_at: at(0) };
+  assert.equal(spokenAlert(fall, "Mum", () => "3:42 PM"), "CareNest alert. Possible fall, left side, at 3:42 PM. Please check on Mum.");
+  assert.equal(
+    spokenAlert(fall, "Mum", () => "3:42 PM", undefined, true),
+    "Reminder from CareNest. Possible fall, left side, at 3:42 PM. Please check on Mum.",
+  );
+  assert.equal(spokenAlert({ ...fall, kind: "nobody" }, "Mum", () => "3:42 PM"), "CareNest alert. Nobody in view, at 3:42 PM.");
+  assert.equal(
+    spokenAlert(fall, "Mamá", () => "15:42", (text, vars) => translate(es, text, vars)),
+    "Aviso de CareNest. Posible caída, lado izquierdo, a las 15:42. Compruebe que Mamá está bien, por favor.",
+  );
+  // Chinese is tidied (no stray spaces, Chinese commas) before it is spoken.
+  assert.deepEqual(speechParts(spokenAlert(fall, "妈妈", () => "15点42分", (text, vars) => translate(zh, text, vars)), "zh"), [
+    "CareNest提醒。",
+    "15点42分，可能跌倒，左边。",
+    "请看看妈妈是否安好。",
+  ]);
+});
+
+test("spoken alerts are off unless they were switched on", () => {
+  assert.equal(cleanSpokenAlerts(true), true);
+  for (const saved of [false, null, undefined, "yes", 1]) assert.equal(cleanSpokenAlerts(saved), false);
 });

@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useLanguage } from "../i18n/useLanguage";
 import { ERROR_RED } from "./AuthLayout";
 
 // A big, clearly labelled text box. Hints and problems are read out with it.
@@ -13,6 +14,8 @@ export function TextField({
   error?: string;
 } & React.InputHTMLAttributes<HTMLInputElement>) {
   const id = useId();
+  // Pages pass English; the label, hint and problem are translated here.
+  const { t } = useLanguage();
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
   const describedBy = [hint && hintId, error && errorId].filter(Boolean).join(" ") || undefined;
@@ -20,11 +23,11 @@ export function TextField({
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={id} className="text-xl font-extrabold">
-        {label}
+        {t(label)}
       </label>
       {hint && (
         <p id={hintId} className="text-lg text-muted">
-          {hint}
+          {t(hint)}
         </p>
       )}
       <input
@@ -38,7 +41,7 @@ export function TextField({
       />
       {error && (
         <p id={errorId} className={`text-lg font-bold ${ERROR_RED}`}>
-          {error}
+          {t(error)}
         </p>
       )}
     </div>
@@ -48,6 +51,7 @@ export function TextField({
 // A password box with a big "Show password" tick box underneath.
 export function PasswordField(props: Omit<React.ComponentProps<typeof TextField>, "type">) {
   const [visible, setVisible] = useState(false);
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col gap-2">
       <TextField {...props} type={visible ? "text" : "password"} />
@@ -63,7 +67,7 @@ export function PasswordField(props: Omit<React.ComponentProps<typeof TextField>
         >
           {visible ? "✓" : ""}
         </span>
-        Show password
+        {t("Show password")}
       </button>
     </div>
   );

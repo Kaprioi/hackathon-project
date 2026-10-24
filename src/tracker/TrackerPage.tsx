@@ -10,8 +10,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, CSSProperties, PointerEvent, ReactNode } from "react";
 import { Link } from "react-router";
+import BackButton from "../components/BackButton";
 import { buttonVariants } from "../components/ButtonLink";
+import Highlight from "../components/Highlight";
+import LanguagePicker from "../components/LanguagePicker";
 import { Blobs, LogoMark } from "../components/SiteLayout";
+import { useLanguage } from "../i18n/useLanguage";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
 import { Brain, MODE_LABEL } from "./brain.ts";
@@ -187,6 +191,14 @@ const TAP_RING_CSS = `
 function defaultSettings(): Settings {
   return { ...DEFAULT_SETTINGS, faces: !isIPhone() };
 }
+
+/** A hidden page can't watch (the browser pauses it), so after this long the camera stops and tells the family. */
+const HIDDEN_STOP_MS = 15_000;
+/** Tabs in this browser tell each other when one starts watching, so only one watches at a time. */
+const TABS_CHANNEL = "carenest-camera";
+const HIDDEN_NOTE =
+  "The camera stopped because this page was hidden or the screen turned off. Keep this page open on the screen while it watches.";
+const OTHER_TAB_NOTE = "The camera is now watching in another tab, so it stopped here.";
 
 function loadSettings(): Settings {
   try {
@@ -633,6 +645,8 @@ function ErrorBanner({ text, onDismiss }: { text: string; onDismiss: () => void 
 }
 
 export default function TrackerPage() {
+  // Only the start screen is translated for now; the camera screen stays in English.
+  const { t } = useLanguage();
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const analysisRef = useRef<HTMLCanvasElement | null>(null);
@@ -682,7 +696,8 @@ export default function TrackerPage() {
   const reporterRef = useRef<Reporter>(new Reporter());
   const cloudRef = useRef<Cloud | null>(null);
   const sendChainRef = useRef<Promise<void>>(Promise.resolve());
-  const watchingRef = useRef(false); // true from "Start watching" until "Stop watching" (flips don't count)
+  const watchingRef = useRef(false); // true from "Start watching" until it stops (camera flips and wake-ups don't count)
+  const tabsRef = useRef<BroadcastChannel | null>(null);
 
   const [running, setRunning] = useState(false);
   const [account, setAccount] = useState<Account>(supabase ? "checking" : "no-database");
@@ -701,6 +716,8 @@ export default function TrackerPage() {
   const [fullscreen, setFullscreen] = useState(false);
   const [ripple, setRipple] = useState<{ x: number; y: number; key: number } | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
+  /** Why the camera stopped by itself, shown on the start screen (English; translated when shown). */
+  const [stopNote, setStopNote] = useState("");
   const [snap, setSnap] = useState<Snapshot>({
     mode: "idle",
     note: "Tap a person to lock on.",
@@ -755,14 +772,6 @@ export default function TrackerPage() {
     };
     window.addEventListener("devicemotion", onMotion);
     return () => window.removeEventListener("devicemotion", onMotion);
-  }, []);
-
-  // Check whether someone is signed in (the family page only works for signed-in people).
-  useEffect(() => {
-    if (!supabase) return;
-    void supabase.auth.getSession().then(({ data }) => setAccount(data.session ? "signed-in" : "signed-out"));
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => setAccount(session ? "signed-in" : "signed-out"));
-    return () => data.subscription.unsubscribe();
   }, []);
 
   /** Queue one small text event for the family page. Sent in order; failures are shown, not thrown. */
@@ -940,6 +949,33 @@ export default function TrackerPage() {
     return () => window.clearTimeout(id);
   }, [ripple]);
 
+  // Check whether someone is signed in (the family page only works for signed-in people).
+  useEffect(() => {
+    const db = supabase;
+    if (!db) return;
+    void db.auth.getSession().then(({ data }) => setAccount(data.session ? "signed-in" : "signed-out"));
+    const { data } = db.auth.onAuthStateChange((_event, session) => {
+      setAccount(session ? "signed-in" : "signed-out");
+      // Signed out, or someone else signed in (maybe in another tab): forget the old
+      // care circle, and if the camera is on, carry on in the new person's circle.
+      if (!cloudRef.current || cloudRef.current.userId === session?.user.id) return;
+      cloudRef.current = null;
+      if (!session || !watchingRef.current) return;
+      // Later, not inside this callback: Supabase asks not to call it from here.
+      setTimeout(() => {
+        Cloud.connect(db).then(
+          (cloud) => {
+            if (cloudRef.current || !watchingRef.current) return;
+            cloudRef.current = cloud;
+            report(reporterRef.current.start(performance.now()));
+          },
+          (e: unknown) => setSendError(e instanceof Error ? e.message : String(e)),
+        );
+      }, 0);
+    });
+    return () => data.subscription.unsubscribe();
+  }, [report]);
+
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     const next = { ...settingsRef.current, ...patch };
     settingsRef.current = next;
@@ -967,6 +1003,7 @@ export default function TrackerPage() {
     async (avoidDeviceId?: string) => {
       unlockSound(); // the emergency alert can only make sound after a tap
       setError("");
+      setStopNote("");
       setCameraStopped(false);
       if (!navigator.mediaDevices?.getUserMedia) {
         setError("This browser can't open the camera. The page must be opened over https (or on localhost).");
@@ -1035,6 +1072,7 @@ export default function TrackerPage() {
           watchingRef.current = true;
           handheldRef.current.reset(); // the hand-held camera angle starts from straight ahead
           report(reporterRef.current.start(performance.now()));
+          tabsRef.current?.postMessage("started"); // another tab watching stops
         }
         void keepScreenOn();
         setRunning(true);
@@ -1047,19 +1085,87 @@ export default function TrackerPage() {
     [stopCamera, keepScreenOn, report, unlockSound],
   );
 
-  const stopWatching = useCallback(() => {
-    if (watchingRef.current) report(reporterRef.current.stop());
-    watchingRef.current = false;
-    cameraRequestRef.current++; // cancel a camera start that's still under way
-    stopCamera();
-    brainRef.current.release();
-    faceWatcher.forget();
-    setRunning(false);
-    setLoading(false);
-    setCameraStopped(false);
-    void wakeLockRef.current?.release();
-    wakeLockRef.current = null;
-  }, [stopCamera, report]);
+  /**
+   * Stops watching: turns the camera off (also a start still under way) and, if it was
+   * watching and `tellFamily` is true, tells the family page. `note` says why, when it
+   * stopped by itself. Safe to call twice.
+   */
+  const finishWatching = useCallback(
+    (note: string, tellFamily: boolean) => {
+      const wasWatching = watchingRef.current;
+      watchingRef.current = false;
+      if (wasWatching && tellFamily) report(reporterRef.current.stop());
+      cameraRequestRef.current++; // cancel a camera start that's still under way
+      stopCamera();
+      brainRef.current.release();
+      faceWatcher.forget();
+      setRunning(false);
+      setLoading(false);
+      setCameraStopped(false);
+      setStopNote(wasWatching ? note : "");
+      void wakeLockRef.current?.release();
+      wakeLockRef.current = null;
+    },
+    [stopCamera, report, faceWatcher],
+  );
+
+  const stopWatching = useCallback(() => finishWatching("", true), [finishWatching]);
+
+  // Closing the tab (or the browser) doesn't run the clean-up below, so say
+  // "stopped" here. The page is going away, so it is sent the keepalive way.
+  useEffect(() => {
+    const onPageHide = () => {
+      if (!watchingRef.current) return;
+      watchingRef.current = false;
+      cloudRef.current?.sendOnClose(reporterRef.current.stop());
+      stopCamera();
+      setRunning(false);
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [stopCamera]);
+
+  // A hidden page (another tab, another app, screen off) is paused by the browser,
+  // so it isn't really watching. After a short while, stop and tell the family.
+  // (Back within that time, the camera just wakes up again: see below.)
+  useEffect(() => {
+    let hiddenAt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stopIfWatching = () => {
+      if (watchingRef.current) finishWatching(HIDDEN_NOTE, true);
+    };
+    const onVisibility = () => {
+      clearTimeout(timer);
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        timer = setTimeout(stopIfWatching, HIDDEN_STOP_MS);
+        return;
+      }
+      // A sleeping phone doesn't run timers, so check again when it wakes up.
+      if (hiddenAt && Date.now() - hiddenAt >= HIDDEN_STOP_MS) stopIfWatching();
+      hiddenAt = 0;
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [finishWatching]);
+
+  // Only one tab watches: when another tab starts, this one stops quietly
+  // (the new tab has already told the family it started).
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const tabs = new BroadcastChannel(TABS_CHANNEL);
+    tabs.onmessage = (e) => {
+      if (e.data === "started" && watchingRef.current) finishWatching(OTHER_TAB_NOTE, false);
+    };
+    tabsRef.current = tabs;
+    return () => {
+      tabs.close();
+      tabsRef.current = null;
+    };
+  }, [finishWatching]);
 
   /** Switch to the front or back camera. The picture changes completely, so let go of the target. */
   const chooseCamera = useCallback(
@@ -1079,7 +1185,8 @@ export default function TrackerPage() {
   useEffect(() => {
     if (!running) return;
     const onVisibility = () => {
-      if (document.visibilityState !== "visible") return;
+      // Not if it was away too long and has just stopped (above): that needs Start watching again.
+      if (document.visibilityState !== "visible" || !watchingRef.current) return;
       void keepScreenOn();
       const track = streamRef.current?.getVideoTracks()[0];
       if (!track || track.readyState === "ended") void startCamera();
@@ -1578,7 +1685,11 @@ export default function TrackerPage() {
           <div className="relative isolate flex min-h-full items-center justify-center px-2 py-3 [@media(min-height:600px)]:py-6">
             <Blobs fixed />
             <div className="flex w-full max-w-lg animate-slide-in flex-col items-center gap-2 [@media(max-height:599px)]:max-w-2xl rounded-[32px] bg-surface px-5 py-4 text-center shadow-lift [@media(min-height:600px)]:gap-4 [@media(min-height:600px)]:py-5 [@media(min-height:600px)]:sm:rounded-[40px] [@media(min-height:600px)]:sm:p-10">
-              {/* On a short screen (a phone turned sideways) the logo is skipped, so "Start watching" stays in view */}
+              {/* On a short screen (a phone turned sideways) the back button, logo and language picker
+                  are skipped, so "Start watching" stays in view */}
+              <div className="w-full text-left [@media(max-height:599px)]:hidden">
+                <BackButton />
+              </div>
               <Link
                 to="/"
                 className="group flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline [@media(max-height:599px)]:hidden"
@@ -1586,24 +1697,32 @@ export default function TrackerPage() {
                 <LogoMark />
                 CareNest
               </Link>
+              <LanguagePicker className="justify-center [@media(max-height:599px)]:hidden" />
               <h1 className="text-2xl font-extrabold [@media(min-height:600px)]:text-4xl">
-                Phone <span className="text-gradient-brand">camera</span>
+                <Highlight text={t("Phone *camera*")} />
               </h1>
-              <p className="text-base text-muted [@media(min-height:600px)]:text-xl">
-                Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a
-                few words, how things are going.
+              <p className="text-base font-bold text-muted [@media(min-height:600px)]:text-xl">
+                {t(
+                  "Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a few words, how things are going.",
+                )}
               </p>
               <p className="rounded-2xl bg-mint px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
-                Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or
-                pictures ever leave it.
+                {t(
+                  'Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or pictures ever leave it.',
+                )}
               </p>
+              {stopNote && (
+                <p role="status" className="rounded-2xl bg-sun px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
+                  {t(stopNote)}
+                </p>
+              )}
               {isTouch && account !== "signed-out" && (
                 <Choice
                   light
-                  label="Which camera"
+                  label={t("Which camera")}
                   options={[
-                    ["front", "Front (screen side)"],
-                    ["back", "Back"],
+                    ["front", t("Front (screen side)")],
+                    ["back", t("Back")],
                   ]}
                   value={settings.camera}
                   onChange={(c) => updateSettings({ camera: c })}
@@ -1612,9 +1731,14 @@ export default function TrackerPage() {
               )}
               {account === "signed-out" ? (
                 <div className="w-full space-y-3">
-                  <p className="text-base [@media(min-height:600px)]:text-xl">Please sign in first, so your family can see the updates.</p>
-                  <Link to="/login" className={`${buttonVariants.primary} w-full text-xl [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}>
-                    Sign in
+                  <p className="text-base font-bold [@media(min-height:600px)]:text-xl">
+                    {t("Please sign in first, so your family can see the updates.")}
+                  </p>
+                  <Link
+                    to="/login?next=/tracker"
+                    className={`${buttonVariants.primary} w-full text-xl [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}
+                  >
+                    {t("Sign in")}
                   </Link>
                 </div>
               ) : (
@@ -1623,21 +1747,22 @@ export default function TrackerPage() {
                   disabled={loading || account === "checking"}
                   className={`${buttonVariants.primary} w-full text-xl disabled:opacity-60 [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}
                 >
-                  {loading ? "Starting..." : "Start watching"}
+                  {loading ? t("Starting... (the first time takes a little longer)") : t("Start watching")}
                 </button>
               )}
-              {loading && <p className="text-base text-muted">The first start downloads the AI model (a few MB).</p>}
               {error && <ErrorBanner text={error} onDismiss={() => setError("")} />}
               {account === "no-database" && (
-                <p className="rounded-2xl bg-sun px-4 py-3 text-base text-ink">
-                  The database isn't set up on this website yet, so you can try the camera but your family won't see
-                  anything.
+                <p className="rounded-2xl bg-sun px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
+                  {t(
+                    "The database isn't set up on this website yet, so you can try the camera but your family won't see anything.",
+                  )}
                 </p>
               )}
               {!Stand.supported() && (
-                <p className="text-base text-muted">
-                  Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this
-                  page in the Bluefy app.
+                <p className="text-base font-bold text-muted">
+                  {t(
+                    "Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this page in the Bluefy app.",
+                  )}
                 </p>
               )}
             </div>

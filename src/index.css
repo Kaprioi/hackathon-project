@@ -1,31 +1,31 @@
 @import "tailwindcss";
 @import "@fontsource-variable/nunito";
 
-/* Colours, shadows, animations and font for the whole app, copied from the
-   Lovable design (https://mum-is-okay-connect.lovable.app). Every text colour
+/* Colours, shadows, animations and font for the whole app, based on the Lovable
+   design (https://mum-is-okay-connect.lovable.app) but in a calm blue instead of purple. Every text colour
    here passes WCAG AA contrast on the light backgrounds it is used on. */
 @theme {
   --font-sans: "Nunito Variable", ui-rounded, "Segoe UI", system-ui, sans-serif;
 
   --color-ink: #1f2a37; /* main text */
   --color-muted: #46505f; /* secondary text */
-  --color-brand: #5b3cc4; /* purple buttons and links */
-  --color-brand-dark: #3d2790;
+  --color-brand: #1a5fb4; /* blue buttons and links */
+  --color-brand-dark: #0f3f7a;
   --color-leaf: #17795a; /* green "all okay" */
-  --color-cream: #f4fbf8; /* page background */
+  --color-cream: #f3f8fd; /* page background */
   --color-mint: #c9f0df;
-  --color-lilac: #e7defd;
+  --color-lilac: #dbeafe; /* pale blue boxes and borders (the name is from the old purple) */
   --color-peach: #ffe1cc;
   --color-sun: #fff1b8;
   --color-coral: #ff9f7a;
   --color-surface: #fff; /* cards */
-  --color-on-brand: #fff; /* text on purple */
+  --color-on-brand: #fff; /* text on blue */
   --color-alert: oklch(60% 0.19 18); /* "please check in" red */
   --color-error: #a61b1b; /* error messages */
   --color-error-soft: #fdecec; /* behind error messages */
 
   --shadow-soft: 0 14px 40px -16px rgb(31 42 55 / 0.22);
-  --shadow-lift: 0 30px 60px -24px rgb(61 39 144 / 0.42);
+  --shadow-lift: 0 30px 60px -24px rgb(15 63 122 / 0.42);
 
   --animate-float: float 6s ease-in-out infinite;
   --animate-bob: bob 3.2s ease-in-out infinite;
@@ -43,6 +43,8 @@
   --animate-slide-in: slide-in 0.45s ease-out both;
   --animate-wiggle: wiggle 0.6s ease-in-out;
   --animate-grow-x: grow-x 3.5s linear both;
+  /* A soft pulsing halo that says "press me" (the Sign In link, the setup guide's Next button). */
+  --animate-glow: glow 1.8s ease-out infinite;
 
   @keyframes float {
     0%, 100% { transform: translateY(0); }
@@ -116,32 +118,21 @@
     0% { transform: scaleX(0); }
     100% { transform: scaleX(1); }
   }
+  @keyframes glow {
+    0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-brand) 55%, transparent); }
+    100% { box-shadow: 0 0 0 16px transparent; }
+  }
 }
 
-/* The "Display" settings in the header (see displaySettings.ts) swap the colours
-   above for dark mode and/or high contrast. Tailwind's classes (text-ink, bg-surface...)
-   read these, so every page follows along. Each text colour passes WCAG AA on the
-   backgrounds it is used on in that mode. */
-html[data-theme="dark"] {
-  color-scheme: dark;
-  --color-ink: #eef1f6;
-  --color-muted: #bcc4d0;
-  --color-brand: #b9a6ff; /* light purple: readable as text, and as a button with dark text */
-  --color-brand-dark: #9a82f5;
-  --color-leaf: #6fdcae;
-  --color-cream: #12161d;
-  --color-mint: #173a2f;
-  --color-lilac: #2c2452;
-  --color-peach: #44291b;
-  --color-sun: #4a3f12;
-  --color-coral: #ff9f7a;
-  --color-surface: #1d222b;
-  --color-on-brand: #14102a;
-  --color-alert: #ff8f8f;
-  --color-error: #ff9c9c;
-  --color-error-soft: #3a1717;
-  --shadow-soft: 0 14px 40px -16px rgb(0 0 0 / 0.7);
-  --shadow-lift: 0 30px 60px -24px rgb(0 0 0 / 0.8);
+/* The camera's see-through "scan" cone and the "ping" rings get their see-through
+   look from their animation. When the animation is stopped ("Reduce motion"), these
+   resting looks keep the cone faint and hide the rings, instead of showing solid
+   shapes that cover the picture (like the "Left side" and "Right side" labels). */
+.animate-scan {
+  opacity: 0.12;
+}
+.animate-pulse-ring {
+  opacity: 0;
 }
 
 /* High contrast: near-black on white, no pale colours behind text, and a solid
@@ -149,38 +140,21 @@ html[data-theme="dark"] {
 html[data-contrast="more"] {
   --color-ink: #000;
   --color-muted: #1c1c1c;
-  --color-brand: #3a1a9e;
-  --color-brand-dark: #22105e;
+  /* A deep shade of the CareNest blue (10:1 or more on white). */
+  --color-brand: #0f3f7a;
+  --color-brand-dark: color-mix(in oklab, #0f3f7a 65%, #000);
   --color-leaf: #0b5a3f;
   --color-cream: #fff;
   --color-mint: #fff;
   --color-lilac: #fff;
   --color-peach: #fff;
   --color-sun: #fff;
-  --color-coral: #3a1a9e;
+  --color-coral: #0f3f7a;
   --color-surface: #fff;
   --color-on-brand: #fff;
   --color-alert: #a00018;
   --color-error: #8f0016;
   --color-error-soft: #fff;
-}
-html[data-theme="dark"][data-contrast="more"] {
-  --color-ink: #fff;
-  --color-muted: #ececec;
-  --color-brand: #d9ccff;
-  --color-brand-dark: #c2b0ff;
-  --color-leaf: #8ff0c4;
-  --color-cream: #000;
-  --color-mint: #000;
-  --color-lilac: #000;
-  --color-peach: #000;
-  --color-sun: #000;
-  --color-coral: #d9ccff;
-  --color-surface: #000;
-  --color-on-brand: #000;
-  --color-alert: #ffb3b3;
-  --color-error: #ffb3b3;
-  --color-error-soft: #000;
 }
 /* Solid edges instead of soft shadows, and around anything that used to be a pale
    colour (buttons, the current page in the menu...). */
@@ -194,6 +168,18 @@ html[data-contrast="more"] .bg-peach,
 html[data-contrast="more"] .bg-sun {
   box-shadow: inset 0 0 0 3px var(--color-ink);
 }
+/* Pale borders turn white in high contrast, so boxes and buttons drawn with one
+   (the About Us demo, the language picker...) would lose their edge. Make it dark.
+   Kept as weak as a normal class, so a chosen or hovered border still wins. */
+@layer utilities {
+  :where(html[data-contrast="more"]) .border-lilac {
+    border-color: var(--color-ink);
+  }
+  /* A chosen option (in the Display panel) gets a double-thick edge, so it still stands out. */
+  :where(html[data-contrast="more"]) .border-lilac:has(> input[type="radio"]:checked) {
+    box-shadow: inset 0 0 0 3px var(--color-brand);
+  }
+}
 /* No see-through frosted header in high contrast. */
 html[data-contrast="more"] .glass {
   background-color: var(--color-surface);
@@ -204,17 +190,24 @@ html[data-contrast="more"] .text-gradient-brand {
   color: var(--color-brand);
 }
 
-/* Purple-to-coral words in headings. */
+/* Navy-to-sky-blue words in headings: the colour shifts clearly as you read along.
+   Both ends are readable on the page at heading size (navy 10:1, sky blue 3.5:1). */
 @utility text-gradient-brand {
-  background-image: linear-gradient(90deg, var(--color-brand), var(--color-coral));
+  background-image: linear-gradient(90deg, var(--color-brand-dark), #0c8ad6);
   color: transparent;
   -webkit-background-clip: text;
   background-clip: text;
 }
 
-/* The slowly moving purple background of the "Ready to feel closer?" card. */
+/* The slowly moving brand-coloured background of the "Ready to feel closer?" card. */
 @utility bg-cta-gradient {
-  background-image: linear-gradient(120deg, var(--color-brand), oklch(58% 0.2 292), var(--color-brand-dark), var(--color-brand));
+  background-image: linear-gradient(
+    120deg,
+    var(--color-brand),
+    color-mix(in oklab, var(--color-brand) 55%, var(--color-brand-dark)),
+    var(--color-brand-dark),
+    var(--color-brand)
+  );
   background-size: 300% 300%;
 }
 
@@ -271,9 +264,11 @@ html[data-text-size="large"] {
 html[data-text-size="extra"] {
   font-size: 150%; /* 24px */
 }
-/* Bigger text doesn't fit the header's row of links on a tablet or small laptop,
-   so the phone-style menu button is used there instead. */
-@media (max-width: 1023px) {
+/* The header's row of links only fits on one line when there is room for it. Where it
+   doesn't, the phone-style menu button is used instead: with bigger text on a laptop.
+   (Spanish uses short menu words, so it fits like English. Measured with all six
+   links, the language picker and the Display button.) */
+@media (max-width: 1535px) {
   html[data-text-size="large"] .site-nav {
     display: none;
   }
@@ -284,7 +279,7 @@ html[data-text-size="extra"] {
     display: block;
   }
 }
-@media (max-width: 1279px) {
+@media (max-width: 1679px) {
   html[data-text-size="extra"] .site-nav {
     display: none;
   }
@@ -324,7 +319,7 @@ body {
   border-radius: 14px;
 }
 
-/* On dark or purple backgrounds, switch the focus ring to white. */
+/* On dark or blue backgrounds, switch the focus ring to white. */
 .on-dark :focus-visible {
   outline-color: #fff;
 }
@@ -332,6 +327,15 @@ body {
 /* A light panel inside a dark area (the phone camera's start screen) goes back to the dark ring. */
 .on-dark .on-light :focus-visible {
   outline-color: var(--color-ink);
+}
+
+/* Typing boxes and drop-downs: browsers show the ring even after a mouse click, and
+   a thick black box looked out of place. They get a blue ring instead, still clear
+   enough for keyboard users to see (the blue is 6:1 on white). High contrast keeps
+   the strong black ring. */
+html:not([data-contrast="more"]) :is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus-visible {
+  outline: 3px solid var(--color-brand);
+  outline-offset: 3px;
 }
 
 /* People who ask for less motion get a still page with everything shown: either
@@ -356,6 +360,11 @@ body {
   html:not([data-motion="full"]) .highlight-sweep {
     background-size: 100% 100%;
   }
+  /* The "press me" glow stays, but as a still ring instead of a pulse. */
+  html:not([data-motion="full"]) .animate-glow {
+    animation: none !important;
+    box-shadow: 0 0 0 5px color-mix(in oklab, var(--color-brand) 40%, transparent);
+  }
 }
 
 html[data-motion="reduce"] {
@@ -375,4 +384,8 @@ html[data-motion="reduce"] .reveal {
 }
 html[data-motion="reduce"] .highlight-sweep {
   background-size: 100% 100%;
+}
+html[data-motion="reduce"] .animate-glow {
+  animation: none !important;
+  box-shadow: 0 0 0 5px color-mix(in oklab, var(--color-brand) 40%, transparent);
 }
