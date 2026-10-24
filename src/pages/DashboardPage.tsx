@@ -8,6 +8,18 @@ import { useSession } from "../lib/useSession";
 import { cleanContacts, cleanPhone, telHref, type Contact, type Contacts } from "../family/contacts";
 import { startOfLocalDay, summariseDay } from "../family/dailySummary";
 import { describe, summarise, timeAgo, whatHappened, whereInRoom, type EventRow, type Mood } from "../family/status";
+import {
+  alertType,
+  canCheckOn,
+  cleanAlertSettings,
+  highlightFor,
+  spokenEvent,
+  spokenStatus,
+  whoToSpeakOf,
+  type AlertSettings,
+} from "../family/alerts";
+import { useCheckingOnIt } from "../family/useCheckingOnIt";
+import { AlertSettingsPanel, CheckingOnIt, ReadAloudButton, SimpleViewToggle } from "../components/FamilyTools";
 
 // The family page: the latest news from the phone camera in big words, a short
 // timeline, and live updates through Supabase Realtime.
@@ -39,6 +51,26 @@ function dotColour(kind: EventRow["kind"]): string {
 
 const smallButton =
   "inline-flex min-h-12 items-center justify-center rounded-2xl border-[3px] border-brand bg-surface px-5 text-lg font-extrabold text-brand no-underline transition-all duration-200 hover:-translate-y-0.5 hover:bg-lilac disabled:cursor-not-allowed disabled:opacity-70";
+
+// Saved in this browser only. Private browsing can block saving; the page still works.
+const SIMPLE_VIEW_KEY = "carenest-simple-view";
+const alertSettingsKey = (userId: string) => `carenest-alert-settings-${userId}`;
+
+function readSaved<T>(key: string, clean: (saved: unknown) => T): T {
+  try {
+    return clean(JSON.parse(localStorage.getItem(key) ?? "null"));
+  } catch {
+    return clean(null);
+  }
+}
+
+function save(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Can't save (e.g. private browsing). It just forgets next time.
+  }
+}
 
 interface Circle {
   id: string;
@@ -98,6 +130,22 @@ function Family({
   const [problem, setProblem] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  // Simple view: only the big status and read aloud, in extra-large text.
+  const [simple, setSimpleState] = useState(() => readSaved(SIMPLE_VIEW_KEY, (v) => v === true));
+  const [alertSettings, setAlertSettingsState] = useState(() => readSaved(alertSettingsKey(userId), cleanAlertSettings));
+  // The name "Read aloud" uses, from the Care profile page (saved in this browser).
+  const [who] = useState(() => readSaved(careProfileKey(userId), (v) => whoToSpeakOf((v as { name?: unknown } | null)?.name)));
+  const checking = useCheckingOnIt(circle?.id, userId);
+
+  function setSimple(on: boolean) {
+    setSimpleState(on);
+    save(SIMPLE_VIEW_KEY, on);
+  }
+
+  function setAlertSettings(next: AlertSettings) {
+    setAlertSettingsState(next);
+    save(alertSettingsKey(userId), next);
+  }
 
   // Refresh "2 minutes ago" every 20 seconds.
   useEffect(() => {
@@ -219,11 +267,14 @@ function Family({
               <h1 className="mt-4 text-4xl font-extrabold md:text-5xl">
                 Family <span className="text-gradient-brand">page</span>
               </h1>
-              <p className="mt-2 text-lg text-muted">
-                Signed in as <strong className="text-ink">{email}</strong>
-              </p>
+              {!simple && (
+                <p className="mt-2 text-lg text-muted">
+                  Signed in as <strong className="text-ink">{email}</strong>
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap gap-3">
+              <SimpleViewToggle on={simple} onChange={setSimple} />
               <Link to="/help" className={smallButton}>
                 Need help?
               </Link>
@@ -258,16 +309,35 @@ function Family({
               </h2>
               <LivePill>{live ? "Live" : "Connecting…"}</LivePill>
             </div>
-            <p aria-live="polite" className="mt-3 text-3xl leading-tight font-black sm:text-4xl">
+            <p
+              aria-live="polite"
+              className={`mt-3 leading-tight font-black ${simple ? "text-5xl sm:text-6xl" : "text-3xl sm:text-4xl"}`}
+            >
               <span key={latest?.id ?? "none"} className="block animate-pop">
                 {latest ? describe(latest, now) : circle ? "No news yet" : "Loading…"}
               </span>
             </p>
             {summary.mood === "alert" && (
-              <p className="mt-4 text-xl font-bold">
+              <p className={`mt-4 font-bold ${simple ? "text-3xl" : "text-xl"}`}>
                 The phone thinks someone may have fallen. Please call or visit to check they are okay.
                 The Call buttons are just below.
               </p>
+            )}
+            {latest && (
+              <div className="mt-5">
+                <ReadAloudButton text={spokenStatus(summary, who, clock)} big={simple} />
+              </div>
+            )}
+            {!simple && latest && canCheckOn(latest) && (
+              <div className="mt-4">
+                <CheckingOnIt
+                  names={checking.whoIsChecking(latest.id)}
+                  mine={checking.isMine(latest.id)}
+                  busy={checking.isBusy(latest.id)}
+                  message={checking.messageFor(latest.id)}
+                  onCheck={() => checking.check(latest.id)}
+                />
+              </div>
             )}
             {summary.phoneSilent && summary.lastHeard && (
               <p className="mt-4 text-xl font-bold">
@@ -275,7 +345,7 @@ function Family({
                 Check that it is switched on, charging, and showing the "Camera on" sign.
               </p>
             )}
-            {!latest && circle && (
+            {!simple && !latest && circle && (
               <p className="mt-4 text-xl">
                 Stand a phone on a table, sign in on it with this account, open{" "}
                 <Link to="/tracker" className="font-bold text-brand underline">
@@ -284,39 +354,61 @@ function Family({
                 and press "Start watching". News will appear here by itself.
               </p>
             )}
-            <p className="mt-4 text-lg font-bold">
+            <p className={`mt-4 font-bold ${simple ? "text-2xl" : "text-lg"}`}>
               {live ? "This page updates by itself." : "Connecting for live updates…"}
             </p>
           </section>
 
+          {/* Call buttons stay in simple view too: they matter most. */}
           <CallCard userId={userId} />
 
-          {circle && <TodaySoFar lines={day.lines} hasNews={day.hasNews} falls={day.falls} />}
+          {!simple && circle && <TodaySoFar lines={day.lines} hasNews={day.hasNews} falls={day.falls} />}
 
-          {summary.timeline.length > 0 && (
+          {!simple && summary.timeline.length > 0 && (
             <section aria-labelledby="timeline-title">
               <h2 id="timeline-title" className="text-2xl font-extrabold">
                 Recent news
               </h2>
               <ol className="mt-4 flex flex-col gap-3">
-                {summary.timeline.map((e) => (
-                  <li
-                    key={e.id}
-                    className="flex animate-slide-in items-center gap-4 rounded-2xl bg-surface px-5 py-4 shadow-soft"
-                  >
-                    <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full ${dotColour(e.kind)}`} />
-                    <span className="flex-1 text-xl font-bold">
-                      {whatHappened(e)}
-                      {e.kind !== "nobody" && whereInRoom(e.zone) ? ` - ${whereInRoom(e.zone)}` : ""}
-                    </span>
-                    <span className="text-lg font-bold text-muted">{clock(e.created_at)}</span>
-                  </li>
-                ))}
+                {summary.timeline.map((e) => {
+                  const look = highlightFor(e, alertSettings);
+                  return (
+                    <li
+                      key={e.id}
+                      className={`flex animate-slide-in flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl px-5 py-4 shadow-soft ${look === "highlight" ? "border-[3px] border-alert bg-peach" : "bg-surface"}`}
+                    >
+                      <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full ${dotColour(e.kind)}`} />
+                      <span className="flex-1 text-xl font-bold">
+                        {look === "highlight" && <span className="sr-only">Needs a look: </span>}
+                        {whatHappened(e)}
+                        {e.kind !== "nobody" && whereInRoom(e.zone) ? ` - ${whereInRoom(e.zone)}` : ""}
+                        {look === "quiet" && <span className="block text-lg font-bold text-muted">During quiet hours</span>}
+                      </span>
+                      <span className="text-lg font-bold text-muted">{clock(e.created_at)}</span>
+                      {alertType(e) && (
+                        <div className="flex basis-full flex-wrap items-center gap-3">
+                          <ReadAloudButton text={spokenEvent(e, clock)} />
+                          {canCheckOn(e) && (
+                            <CheckingOnIt
+                              names={checking.whoIsChecking(e.id)}
+                              mine={checking.isMine(e.id)}
+                              busy={checking.isBusy(e.id)}
+                              message={checking.messageFor(e.id)}
+                              onCheck={() => checking.check(e.id)}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ol>
             </section>
           )}
 
-          {circle && circle.owner_id === userId && <AddFamily circleId={circle.id} />}
+          {!simple && <AlertSettingsPanel settings={alertSettings} onChange={setAlertSettings} />}
+
+          {!simple && circle && circle.owner_id === userId && <AddFamily circleId={circle.id} />}
         </div>
       </section>
     </SiteLayout>

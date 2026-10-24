@@ -99,7 +99,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
 3. Set up the database (once per Supabase project). The tables live in `supabase/migrations/`. Either:
 
-   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, then do the same with `supabase/migrations/20261024010000_family_fixes.sql` (it makes adding family members safer: people are found by the email they signed up with, nobody can change the email on their profile, and the answer never reveals whether an email has an account), or
+   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, then do the same with `supabase/migrations/20261024010000_family_fixes.sql` (it makes adding family members safer: people are found by the email they signed up with, nobody can change the email on their profile, and the answer never reveals whether an email has an account), then the same with `supabase/migrations/20261024020000_checking_on_it.sql` (it lets family press "I'm checking on it" on a possible fall so everyone else sees who is handling it), or
    - with the [Supabase CLI](https://supabase.com/docs/guides/cli): `supabase link --project-ref <your-ref>` (ours is `egraxwvpbqmjfybdbjsg`) then `supabase db push`.
 
    What it creates:
@@ -111,8 +111,9 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
    | `care_circle_members` | Who is in which circle (owner or family) |
    | `devices` | Each phone used as a camera |
    | `movement_events` | Small text events from the phone: what happened, left/middle/right, posture, time. Never video or pictures |
+| `event_acknowledgements` | Who pressed "I'm checking on it" on which possible fall |
 
-   Row Level Security is on for every table, so people only see their own circle's rows. `movement_events` is added to Supabase Realtime so the family page can update live.
+   Row Level Security is on for every table, so people only see their own circle's rows. `movement_events` and `event_acknowledgements` are added to Supabase Realtime so the family page can update live.
 
 4. Start the app on your computer:
 
