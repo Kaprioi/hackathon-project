@@ -101,7 +101,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
 3. Set up the database (once per Supabase project). The tables live in `supabase/migrations/`. Either:
 
-   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, then do the same with `supabase/migrations/20261024010000_family_fixes.sql` (it makes adding family members safer: people are found by the email they signed up with, nobody can change the email on their profile, and the answer never reveals whether an email has an account), then the same with `supabase/migrations/20261024020000_checking_on_it.sql` (it lets family press "I'm checking on it" on a possible fall so everyone else sees who is handling it), then the same with `supabase/migrations/20261024030000_no_movement.sql` (it lets the phone camera save a "No movement for a while" event when nobody has moved for 3 hours during the day), then the same with `supabase/migrations/20261024040000_push_alerts.sql` (it saves which devices want phone alerts, see "Phone alerts" below), then the same with `supabase/migrations/20261024041200_family_notes.sql` (it switches on the "Family notes" board, where the family can leave each other short notes like "I'll visit Saturday", tick them "Done" and react with 👍 ❤️ ✅), or
+   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, then do the same with `supabase/migrations/20261024010000_family_fixes.sql` (it makes adding family members safer: people are found by the email they signed up with, nobody can change the email on their profile, and the answer never reveals whether an email has an account), then the same with `supabase/migrations/20261024020000_checking_on_it.sql` (it lets family press "I'm checking on it" on a possible fall so everyone else sees who is handling it), then the same with `supabase/migrations/20261024030000_no_movement.sql` (it lets the phone camera save a "No movement for a while" event when nobody has moved for 3 hours during the day), then the same with `supabase/migrations/20261024040000_push_alerts.sql` (it saves which devices want phone alerts, see "Phone alerts" below), then the same with `supabase/migrations/20261024041200_family_notes.sql` (it switches on the "Family notes" board, where the family can leave each other short notes like "I'll visit Saturday", tick them "Done" and react with 👍 ❤️ ✅), then the same with `supabase/migrations/20261024050000_daily_reminders.sql` (daily reminders, see "Daily reminders" below), or
    - with the [Supabase CLI](https://supabase.com/docs/guides/cli): `supabase link --project-ref <your-ref>` (ours is `egraxwvpbqmjfybdbjsg`) then `supabase db push`.
 
    What it creates:
@@ -118,8 +118,10 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 | `note_reactions` | Quick 👍 ❤️ ✅ reactions on family notes, one of each per person |
 | `push_subscriptions` | Each device that pressed "Get alerts on this device": where to send the notification, its language, time zone and which alerts it wants. People only see their own |
 | `push_alerts_sent` | Which events have already been sent as phone alerts, so nobody gets the same one twice. Only the server can see it |
+| `reminders` | Daily reminders family added, like "Heart pills" at 08:00 |
+| `reminder_checks` | Which reminder was done on which day, and when "I did it" was pressed |
 
-   Row Level Security is on for every table, so people only see their own circle's rows. `movement_events` and `event_acknowledgements` are added to Supabase Realtime so the family page can update live.
+   Row Level Security is on for every table, so people only see their own circle's rows. `movement_events`, `event_acknowledgements`, `reminders` and `reminder_checks` are added to Supabase Realtime so the family page can update live.
 
 4. Start the app on your computer:
 
@@ -228,3 +230,16 @@ A few simple questions, one at a time, about the person being cared for: their a
 - **Your answers**, each with a "Change" button, and "Start again".
 
 You have to be signed in to see it; if nobody is signed in it sends you to `/login`. It's a rough guide, not medical advice. For now the answers are only saved in that browser (one set per account), not in Supabase. The questions and scoring are in `src/family/careProfile.ts` and are tested by `npm test`.
+
+## Daily reminders
+
+On the Family page, the **Daily reminders** card starts empty. Family add reminders only if their loved one needs them: choose Medicine, Meal, Drink water or Something else, write the words to show (like "Heart pills with water"), and pick a time. Anyone in the care circle can add or remove them.
+
+At that time, while the phone on the table is watching (`/tracker`), it shows the reminder in big words over the camera view, plays a chime and says it out loud in the chosen language. It has two buttons:
+
+- **I did it**: the Family page shows "Done at 8:02".
+- **Later**: hides it for 10 minutes, then it comes back.
+
+A reminder stays on the phone for an hour. If nobody presses "I did it" in that time, the Family page shows **Missed** in red. Until then it says "Showing on the phone now", and before its time it says "Coming up".
+
+It needs the `20261024050000_daily_reminders.sql` database update (step 3 of "Run the app"). Without it, the card says reminders aren't switched on yet. The logic is in `src/family/reminders.ts` and is tested by `npm test`.

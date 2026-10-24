@@ -29,6 +29,8 @@ import {
 } from "./config.ts";
 import type { PersonDetector } from "./detector.ts";
 import { Cloud } from "./cloud.ts";
+import ReminderPopup from "../components/ReminderPopup";
+import { unlockVoice } from "../family/voice";
 import type { MovementEvent } from "./events.ts";
 import { Reporter } from "./events.ts";
 import { shouldSendInactive, startWatch, watchSaw } from "../family/noMovement.ts";
@@ -247,6 +249,8 @@ export default function TrackerPage() {
   const [account, setAccount] = useState<Account>(supabase ? "checking" : "no-database");
   const [lastSent, setLastSent] = useState("");
   const [sendError, setSendError] = useState("");
+  /** The care circle, once connected: its daily reminders show on this phone. */
+  const [circleId, setCircleId] = useState("");
   /** Why the camera stopped by itself, shown on the start screen (English; translated when shown). */
   const [stopNote, setStopNote] = useState("");
   const [snap, setSnap] = useState<Snapshot>({
@@ -326,6 +330,7 @@ export default function TrackerPage() {
       // care circle, and if the camera is on, carry on in the new person's circle.
       if (!cloudRef.current || cloudRef.current.userId === session?.user.id) return;
       cloudRef.current = null;
+      setCircleId("");
       if (!session || !watchingRef.current) return;
       // Later, not inside this callback: Supabase asks not to call it from here.
       setTimeout(() => {
@@ -333,6 +338,7 @@ export default function TrackerPage() {
           (cloud) => {
             if (cloudRef.current || !watchingRef.current) return;
             cloudRef.current = cloud;
+            setCircleId(cloud.circleId);
             report(reporterRef.current.start(performance.now()));
           },
           (e: unknown) => setSendError(e instanceof Error ? e.message : String(e)),
@@ -356,6 +362,8 @@ export default function TrackerPage() {
   }, []);
 
   const startCamera = useCallback(async () => {
+    // This runs from a tap, so let reminders be said out loud later.
+    unlockVoice();
     setError("");
     setStopNote("");
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -385,6 +393,7 @@ export default function TrackerPage() {
       if (supabase && !cloudRef.current) {
         try {
           cloudRef.current = await Cloud.connect(supabase);
+          setCircleId(cloudRef.current.circleId);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           setSendError(msg);
@@ -758,6 +767,8 @@ export default function TrackerPage() {
           </div>
         </div>
       </div>
+
+      {running && circleId && <ReminderPopup circleId={circleId} />}
 
       {showSettings && (
         <SettingsPanel
