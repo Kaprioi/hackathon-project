@@ -60,20 +60,72 @@ void movePan(float delta) {
   panServo.write((int)pan);
 }
 
+const char *wifiReasonText(uint8_t r) {
+  switch (r) {
+    case WIFI_REASON_NO_AP_FOUND: return "network not found - is it on, and 2.4 GHz?";
+    case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_HANDSHAKE_TIMEOUT: return "wrong password?";
+    case WIFI_REASON_ASSOC_FAIL: return "network refused the connection";
+    default: return "see ESP32 wifi_err_reason_t";
+  }
+}
+
+void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+  static uint8_t lastReason = 0;
+  static uint32_t lastPrint = 0;
+  if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+    Serial.printf("WiFi: connected, IP %s\n", WiFi.localIP().toString().c_str());
+    lastReason = 0;
+  } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+    uint8_t r = info.wifi_sta_disconnected.reason;
+    if (r != lastReason || millis() - lastPrint > 10000) {  // it retries constantly; don't flood
+      Serial.printf("WiFi: couldn't connect (reason %d: %s)\n", r, wifiReasonText(r));
+      lastReason = r;
+      lastPrint = millis();
+    }
+  }
+}
+
 void connectWifi() {
   if (strlen(WIFI_SSID) == 0) return;
   WiFi.mode(WIFI_STA);
+  WiFi.onEvent(onWifiEvent);
+
+  // Check the network is visible first; the ESP32 only sees 2.4 GHz networks.
+  int n = WiFi.scanNetworks();
+  bool found = false;
+  for (int i = 0; i < n; i++) {
+    if (WiFi.SSID(i) == WIFI_SSID) {
+      Serial.printf("WiFi: found \"%s\" (channel %d, signal %d dBm)\n", WIFI_SSID, WiFi.channel(i), WiFi.RSSI(i));
+      found = true;
+    }
+  }
+  if (!found) {
+    Serial.printf("WiFi: \"%s\" is not visible. The ESP32 only sees 2.4 GHz networks. Visible ones:\n", WIFI_SSID);
+    for (int i = 0; i < n && i < 8; i++) Serial.printf("  \"%s\"\n", WiFi.SSID(i).c_str());
+  }
+  WiFi.scanDelete();
+
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.printf("WiFi: connecting to %s\n", WIFI_SSID);
+  Serial.printf("WiFi: connecting to \"%s\"\n", WIFI_SSID);
 }
+
+// An alert raised while WiFi is down is held here and sent once it connects.
+const char *pendingType = nullptr;
+const char *pendingMessage = nullptr;
 
 // Sends a phone push via ntfy.sh and/or a row to Supabase, whichever is configured.
 void sendAlert(const char *type, const char *message) {
   Serial.printf("ALERT [%s] %s\n", type, message);
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("  (not sent: WiFi not connected)");
+    Serial.println("  (WiFi not connected yet: will send as soon as it connects)");
+    pendingType = type;
+    pendingMessage = message;
     return;
   }
+  pendingType = nullptr;
   WiFiClientSecure client;
   client.setInsecure();  // fine for a hackathon demo; pin certificates for real use
   HTTPClient http;
@@ -146,6 +198,8 @@ void loop() {
   uint32_t now = millis();
   if (now - lastTick < TICK_MS) return;
   lastTick = now;
+
+  if (pendingType && WiFi.status() == WL_CONNECTED) sendAlert(pendingType, pendingMessage);
 
   int l = radarScore(radarL);
   int r = radarScore(radarR);
