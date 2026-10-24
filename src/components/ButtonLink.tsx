@@ -1,18 +1,15 @@
 import { Link } from "react-router";
 
-type Variant = "primary" | "outline" | "inverse" | "inverse-outline";
+// The two kinds of action on the site. Each screen has at most one solid
+// "primary" button; everything else is an underlined text link.
 
-const base =
-  "inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border-[3px] px-7 text-lg font-extrabold no-underline transition-colors";
+/** The one solid button on a screen: spruce, square-ish 4px corners, no shadow. */
+export const primaryButton =
+  "inline-flex min-h-14 items-center justify-center rounded-[4px] bg-spruce px-[26px] text-body font-bold text-white no-underline transition-colors hover:bg-spruce-deep disabled:cursor-not-allowed disabled:opacity-70";
 
-const variants: Record<Variant, string> = {
-  // Big purple button with a soft "press" shadow.
-  primary: "border-brand bg-brand text-white shadow-[0_6px_0_var(--color-brand-dark)] hover:bg-brand-dark",
-  outline: "border-brand bg-white text-brand hover:bg-lilac",
-  // For use on the purple call-to-action card.
-  inverse: "border-white bg-white text-brand shadow-[0_6px_0_var(--color-brand-dark)] hover:bg-lilac",
-  "inverse-outline": "border-white bg-transparent text-white hover:bg-brand-dark",
-};
+/** An underlined spruce text link (or a button that looks like one), at least 48px tall. */
+export const textLink =
+  "inline-flex min-h-12 items-center text-body font-semibold text-spruce underline decoration-2 underline-offset-4 hover:text-spruce-deep hover:decoration-[3px] disabled:cursor-not-allowed disabled:opacity-70";
 
 export default function ButtonLink({
   to,
@@ -20,11 +17,11 @@ export default function ButtonLink({
   children,
 }: {
   to: string;
-  variant?: Variant;
+  variant?: "primary" | "text";
   children: React.ReactNode;
 }) {
   return (
-    <Link to={to} className={`${base} ${variants[variant]}`}>
+    <Link to={to} className={variant === "primary" ? primaryButton : textLink}>
       {children}
     </Link>
   );

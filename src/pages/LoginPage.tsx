@@ -11,25 +11,25 @@ import { useSession } from "../lib/useSession";
 type Mode = "sign-in" | "sign-up" | "forgot" | "sent";
 
 const titles: Record<Mode, string> = {
-  "sign-in": "Welcome back",
+  "sign-in": "Sign in",
   "sign-up": "Create your account",
   forgot: "Reset your password",
   sent: "Check your email",
 };
 
 const intros: Record<Exclude<Mode, "sent">, string> = {
-  "sign-in": "Log in to see how your family is doing.",
-  "sign-up": "It only takes a minute. You can invite family afterwards.",
+  "sign-in": "Use the email address and password you signed up with.",
+  "sign-up": "Choose an email address and a password. You can add family afterwards.",
   forgot: "Type your email and we'll send you a link to choose a new password.",
 };
 
 const submitLabels: Record<Exclude<Mode, "sent">, string> = {
-  "sign-in": "Log in",
+  "sign-in": "Sign in",
   "sign-up": "Create account",
   forgot: "Send me the link",
 };
 
-// Where people go after logging in. A simple placeholder page for now.
+// Where people go after signing in: the family page.
 export const AFTER_LOGIN = "/dashboard";
 // Where the "reset your password" email link takes people.
 export const RESET_PASSWORD = "/reset-password";
@@ -47,7 +47,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [formError, setFormError] = useState(authLinkError ? friendlyError(authLinkError) : "");
-  const [notice, setNotice] = useState(location.state?.loggedOut ? "You've logged out. See you soon!" : "");
+  const [notice, setNotice] = useState(location.state?.loggedOut ? "You've signed out." : "");
   // What the "check your email" screen says.
   const [sentMessage, setSentMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -101,7 +101,7 @@ export default function LoginPage() {
         if (error) return setFormError(friendlyError(error.message));
         // Supabase quietly returns a user with no sign-in methods when the email is already taken.
         if (data.user?.identities?.length === 0)
-          return setFormError("There is already an account with this email. Try logging in instead.");
+          return setFormError("There is already an account with this email. Try signing in instead.");
         // With email confirmation turned on there is no session until the link is tapped.
         if (!data.session) {
           setSentMessage(
@@ -126,7 +126,7 @@ export default function LoginPage() {
     }
   }
 
-  // Already logged in (or just logged in): go straight to the dashboard.
+  // Already signed in (or just signed in): go straight to the family page.
   if (session) return <Navigate to={AFTER_LOGIN} replace />;
 
   return (
@@ -134,29 +134,26 @@ export default function LoginPage() {
       {!supabase ? (
         <NotConfigured />
       ) : session === undefined ? (
-        <p className="text-xl text-muted">Loading…</p>
+        <p className="text-lead text-muted">Loading…</p>
       ) : mode === "sent" ? (
-        <div className="flex flex-col gap-5">
-          <div aria-hidden="true" className="grid h-20 w-20 place-items-center rounded-full bg-sun text-4xl">
-            ✉️
-          </div>
-          <h1 ref={headingRef} tabIndex={-1} className="text-4xl font-extrabold outline-none">
+        <div className="flex flex-col items-start gap-5">
+          <h1 ref={headingRef} tabIndex={-1} className="text-h1 outline-none md:text-h1-lg">
             {titles.sent}
           </h1>
-          <p className="text-xl">{sentMessage}</p>
-          <p className="rounded-2xl bg-lilac p-4 text-lg">
+          <p className="text-lead">{sentMessage}</p>
+          <p className="bg-stone p-4">
             <strong>Can't find it?</strong> It can take a few minutes to arrive. Look in your spam or junk folder too.
           </p>
           <button type="button" className={`${primaryButton} mt-2`} onClick={() => switchMode("sign-in")}>
-            Back to log in
+            Back to sign in
           </button>
         </div>
       ) : (
         <>
-          <h1 ref={headingRef} tabIndex={-1} className="text-4xl font-extrabold outline-none">
+          <h1 ref={headingRef} tabIndex={-1} className="text-h1 outline-none md:text-h1-lg">
             {titles[mode]}
           </h1>
-          <p className="mt-3 text-xl text-muted">{intros[mode]}</p>
+          <p className="mt-3 text-lead text-muted">{intros[mode]}</p>
 
           {/* Messages are read out by screen readers as soon as they appear. */}
           <div aria-live="polite" className="mt-6 empty:hidden">
@@ -164,7 +161,7 @@ export default function LoginPage() {
             {notice && <Message kind="success">{notice}</Message>}
           </div>
 
-          <form noValidate onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6">
+          <form noValidate onSubmit={handleSubmit} className="mt-8 flex flex-col items-stretch gap-6">
             <TextField
               label="Email address"
               type="email"
@@ -198,16 +195,16 @@ export default function LoginPage() {
 
             {mode === "sign-in" && (
               <button type="button" className={`${linkButton} self-start`} onClick={() => switchMode("forgot")}>
-                Forgot your password?
+                I've forgotten my password
               </button>
             )}
 
-            <button type="submit" className={`${primaryButton} mt-2`} disabled={busy}>
+            <button type="submit" className={`${primaryButton} self-start`} disabled={busy}>
               {busy ? "Please wait…" : submitLabels[mode]}
             </button>
           </form>
 
-          <div className="mt-8 border-t-2 border-mint pt-6 text-lg">
+          <div className="mt-10 border-t border-rule pt-6">
             {mode === "sign-in" && (
               <p>
                 New to CareNest?{" "}
@@ -220,13 +217,13 @@ export default function LoginPage() {
               <p>
                 Already have an account?{" "}
                 <button type="button" className={linkButton} onClick={() => switchMode("sign-in")}>
-                  Log in instead
+                  Sign in instead
                 </button>
               </p>
             )}
             {mode === "forgot" && (
               <button type="button" className={linkButton} onClick={() => switchMode("sign-in")}>
-                Back to log in
+                Back to sign in
               </button>
             )}
           </div>

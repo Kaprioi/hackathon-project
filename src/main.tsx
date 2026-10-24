@@ -6,6 +6,7 @@ import DashboardPage from "./pages/DashboardPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import PhotoCreditsPage from "./pages/PhotoCreditsPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 // Phone Tracker: loaded only when someone opens /tracker, so the homepage stays fast.
@@ -20,7 +21,7 @@ createRoot(document.getElementById("root")!).render(
         <Route
           path="/tracker"
           element={
-            <Suspense fallback={<p className="p-6 text-xl">Loading the tracker...</p>}>
+            <Suspense fallback={<p className="p-6 text-lead">Loading the phone camera…</p>}>
               <TrackerPage />
             </Suspense>
           }
@@ -28,6 +29,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/photo-credits" element={<PhotoCreditsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
