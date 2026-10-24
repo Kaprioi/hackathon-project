@@ -296,6 +296,19 @@ html[data-text-size="extra"] {
   }
 }
 
+/* Spanish words are longer, so with extra large text the row of links needs more room. */
+@media (max-width: 1535px) {
+  html[lang="es"][data-text-size="extra"] .site-nav {
+    display: none;
+  }
+  html[lang="es"][data-text-size="extra"] .site-menu-button {
+    display: grid;
+  }
+  html[lang="es"][data-text-size="extra"] .site-mobile-menu {
+    display: block;
+  }
+}
+
 /* On a narrow phone with bigger text, the header shows just the heart (the name is
    still read out by screen readers), so the menu button stays on screen. */
 @media (max-width: 479px) {

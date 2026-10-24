@@ -2,7 +2,9 @@ import { useEffect, useId, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
 import { Message } from "../components/AuthLayout";
 import { buttonVariants } from "../components/ButtonLink";
+import Highlight from "../components/Highlight";
 import SiteLayout, { Blobs, LivePill } from "../components/SiteLayout";
+import { useLanguage } from "../i18n/useLanguage";
 import { supabase } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
 import { cleanContacts, cleanPhone, telHref, type Contact, type Contacts } from "../family/contacts";
@@ -81,13 +83,14 @@ interface Circle {
 export default function DashboardPage() {
   const session = useSession();
   const [loggingOut, setLoggingOut] = useState(false);
+  const { t } = useLanguage();
 
   // Not logged in (or Supabase isn't set up): send people to the log in page.
   if (session === null) return <Navigate to="/login" replace state={loggingOut ? { loggedOut: true } : undefined} />;
   if (session === undefined)
     return (
       <Centered>
-        <p className="text-xl text-muted">Loading…</p>
+        <p className="text-xl text-muted">{t("Loading…")}</p>
       </Centered>
     );
   return (
@@ -123,6 +126,7 @@ function Family({
   setLoggingOut: (value: boolean) => void;
 }) {
   const location = useLocation();
+  const { t } = useLanguage();
   const [logOutError, setLogOutError] = useState("");
   const [circle, setCircle] = useState<Circle | null>(null);
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -134,7 +138,8 @@ function Family({
   const [simple, setSimpleState] = useState(() => readSaved(SIMPLE_VIEW_KEY, (v) => v === true));
   const [alertSettings, setAlertSettingsState] = useState(() => readSaved(alertSettingsKey(userId), cleanAlertSettings));
   // The name "Read aloud" uses, from the Care profile page (saved in this browser).
-  const [who] = useState(() => readSaved(careProfileKey(userId), (v) => whoToSpeakOf((v as { name?: unknown } | null)?.name)));
+  const [savedName] = useState(() => readSaved(careProfileKey(userId), (v) => (v as { name?: unknown } | null)?.name));
+  const who = whoToSpeakOf(savedName, t);
   const checking = useCheckingOnIt(circle?.id, userId);
 
   function setSimple(on: boolean) {
@@ -246,7 +251,7 @@ function Family({
   }
 
   const summary = summarise(events, now);
-  const day = summariseDay(todayEvents, now);
+  const day = summariseDay(todayEvents, now, { t });
   const { latest } = summary;
 
   return (
@@ -262,40 +267,40 @@ function Family({
                   <span className="absolute inset-0 animate-pulse-ring rounded-full bg-leaf" />
                   <span className="relative h-3 w-3 rounded-full bg-leaf" />
                 </span>
-                {circle?.name ?? "Your family"}
+                {circle?.name ?? t("Your family")}
               </p>
               <h1 className="mt-4 text-4xl font-extrabold md:text-5xl">
-                Family <span className="text-gradient-brand">page</span>
+                <Highlight text={t("Family *page*")} />
               </h1>
               {!simple && (
                 <p className="mt-2 text-lg text-muted">
-                  Signed in as <strong className="text-ink">{email}</strong>
+                  {t("Signed in as")} <strong className="text-ink">{email}</strong>
                 </p>
               )}
             </div>
             <div className="flex flex-wrap gap-3">
               <SimpleViewToggle on={simple} onChange={setSimple} />
               <Link to="/help" className={smallButton}>
-                Need help?
+                {t("Need help?")}
               </Link>
               <Link to="/account" className={smallButton}>
-                Your account
+                {t("Your account")}
               </Link>
               <button type="button" onClick={logOut} disabled={loggingOut} className={smallButton}>
-                {loggingOut ? "Logging out…" : "Log out"}
+                {loggingOut ? t("Logging out…") : t("Log out")}
               </button>
             </div>
           </div>
 
-          {location.state?.passwordChanged && <Message kind="success">Your new password is saved.</Message>}
-          {logOutError && <Message kind="error">{logOutError}</Message>}
+          {location.state?.passwordChanged && <Message kind="success">{t("Your new password is saved.")}</Message>}
+          {logOutError && <Message kind="error">{t(logOutError)}</Message>}
 
           {problem && (
             <p
               role="alert"
               className={`rounded-2xl border-[3px] border-error bg-surface p-5 text-xl font-bold ${ERROR_RED}`}
             >
-              {problem}
+              {t(problem)}
             </p>
           )}
 
@@ -305,27 +310,27 @@ function Family({
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 id="now-title" className="text-xl font-extrabold">
-                Right now
+                {t("Right now")}
               </h2>
-              <LivePill>{live ? "Live" : "Connecting…"}</LivePill>
+              <LivePill>{live ? t("Live") : t("Connecting…")}</LivePill>
             </div>
             <p
               aria-live="polite"
               className={`mt-3 leading-tight font-black ${simple ? "text-5xl sm:text-6xl" : "text-3xl sm:text-4xl"}`}
             >
               <span key={latest?.id ?? "none"} className="block animate-pop">
-                {latest ? describe(latest, now) : circle ? "No news yet" : "Loading…"}
+                {latest ? describe(latest, now, t) : circle ? t("No news yet") : t("Loading…")}
               </span>
             </p>
             {summary.mood === "alert" && (
               <p className={`mt-4 font-bold ${simple ? "text-3xl" : "text-xl"}`}>
-                The phone thinks someone may have fallen. Please call or visit to check they are okay.
-                The Call buttons are just below.
+                {t("The phone thinks someone may have fallen. Please call or visit to check they are okay.")}{" "}
+                {t("The Call buttons are just below.")}
               </p>
             )}
             {latest && (
               <div className="mt-5">
-                <ReadAloudButton text={spokenStatus(summary, who, clock)} big={simple} />
+                <ReadAloudButton text={spokenStatus(summary, who, clock, t)} big={simple} />
               </div>
             )}
             {!simple && latest && canCheckOn(latest) && (
@@ -341,33 +346,33 @@ function Family({
             )}
             {summary.phoneSilent && summary.lastHeard && (
               <p className="mt-4 text-xl font-bold">
-                The phone last checked in {timeAgo(summary.lastHeard.created_at, now)}.
-                Check that it is switched on, charging, and showing the "Camera on" sign.
+                {t("The phone last checked in {when}.", { when: timeAgo(summary.lastHeard.created_at, now, t) })}{" "}
+                {t('Check that it is switched on, charging, and showing the "Camera on" sign.')}
               </p>
             )}
             {!simple && !latest && circle && (
               <p className="mt-4 text-xl">
-                Stand a phone on a table, sign in on it with this account, open{" "}
+                {t("Stand a phone on a table, sign in on it with this account, open")}{" "}
                 <Link to="/tracker" className="font-bold text-brand underline">
-                  Phone camera
+                  {t("Phone camera")}
                 </Link>{" "}
-                and press "Start watching". News will appear here by itself.
+                {t('and press "Start watching". News will appear here by itself.')}
               </p>
             )}
             <p className={`mt-4 font-bold ${simple ? "text-2xl" : "text-lg"}`}>
-              {live ? "This page updates by itself." : "Connecting for live updates…"}
+              {live ? t("This page updates by itself.") : t("Connecting for live updates…")}
             </p>
           </section>
 
           {/* Call buttons stay in simple view too: they matter most. */}
           <CallCard userId={userId} />
 
-          {!simple && circle && <TodaySoFar lines={day.lines} hasNews={day.hasNews} falls={day.falls} />}
+          {!simple && circle && <TodaySoFar lines={day.lines} hasNews={day.hasNews} fallLine={day.fallLine} />}
 
           {!simple && summary.timeline.length > 0 && (
             <section aria-labelledby="timeline-title">
               <h2 id="timeline-title" className="text-2xl font-extrabold">
-                Recent news
+                {t("Recent news")}
               </h2>
               <ol className="mt-4 flex flex-col gap-3">
                 {summary.timeline.map((e) => {
@@ -379,15 +384,17 @@ function Family({
                     >
                       <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full ${dotColour(e.kind)}`} />
                       <span className="flex-1 text-xl font-bold">
-                        {look === "highlight" && <span className="sr-only">Needs a look: </span>}
-                        {whatHappened(e)}
-                        {e.kind !== "nobody" && whereInRoom(e.zone) ? ` - ${whereInRoom(e.zone)}` : ""}
-                        {look === "quiet" && <span className="block text-lg font-bold text-muted">During quiet hours</span>}
+                        {look === "highlight" && <span className="sr-only">{t("Needs a look:")} </span>}
+                        {whatHappened(e, t)}
+                        {e.kind !== "nobody" && whereInRoom(e.zone) ? ` - ${whereInRoom(e.zone, t)}` : ""}
+                        {look === "quiet" && (
+                          <span className="block text-lg font-bold text-muted">{t("During quiet hours")}</span>
+                        )}
                       </span>
                       <span className="text-lg font-bold text-muted">{clock(e.created_at)}</span>
                       {alertType(e) && (
                         <div className="flex basis-full flex-wrap items-center gap-3">
-                          <ReadAloudButton text={spokenEvent(e, clock)} />
+                          <ReadAloudButton text={spokenEvent(e, clock, t)} />
                           {canCheckOn(e) && (
                             <CheckingOnIt
                               names={checking.whoIsChecking(e.id)}
@@ -432,6 +439,7 @@ function AddFamily({ circleId }: { circleId: string }) {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const { t } = useLanguage();
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -449,13 +457,13 @@ function AddFamily({ circleId }: { circleId: string }) {
   return (
     <section aria-labelledby={`${id}-title`} className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
       <h2 id={`${id}-title`} className="text-3xl font-extrabold">
-        Everyone in the <span className="text-gradient-brand">loop</span>
+        <Highlight text={t("Everyone in the *loop*")} />
       </h2>
-      <p className="mt-1 text-xl font-extrabold">Add a family member</p>
-      <p className="mt-2 text-lg text-muted">They need their own CareNest account first. Then type their email here.</p>
+      <p className="mt-1 text-xl font-extrabold">{t("Add a family member")}</p>
+      <p className="mt-2 text-lg text-muted">{t("They need their own CareNest account first. Then type their email here.")}</p>
       <form onSubmit={add} className="mt-4 flex flex-col gap-3">
         <label htmlFor={`${id}-email`} className="text-xl font-extrabold">
-          Their email
+          {t("Their email")}
         </label>
         <input
           id={`${id}-email`}
@@ -471,11 +479,11 @@ function AddFamily({ circleId }: { circleId: string }) {
           disabled={busy}
           className={`${buttonVariants.primary} mt-2 text-xl disabled:opacity-70`}
         >
-          {busy ? "Adding…" : "Add to family"}
+          {busy ? t("Adding…") : t("Add to family")}
         </button>
         {message && (
           <p role="status" className={`text-lg font-bold ${message.ok ? "text-leaf" : ERROR_RED}`}>
-            {message.text}
+            {t(message.text)}
           </p>
         )}
       </form>
@@ -484,18 +492,19 @@ function AddFamily({ circleId }: { circleId: string }) {
 }
 
 /** A calm, plain-words summary of today, from the same news as the timeline. */
-function TodaySoFar({ lines, hasNews, falls }: { lines: string[]; hasNews: boolean; falls: number }) {
+function TodaySoFar({ lines, hasNews, fallLine }: { lines: string[]; hasNews: boolean; fallLine: string | null }) {
+  const { t } = useLanguage();
   return (
     <section aria-labelledby="today-title" className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
       <h2 id="today-title" className="text-2xl font-extrabold">
-        Today so <span className="text-gradient-brand">far</span>
+        <Highlight text={t("Today so *far*")} />
       </h2>
       {hasNews ? (
         <ul className="mt-4 flex flex-col gap-3">
           {lines.map((line) => (
             <li
               key={line}
-              className={`flex items-start gap-3 text-xl font-bold ${falls > 0 && line.includes("possible fall") ? ERROR_RED : ""}`}
+              className={`flex items-start gap-3 text-xl font-bold ${line === fallLine ? ERROR_RED : ""}`}
             >
               <span aria-hidden="true" className="mt-2.5 h-3 w-3 shrink-0 rounded-full bg-brand" />
               {line}
@@ -504,8 +513,9 @@ function TodaySoFar({ lines, hasNews, falls }: { lines: string[]; hasNews: boole
         </ul>
       ) : (
         <p className="mt-3 text-xl text-muted">
-          Nothing from the phone camera yet today. A short summary of the day will build up here once it starts
-          watching.
+          {t(
+            "Nothing from the phone camera yet today. A short summary of the day will build up here once it starts watching.",
+          )}
         </p>
       )}
     </section>
@@ -559,6 +569,7 @@ function CallCard({ userId }: { userId: string }) {
   const id = useId();
   const [contacts, setContacts] = useState(() => loadContacts(userId));
   const [editing, setEditing] = useState(false);
+  const { t } = useLanguage();
   const hasAny = Boolean(contacts.person || contacts.emergency);
 
   function save(next: Contacts) {
@@ -571,11 +582,11 @@ function CallCard({ userId }: { userId: string }) {
     <section aria-labelledby={`${id}-title`} className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id={`${id}-title`} className="text-2xl font-extrabold">
-          Call
+          {t("Call")}
         </h2>
         {hasAny && !editing && (
           <button type="button" onClick={() => setEditing(true)} className={smallButton}>
-            Change numbers
+            {t("Change numbers")}
           </button>
         )}
       </div>
@@ -595,14 +606,14 @@ function CallCard({ userId }: { userId: string }) {
       ) : (
         <div className="mt-2">
           <p className="text-xl text-muted">
-            Add a phone number, so you can ring them (or an emergency contact) with one tap from this page.
+            {t("Add a phone number, so you can ring them (or an emergency contact) with one tap from this page.")}
           </p>
           <button
             type="button"
             onClick={() => setEditing(true)}
             className={`${buttonVariants.primary} mt-4 w-full text-xl sm:w-auto`}
           >
-            Add a phone number
+            {t("Add a phone number")}
           </button>
         </div>
       )}
@@ -611,6 +622,7 @@ function CallCard({ userId }: { userId: string }) {
 }
 
 function CallLink({ contact, fallback, primary = false }: { contact: Contact; fallback: string; primary?: boolean }) {
+  const { t } = useLanguage();
   return (
     <a
       href={telHref(contact.phone)}
@@ -618,7 +630,7 @@ function CallLink({ contact, fallback, primary = false }: { contact: Contact; fa
     >
       <span className="flex items-center gap-2">
         <PhoneIcon />
-        Call {contact.name || fallback}
+        {t("Call {name}", { name: contact.name || t(fallback) })}
       </span>
       <span className={`text-base font-bold ${primary ? "text-on-brand" : "text-muted"}`}>{contact.phone}</span>
     </a>
@@ -642,6 +654,7 @@ function ContactsForm({
   const [emergencyName, setEmergencyName] = useState(initial.emergency?.name ?? "");
   const [emergencyPhone, setEmergencyPhone] = useState(initial.emergency?.phone ?? "");
   const [error, setError] = useState("");
+  const { t } = useLanguage();
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -659,19 +672,19 @@ function ContactsForm({
   return (
     <form onSubmit={submit} className="mt-4 flex flex-col gap-5" noValidate>
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-xl font-extrabold">The person you care for</legend>
+        <legend className="text-xl font-extrabold">{t("The person you care for")}</legend>
         <label htmlFor={`${id}-pname`} className="mt-1 text-lg font-bold">
-          Their name
+          {t("Their name")}
         </label>
         <input
           id={`${id}-pname`}
           value={personName}
           onChange={(e) => setPersonName(e.target.value)}
-          placeholder="For example: Mum"
+          placeholder={t("For example: Mum")}
           className={input}
         />
         <label htmlFor={`${id}-pphone`} className="text-lg font-bold">
-          Their phone number
+          {t("Their phone number")}
         </label>
         <input
           id={`${id}-pphone`}
@@ -684,19 +697,19 @@ function ContactsForm({
         />
       </fieldset>
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-xl font-extrabold">Emergency contact (optional)</legend>
+        <legend className="text-xl font-extrabold">{t("Emergency contact (optional)")}</legend>
         <label htmlFor={`${id}-ename`} className="mt-1 text-lg font-bold">
-          Name
+          {t("Name")}
         </label>
         <input
           id={`${id}-ename`}
           value={emergencyName}
           onChange={(e) => setEmergencyName(e.target.value)}
-          placeholder="For example: Neighbour Sam"
+          placeholder={t("For example: Neighbour Sam")}
           className={input}
         />
         <label htmlFor={`${id}-ephone`} className="text-lg font-bold">
-          Phone number
+          {t("Phone number")}
         </label>
         <input
           id={`${id}-ephone`}
@@ -710,16 +723,18 @@ function ContactsForm({
       </fieldset>
       {error && (
         <p role="alert" className={`text-lg font-bold ${ERROR_RED}`}>
-          {error}
+          {t(error)}
         </p>
       )}
-      <p className="text-base text-muted">Saved in this browser only. To remove a number, clear the box and save.</p>
+      <p className="text-base text-muted">
+        {t("Saved in this browser only. To remove a number, clear the box and save.")}
+      </p>
       <div className="flex flex-col gap-3 sm:flex-row">
         <button type="submit" className={`${buttonVariants.primary} text-xl`}>
-          Save numbers
+          {t("Save numbers")}
         </button>
         <button type="button" onClick={onCancel} className={`${buttonVariants.outline} text-xl`}>
-          Cancel
+          {t("Cancel")}
         </button>
       </div>
     </form>

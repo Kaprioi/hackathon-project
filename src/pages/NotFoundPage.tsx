@@ -1,7 +1,9 @@
 import ButtonLink from "../components/ButtonLink";
 import SiteLayout, { Blobs } from "../components/SiteLayout";
+import { useLanguage } from "../i18n/useLanguage";
 
 export default function NotFoundPage() {
+  const { t } = useLanguage();
   return (
     <SiteLayout title="Page not found">
       <section className="relative isolate px-4 pb-24 pt-6">
@@ -13,10 +15,10 @@ export default function NotFoundPage() {
           >
             ♥
           </span>
-          <h1 className="text-4xl font-extrabold">Sorry, we can't find that page</h1>
-          <p className="text-xl text-muted">The page may have moved. Let's take you back to the start.</p>
+          <h1 className="text-4xl font-extrabold">{t("Sorry, we can't find that page")}</h1>
+          <p className="text-xl text-muted">{t("The page may have moved. Let's take you back to the start.")}</p>
           <ButtonLink to="/" arrow>
-            Go to About Us
+            {t("Go to About Us")}
           </ButtonLink>
         </div>
       </section>

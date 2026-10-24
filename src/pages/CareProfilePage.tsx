@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { Navigate } from "react-router";
 import { buttonVariants } from "../components/ButtonLink";
+import Highlight from "../components/Highlight";
 import SiteLayout, { Blobs } from "../components/SiteLayout";
 import {
   cleanAnswers,
@@ -12,6 +13,8 @@ import {
   type Level,
   type Question,
 } from "../family/careProfile";
+import type { Translate } from "../i18n/translate";
+import { useLanguage } from "../i18n/useLanguage";
 import { useSession } from "../lib/useSession";
 
 // The Care profile page: a few simple questions about the person being cared for
@@ -50,6 +53,7 @@ const smallButton =
 
 export default function CareProfilePage() {
   const session = useSession();
+  const { t } = useLanguage();
 
   // Not logged in (or Supabase isn't set up): send people to the log in page.
   if (session === null) return <Navigate to="/login" replace />;
@@ -57,7 +61,7 @@ export default function CareProfilePage() {
     return (
       <SiteLayout title="Care profile">
         <div className="mx-auto flex min-h-screen max-w-2xl items-center justify-center px-6">
-          <p className="text-xl text-muted">Loading…</p>
+          <p className="text-xl text-muted">{t("Loading…")}</p>
         </div>
       </SiteLayout>
     );
@@ -65,6 +69,7 @@ export default function CareProfilePage() {
 }
 
 function CareProfile({ userId }: { userId: string }) {
+  const { t } = useLanguage();
   const [answers, setAnswers] = useState<Answers>(() => loadAnswers(userId));
   // Which question is showing. Past the last question means "show the summary".
   const [step, setStep] = useState(() =>
@@ -92,13 +97,13 @@ function CareProfile({ userId }: { userId: string }) {
         <div className="mx-auto flex max-w-2xl flex-col gap-6">
           <div>
             <p className="inline-flex items-center rounded-full bg-surface px-4 py-2 text-base font-extrabold uppercase tracking-wide text-brand shadow-soft">
-              {name ? `About ${name}` : "About your loved one"}
+              {name ? t("About {name}", { name }) : t("About your loved one")}
             </p>
             <h1 className="mt-4 text-4xl font-extrabold md:text-5xl">
-              Care <span className="text-gradient-brand">profile</span>
+              <Highlight text={t("Care *profile*")} />
             </h1>
             <p className="mt-2 text-lg text-muted">
-              A few quick questions help us know when to keep a closer eye out.
+              {t("A few quick questions help us know when to keep a closer eye out.")}
             </p>
           </div>
 
@@ -144,6 +149,7 @@ function QuestionCard({
   onNext: () => void;
 }) {
   const id = useId();
+  const { t } = useLanguage();
   const total = QUESTIONS.length;
   const ready = isAnswered(question, answers);
   const isLast = number === total;
@@ -158,11 +164,11 @@ function QuestionCard({
     >
       {/* How far through the questions you are. */}
       <p className="text-lg font-bold text-muted">
-        Question {number} of {total}
+        {t("Question {number} of {total}", { number, total })}
       </p>
       <div
         role="progressbar"
-        aria-label="Progress"
+        aria-label={t("Progress")}
         aria-valuemin={1}
         aria-valuemax={total}
         aria-valuenow={number}
@@ -175,16 +181,16 @@ function QuestionCard({
       </div>
 
       <fieldset className="mt-6">
-        <legend className="text-3xl font-extrabold">{question.title}</legend>
-        {question.hint && <p className="mt-2 text-lg text-muted">{question.hint}</p>}
+        <legend className="text-3xl font-extrabold">{t(question.title)}</legend>
+        {question.hint && <p className="mt-2 text-lg text-muted">{t(question.hint)}</p>}
 
         <div className="mt-6 flex flex-col gap-3">
           {question.kind === "text" && (
             <input
-              aria-label={question.title}
+              aria-label={t(question.title)}
               type="text"
               autoComplete="off"
-              placeholder={question.placeholder}
+              placeholder={question.placeholder && t(question.placeholder)}
               value={(answers[question.id] as string | undefined) ?? ""}
               onChange={(e) => onChange(question.id, e.target.value)}
               className="min-h-14 w-full rounded-2xl border-[3px] border-muted bg-surface px-5 text-xl text-ink transition-colors hover:border-brand focus:border-brand"
@@ -194,7 +200,7 @@ function QuestionCard({
           {question.kind === "times" &&
             question.fields.map((field) => (
               <label key={field.id} htmlFor={`${id}-${field.id}`} className="flex flex-col gap-2">
-                <span className="text-xl font-extrabold">{field.label}</span>
+                <span className="text-xl font-extrabold">{t(field.label)}</span>
                 <input
                   id={`${id}-${field.id}`}
                   type="time"
@@ -211,7 +217,7 @@ function QuestionCard({
                 key={choice.value}
                 type="radio"
                 name={`${id}-choice`}
-                label={choice.label}
+                label={t(choice.label)}
                 checked={answers[question.id] === choice.value}
                 onChange={() => onChange(question.id, choice.value)}
               />
@@ -226,7 +232,7 @@ function QuestionCard({
                   key={choice.value}
                   type="checkbox"
                   name={`${id}-multi`}
-                  label={choice.label}
+                  label={t(choice.label)}
                   checked={checked}
                   onChange={() => {
                     // "Hardly ever" can't go with the other times, and the other way round.
@@ -243,7 +249,7 @@ function QuestionCard({
       <div className="mt-8 flex flex-wrap-reverse items-center justify-between gap-3">
         {onBack ? (
           <button type="button" onClick={onBack} className={buttonVariants.outline}>
-            Back
+            {t("Back")}
           </button>
         ) : (
           <span />
@@ -253,7 +259,7 @@ function QuestionCard({
           disabled={!ready}
           className={`${buttonVariants.primary} disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0`}
         >
-          {isLast ? "See the summary" : question.kind === "text" && !answers.name ? "Skip" : "Next"}
+          {isLast ? t("See the summary") : question.kind === "text" && !answers.name ? t("Skip") : t("Next")}
         </button>
       </div>
     </form>
@@ -303,16 +309,17 @@ function Summary({
   onEdit: (step: number) => void;
   onStartAgain: () => void;
 }) {
-  const result = likelihood(answers);
+  const { t } = useLanguage();
+  const result = likelihood(answers, t);
   const style = levelStyles[result.level];
 
   return (
     <div className="flex flex-col gap-6">
       <section aria-labelledby="chance-title" className={`animate-pop rounded-[32px] p-6 shadow-lift sm:p-8 ${style.card}`}>
         <h2 id="chance-title" className="text-xl font-extrabold">
-          Chance of a fall
+          {t("Chance of a fall")}
         </h2>
-        <p className="mt-2 text-4xl font-black sm:text-5xl">{style.words}</p>
+        <p className="mt-2 text-4xl font-black sm:text-5xl">{t(style.words)}</p>
         {/* Three bars that fill up: lower, medium, higher. */}
         <div aria-hidden="true" className="mt-4 flex gap-2">
           {[1, 2, 3].map((n) => (
@@ -325,7 +332,7 @@ function Summary({
         </div>
         {result.reasons.length > 0 ? (
           <>
-            <p className="mt-6 text-xl font-extrabold">Why</p>
+            <p className="mt-6 text-xl font-extrabold">{t("Why")}</p>
             <ul className="mt-2 flex list-disc flex-col gap-1 pl-6 text-lg">
               {result.reasons.map((r) => (
                 <li key={r}>{r}</li>
@@ -333,15 +340,17 @@ function Summary({
             </ul>
           </>
         ) : (
-          <p className="mt-6 text-lg">Nothing in the answers points to a higher chance. That's good news!</p>
+          <p className="mt-6 text-lg">{t("Nothing in the answers points to a higher chance. That's good news!")}</p>
         )}
-        <p className="mt-6 text-base">This is a rough guide, not medical advice. If you're worried, talk to their doctor.</p>
+        <p className="mt-6 text-base">
+          {t("This is a rough guide, not medical advice. If you're worried, talk to their doctor.")}
+        </p>
       </section>
 
       {result.watchTimes.length > 0 && (
         <section aria-labelledby="watch-title" className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
           <h2 id="watch-title" className="text-2xl font-extrabold">
-            Times to keep an <span className="text-gradient-brand">eye on</span>
+            <Highlight text={t("Times to keep an *eye on*")} />
           </h2>
           <ul className="mt-4 flex flex-col gap-3">
             {result.watchTimes.map((t) => (
@@ -356,23 +365,23 @@ function Summary({
 
       <section aria-labelledby="answers-title" className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
         <h2 id="answers-title" className="text-2xl font-extrabold">
-          Your answers
+          {t("Your answers")}
         </h2>
         <dl className="mt-4 flex flex-col divide-y-2 divide-lilac">
           {QUESTIONS.map((q, i) => (
             <div key={q.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div>
-                <dt className="text-lg text-muted">{q.title}</dt>
-                <dd className="text-xl font-bold">{answerWords(q, answers)}</dd>
+                <dt className="text-lg text-muted">{t(q.title)}</dt>
+                <dd className="text-xl font-bold">{answerWords(q, answers, t)}</dd>
               </div>
-              <button type="button" onClick={() => onEdit(i)} className={smallButton} aria-label={`Change: ${q.title}`}>
-                Change
+              <button type="button" onClick={() => onEdit(i)} className={smallButton} aria-label={t("Change: {question}", { question: t(q.title) })}>
+                {t("Change")}
               </button>
             </div>
           ))}
         </dl>
         <button type="button" onClick={onStartAgain} className={`${buttonVariants.outline} mt-6`}>
-          Start again
+          {t("Start again")}
         </button>
       </section>
     </div>
@@ -380,13 +389,14 @@ function Summary({
 }
 
 /** An answer in plain words for the "Your answers" list. */
-function answerWords(q: Question, answers: Answers): string {
-  if (q.kind === "text") return (answers[q.id] as string | undefined)?.trim() || "Skipped";
-  if (q.kind === "times") return q.fields.map((f) => `${f.label} ${prettyTime(answers[f.id] as string)}`).join(", ");
+function answerWords(q: Question, answers: Answers, t: Translate): string {
+  if (q.kind === "text") return (answers[q.id] as string | undefined)?.trim() || t("Skipped");
+  if (q.kind === "times")
+    return q.fields.map((f) => `${t(f.label)} ${prettyTime(answers[f.id] as string, t)}`).join(", ");
   const picked = answers[q.id];
   const values = Array.isArray(picked) ? picked : [picked];
   return q.choices
     .filter((c) => values.includes(c.value))
-    .map((c) => c.label)
+    .map((c) => t(c.label))
     .join(", ");
 }
