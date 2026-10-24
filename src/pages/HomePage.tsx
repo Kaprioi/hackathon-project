@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import ButtonLink from "../components/ButtonLink";
+import Reveal from "../components/Reveal";
 import {
   AlertIcon,
   CheckInIcon,
@@ -126,25 +127,30 @@ export default function HomePage() {
                 ))}
               </ul>
             </div>
+            <Reveal>
             <HeroIllustration />
+            </Reveal>
           </div>
         </section>
 
         {/* How it works */}
         <section className="px-6 py-20" aria-labelledby="how-title">
           <div className="mx-auto max-w-6xl">
+            <Reveal>
             <h2 id="how-title" className="text-center text-4xl font-extrabold">
               How it works
             </h2>
             <p className="mx-auto mb-12 mt-3 max-w-[40ch] text-center text-xl text-muted">
               From a phone on the table to a message on your phone.
             </p>
+            </Reveal>
             <div className="relative">
               {/* Dashed line joining the three steps (wide screens only) */}
               <div
                 aria-hidden="true"
                 className="absolute left-[17%] right-[17%] top-[90px] hidden border-t-[5px] border-dashed border-[#b7a6ef] md:block"
               />
+              <Reveal stagger>
               <ol className="relative grid gap-10 md:grid-cols-3">
                 {steps.map((step, i) => (
                   <li key={step.title} className="relative text-center">
@@ -161,6 +167,7 @@ export default function HomePage() {
                   </li>
                 ))}
               </ol>
+              </Reveal>
             </div>
           </div>
         </section>
@@ -168,12 +175,15 @@ export default function HomePage() {
         {/* Features */}
         <section className="mx-4 rounded-[48px] bg-white px-6 py-20" aria-labelledby="features-title">
           <div className="mx-auto max-w-6xl">
+            <Reveal>
             <h2 id="features-title" className="text-center text-4xl font-extrabold">
               Little helpers, big comfort
             </h2>
             <p className="mx-auto mb-10 mt-3 max-w-[40ch] text-center text-xl text-muted">
               Made to be simple for everyone — grandparents included.
             </p>
+            </Reveal>
+            <Reveal stagger>
             <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {features.map((feature) => (
                 <li key={feature.title} className={`${feature.bg} rounded-[32px] p-7`}>
@@ -183,13 +193,17 @@ export default function HomePage() {
                 </li>
               ))}
             </ul>
+            </Reveal>
           </div>
         </section>
 
         {/* Family */}
         <section className="px-6 py-20" aria-labelledby="family-title">
           <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
+            <Reveal>
             <FamilyIllustration />
+            </Reveal>
+            <Reveal delay={150}>
             <div>
               <h2 id="family-title" className="text-4xl font-extrabold">
                 Everyone in the loop
@@ -200,11 +214,13 @@ export default function HomePage() {
               </p>
               <ButtonLink to={GET_STARTED}>Get started</ButtonLink>
             </div>
+            </Reveal>
           </div>
         </section>
 
         {/* Final call to action */}
         <section className="px-6 pb-20" aria-labelledby="cta-title">
+          <Reveal>
           <div className="on-dark mx-auto max-w-6xl rounded-[40px] bg-brand px-8 py-14 text-center text-white">
             <h2 id="cta-title" className="text-4xl font-extrabold">
               Ready to feel closer?
@@ -219,6 +235,7 @@ export default function HomePage() {
               </ButtonLink>
             </div>
           </div>
+          </Reveal>
         </section>
       </main>
 

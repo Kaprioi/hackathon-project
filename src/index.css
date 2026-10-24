@@ -49,3 +49,38 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Reveal on scroll (see src/components/Reveal.tsx): blocks fade in and slide up
+   a short way, calmly and without any bounce. */
+.reveal,
+.reveal-stagger > * > * {
+  transition:
+    opacity 650ms cubic-bezier(0.25, 1, 0.5, 1),
+    transform 650ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.reveal-waiting.reveal,
+.reveal-waiting.reveal-stagger > * > * {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+/* In a list, each item follows the one before it by a moment. */
+.reveal-stagger > * > :nth-child(2) {
+  transition-delay: 120ms;
+}
+.reveal-stagger > * > :nth-child(3) {
+  transition-delay: 240ms;
+}
+.reveal-stagger > * > :nth-child(n + 4) {
+  transition-delay: 360ms;
+}
+
+/* Never hide anything for people who prefer less motion, or on paper. */
+@media (prefers-reduced-motion: reduce), print {
+  .reveal-waiting.reveal,
+  .reveal-waiting.reveal-stagger > * > * {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import AuthLayout, { Message, NotConfigured, linkButton, primaryButton } from "../components/AuthLayout";
+import Reveal from "../components/Reveal";
 import { PasswordField } from "../components/FormFields";
 import { friendlyError } from "../lib/friendlyError";
 import { authLinkError, clearAuthLinkError, supabase } from "../lib/supabase";
@@ -46,6 +47,7 @@ export default function ResetPasswordPage() {
 
   return (
     <AuthLayout title={title}>
+      <Reveal appear>
       {!supabase ? (
         <NotConfigured />
       ) : session === undefined ? (
@@ -95,6 +97,7 @@ export default function ResetPasswordPage() {
           </form>
         </>
       )}
+      </Reveal>
     </AuthLayout>
   );
 }
