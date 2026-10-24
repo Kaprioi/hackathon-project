@@ -101,7 +101,9 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
 Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, and colours and fonts in `src/index.css`. `vercel.json` makes links like `/login`, `/dashboard` and `/reset-password` work when the site is deployed.
 
-Logging in: `/login` has log in, create an account, and "forgot your password". Creating an account logs people straight in and takes them to `/dashboard`. The "forgot password" email brings people back to `/reset-password` to choose a new password (and if "Confirm email" is turned back on, the confirmation email brings them to `/dashboard`). `/dashboard` is a placeholder for now and sends people to `/login` if they aren't logged in.
+Logging in: `/login` has log in, create an account, and "forgot your password". Creating an account logs people straight in and takes them to `/dashboard`. The "forgot password" email brings people back to `/reset-password` to choose a new password (and if "Confirm email" is turned back on, the confirmation email brings them to `/dashboard`). `/dashboard` sends people to `/login` if they aren't logged in.
+
+Family dashboard (`/dashboard`): a big "All okay" or "Needs a look" card, when the person was last seen, and the 20 latest alerts from the SightLine stand. New alerts appear without reloading. It reads the `events` table that the stand writes to, so run `hardware/supabase.sql` once in Supabase (SQL Editor -> New query -> paste -> Run) before using it. Until then the dashboard says "No stand connected yet".
 
 ## Phone Tracker page (`/tracker`)
 

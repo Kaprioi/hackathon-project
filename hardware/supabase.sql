@@ -15,7 +15,8 @@ alter table events enable row level security;
 -- Hackathon-grade policies: anyone with the anon key can add and read events.
 -- Tighten these (or use a device-specific key) before real-world use.
 create policy "device can insert events" on events for insert to anon with check (true);
-create policy "app can read events" on events for select to anon using (true);
+-- Logged-in family members (the "authenticated" role) read them on /dashboard.
+create policy "app can read events" on events for select to anon, authenticated using (true);
 
 -- Lets the web app get new alerts instantly via Supabase Realtime.
 alter publication supabase_realtime add table events;
