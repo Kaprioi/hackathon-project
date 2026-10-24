@@ -7,10 +7,10 @@ export function friendlyError(message: string): string {
     return "Please confirm your email first. Look in your inbox for our message and tap the link inside.";
   if (m.includes("already registered") || m.includes("already been registered"))
     return "There is already an account with this email. Try logging in instead.";
-  if (m.includes("password should be") || m.includes("password is too"))
-    return "Please choose a longer password, with at least 6 letters or numbers.";
   if (m.includes("same password") || m.includes("different from the old"))
     return "Your new password must be different from your old one.";
+  if (m.includes("password should be") || m.includes("password is too"))
+    return "Please choose a longer password, with at least 6 letters or numbers.";
   if (m.includes("rate limit") || m.includes("too many") || m.includes("security purposes"))
     return "We've had a lot of tries just now. Please wait a few minutes, then try again.";
   if (m.includes("not authorized") || m.includes("sending") || m.includes("smtp"))
