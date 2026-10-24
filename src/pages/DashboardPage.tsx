@@ -4,6 +4,7 @@ import { Message } from "../components/AuthLayout";
 import { buttonVariants } from "../components/ButtonLink";
 import Highlight from "../components/Highlight";
 import SiteLayout, { Blobs, LivePill } from "../components/SiteLayout";
+import FamilyNotes from "../components/FamilyNotes";
 import { useLanguage } from "../i18n/useLanguage";
 import { supabase } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
@@ -508,6 +509,8 @@ function Family({
               </ol>
             </section>
           )}
+
+          {!simple && circle && <FamilyNotes circleId={circle.id} userId={userId} now={now} />}
 
           {!simple && (
             <AlertSettingsPanel settings={alertSettings} onChange={setAlertSettings}>
