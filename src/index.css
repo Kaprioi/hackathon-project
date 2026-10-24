@@ -296,18 +296,7 @@ html[data-text-size="extra"] {
   }
 }
 
-/* Spanish words are longer, so the header's row of links needs more room too. */
-@media (max-width: 1279px) {
-  html[lang="es"] .site-nav {
-    display: none;
-  }
-  html[lang="es"] .site-menu-button {
-    display: grid;
-  }
-  html[lang="es"] .site-mobile-menu {
-    display: block;
-  }
-}
+/* Spanish words are longer, so with extra large text the row of links needs more room. */
 @media (max-width: 1535px) {
   html[lang="es"][data-text-size="extra"] .site-nav {
     display: none;

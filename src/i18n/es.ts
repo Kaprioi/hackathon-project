@@ -329,6 +329,60 @@ const es: Record<string, string> = {
   Done: "Listo",
   "Saved in this browser.": "Se guarda en este navegador.",
 
+  // ----- Family page tools: read aloud, simple view, "I'm checking on it", alerts -----
+  Help: "Ayuda",
+  "Need help?": "¿Necesita ayuda?",
+  "Your account": "Su cuenta",
+  "You're offline. Check your Wi-Fi or mobile data; the page will catch up when you're back online.":
+    "No tiene conexión. Revise su wifi o sus datos móviles; la página se pondrá al día cuando vuelva a conectarse.",
+  "Read aloud": "Leer en voz alta",
+  "Stop reading": "Dejar de leer",
+  "Simple view": "Vista sencilla",
+  "Show everything": "Mostrar todo",
+  "Your loved one": "Su ser querido",
+  "There is no news from the phone yet.": "Todavía no hay novedades del teléfono.",
+  "The phone thinks {who} may have fallen, at {at}. Please call or visit to check they are okay.":
+    "El teléfono cree que {who} puede haberse caído, a las {at}. Llame o vaya a verle para comprobar que está bien.",
+  "The phone has not checked in since {at}. Please check it is switched on and charging.":
+    "El teléfono no da señales desde las {at}. Compruebe que está encendido y cargando.",
+  "The phone stopped watching at {at}.": "El teléfono dejó de vigilar a las {at}.",
+  "The phone started watching at {at}.": "El teléfono empezó a vigilar a las {at}.",
+  "Nobody is in view of the phone. Last update at {at}.": "El teléfono no ve a nadie. Última actualización a las {at}.",
+  "{who} is okay, {activity}. Last update at {at}.": "{who} está bien, {activity}. Última actualización a las {at}.",
+  "moving about": "moviéndose",
+  "lying down, resting": "tumbado, descansando",
+  "standing still": "de pie, sin moverse",
+  "sitting still": "sentado, sin moverse",
+  "{what}, at {at}.": "{what}, a las {at}.",
+  "Needs a look:": "Conviene revisarlo:",
+  "During quiet hours": "Durante las horas de descanso",
+  "I'm checking on it": "Yo me encargo de comprobarlo",
+  "Telling the family…": "Avisando a la familia…",
+  You: "Usted",
+  Someone: "Alguien",
+  "Someone in the family": "Alguien de la familia",
+  "You are checking on it": "Usted lo está comprobando",
+  "{name} is checking on it": "{name} lo está comprobando",
+  "{names} are checking on it": "{names} lo están comprobando",
+  "{first} and {last}": "{first} y {last}",
+  "Sorry, this button isn't switched on yet. Please phone or message the family instead. (Whoever set up CareNest needs to run the newest database update.)":
+    "Lo sentimos, este botón todavía no está activado. Llame o escriba a la familia. (Quien configuró CareNest tiene que aplicar la última actualización de la base de datos.)",
+  "Sorry, that didn't work. Please check your internet and try again.":
+    "Lo sentimos, no ha funcionado. Revise su internet y vuelva a intentarlo.",
+  "Alert settings": "Ajustes de avisos",
+  "Choose which news stands out in Recent news. Saved on this device only.":
+    "Elija qué novedades se destacan en Novedades recientes. Se guarda solo en este dispositivo.",
+  "Highlight these": "Destacar estas",
+  "Possible falls": "Posibles caídas",
+  "Out of sight (nobody in view of the phone)": "Fuera de la vista (el teléfono no ve a nadie)",
+  "Quiet hours": "Horas de descanso",
+  "Tone down highlights at night": "Suavizar los avisos por la noche",
+  From: "Desde",
+  Until: "Hasta",
+  'A possible fall always shows in "Right now", even in quiet hours.':
+    "Una posible caída siempre aparece en «Ahora mismo», también en las horas de descanso.",
+  "Alerts by phone message or email are coming later.": "Los avisos por mensaje o correo electrónico llegarán más adelante.",
+
   // ----- Care profile -----
   "About {name}": "Sobre {name}",
   "About your loved one": "Sobre su ser querido",

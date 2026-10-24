@@ -4,7 +4,8 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { describe, timeAgo } from "../family/status.ts";
+import { checkingLine, spokenStatus } from "../family/alerts.ts";
+import { describe, summarise, timeAgo } from "../family/status.ts";
 import { likelihood } from "../family/careProfile.ts";
 import { summariseDay } from "../family/dailySummary.ts";
 import es from "./es.ts";
@@ -105,4 +106,14 @@ test("the family page's day summary is translated, and the fall line is marked",
     "Sin movimiento desde las 09:30.",
   ]);
   assert.equal(inEs.fallLine, inEs.lines[2]);
+});
+
+test("read aloud and 'checking on it' speak the chosen language", () => {
+  const now = Date.parse("2026-10-24T12:00:00Z");
+  const inEs = (text, vars) => translate(es, text, vars);
+  const summary = summarise([{ id: 1, kind: "moving", zone: "left", posture: null, created_at: "2026-10-24T11:59:00Z" }], now);
+  assert.equal(spokenStatus(summary, "Mamá", () => "10:38", inEs), "Mamá está bien, moviéndose. Última actualización a las 10:38.");
+  assert.equal(checkingLine(["You"], inEs), "Usted lo está comprobando");
+  assert.equal(checkingLine(["You", "Sam"], inEs), "Usted y Sam lo están comprobando");
+  assert.equal(checkingLine(["Sam", "Ali", "Jo"]), "Sam, Ali and Jo are checking on it");
 });

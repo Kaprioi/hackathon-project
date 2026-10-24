@@ -1,7 +1,9 @@
 // Extra helpers for the family page: the sentence "Read aloud" speaks, each
 // person's alert settings (which alerts to highlight, quiet hours), and the
 // "Sam is checking on it" line. No React here, so it can be tested with `npm test`.
+// The sentence helpers take an optional `t` to translate them (English if left out).
 
+import { english, type Translate } from "../i18n/translate.ts";
 import { whatHappened, whereInRoom, type EventRow, type Summary } from "./status.ts";
 
 // ---------------------------------------------------------------------------
@@ -9,16 +11,16 @@ import { whatHappened, whereInRoom, type EventRow, type Summary } from "./status
 // ---------------------------------------------------------------------------
 
 /** How "Read aloud" says what is happening, a bit friendlier than the screen. */
-function spokenActivity(e: Pick<EventRow, "kind" | "posture">): string {
+function spokenActivity(e: Pick<EventRow, "kind" | "posture">, t: Translate): string {
   switch (e.kind) {
     case "moving":
-      return "moving about";
+      return t("moving about");
     case "still":
-      if (e.posture === "lying") return "lying down, resting";
-      if (e.posture === "standing") return "standing still";
-      return "sitting still";
+      if (e.posture === "lying") return t("lying down, resting");
+      if (e.posture === "standing") return t("standing still");
+      return t("sitting still");
     default:
-      return whatHappened(e).toLowerCase();
+      return whatHappened(e, t).toLowerCase();
   }
 }
 
@@ -27,30 +29,37 @@ function spokenActivity(e: Pick<EventRow, "kind" | "posture">): string {
  * "Mum is okay, moving about. Last update at 10:38."
  * `clock` turns a time into words like "10:38".
  */
-export function spokenStatus(summary: Summary, who: string, clock: (iso: string) => string): string {
+export function spokenStatus(
+  summary: Summary,
+  who: string,
+  clock: (iso: string) => string,
+  t: Translate = english,
+): string {
   const { latest } = summary;
-  if (!latest) return "There is no news from the phone yet.";
+  if (!latest) return t("There is no news from the phone yet.");
   const at = clock(latest.created_at);
   if (latest.kind === "fall")
-    return `The phone thinks ${who} may have fallen, at ${at}. Please call or visit to check they are okay.`;
+    return t("The phone thinks {who} may have fallen, at {at}. Please call or visit to check they are okay.", { who, at });
   if (summary.phoneSilent && summary.lastHeard)
-    return `The phone has not checked in since ${clock(summary.lastHeard.created_at)}. Please check it is switched on and charging.`;
-  if (latest.kind === "stopped") return `The phone stopped watching at ${at}.`;
-  if (latest.kind === "started") return `The phone started watching at ${at}.`;
-  if (latest.kind === "nobody") return `Nobody is in view of the phone. Last update at ${at}.`;
-  return `${who} is okay, ${spokenActivity(latest)}. Last update at ${at}.`;
+    return t("The phone has not checked in since {at}. Please check it is switched on and charging.", {
+      at: clock(summary.lastHeard.created_at),
+    });
+  if (latest.kind === "stopped") return t("The phone stopped watching at {at}.", { at });
+  if (latest.kind === "started") return t("The phone started watching at {at}.", { at });
+  if (latest.kind === "nobody") return t("Nobody is in view of the phone. Last update at {at}.", { at });
+  return t("{who} is okay, {activity}. Last update at {at}.", { who, activity: spokenActivity(latest, t), at });
 }
 
 /** The sentence spoken for one line of Recent news, e.g. "Possible fall, left side, at 10:38." */
-export function spokenEvent(e: EventRow, clock: (iso: string) => string): string {
-  const where = e.kind === "nobody" ? null : whereInRoom(e.zone);
-  return `${[whatHappened(e), where].filter(Boolean).join(", ")}, at ${clock(e.created_at)}.`;
+export function spokenEvent(e: EventRow, clock: (iso: string) => string, t: Translate = english): string {
+  const where = e.kind === "nobody" ? null : whereInRoom(e.zone, t);
+  return t("{what}, at {at}.", { what: [whatHappened(e, t), where].filter(Boolean).join(", "), at: clock(e.created_at) });
 }
 
 /** The name to use when speaking: what the Care profile calls them, else "Your loved one". */
-export function whoToSpeakOf(savedName: unknown): string {
+export function whoToSpeakOf(savedName: unknown, t: Translate = english): string {
   const name = typeof savedName === "string" ? savedName.trim() : "";
-  return name || "Your loved one";
+  return name || t("Your loved one");
 }
 
 // ---------------------------------------------------------------------------
@@ -145,10 +154,12 @@ export function shortName(profile: { display_name?: string | null; email?: strin
 }
 
 /** "Sam is checking on it", "You and Sam are checking on it", "Sam, Ali and Jo are checking on it". */
-export function checkingLine(names: string[]): string {
+export function checkingLine(names: string[], t: Translate = english): string {
   if (names.length === 0) return "";
-  const list =
-    names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  const verb = names.length === 1 && names[0] !== "You" ? "is" : "are";
-  return `${list} ${verb} checking on it`;
+  // "You" and "Someone..." come from the page in English; real names stay as they are.
+  const shown = names.map((n) => (n === "You" || n === "Someone" || n === "Someone in the family" ? t(n) : n));
+  if (names.length === 1)
+    return names[0] === "You" ? t("You are checking on it") : t("{name} is checking on it", { name: shown[0] });
+  const list = t("{first} and {last}", { first: shown.slice(0, -1).join(", "), last: shown[shown.length - 1] });
+  return t("{names} are checking on it", { names: list });
 }

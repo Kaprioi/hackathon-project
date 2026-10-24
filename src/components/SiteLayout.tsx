@@ -85,7 +85,7 @@ export function SiteHeader() {
             <LogoMark />
             <span className="site-wordmark">CareNest</span>
           </Link>
-          <nav aria-label="Main" className="site-nav hidden lg:block">
+          <nav aria-label="Main" className="site-nav hidden xl:block">
             <ul className="flex gap-1">
               {navLinks.map((link) => (
                 <li key={link.to}>
@@ -103,8 +103,8 @@ export function SiteHeader() {
           <div className="flex items-center gap-2">
             {/* Short names on wide screens (next to the links), full names on tablets
                 (next to the menu button), and inside the menu on phones. */}
-            <LanguagePicker compact className="hidden lg:flex" />
-            <LanguagePicker className="hidden md:flex lg:hidden" />
+            <LanguagePicker compact className="hidden xl:flex" />
+            <LanguagePicker className="hidden md:flex xl:hidden" />
             <DisplayButton
               open={displayOpen}
               buttonRef={displayButton}
@@ -116,7 +116,7 @@ export function SiteHeader() {
             <button
               ref={menuButton}
               type="button"
-              className="site-menu-button grid h-12 w-12 place-items-center rounded-2xl bg-lilac text-brand lg:hidden"
+              className="site-menu-button grid h-12 w-12 place-items-center rounded-2xl bg-lilac text-brand xl:hidden"
               aria-expanded={menuOpen}
               aria-controls="mobile-menu"
               aria-label={menuOpen ? t("Close menu") : t("Open menu")}
@@ -143,7 +143,7 @@ export function SiteHeader() {
         {displayOpen && <DisplayPanel onClose={closeDisplay} />}
 
         {menuOpen && (
-          <nav id="mobile-menu" aria-label="Mobile" className="site-mobile-menu animate-slide-in border-t-2 border-lilac px-6 pb-6 pt-3 lg:hidden">
+          <nav id="mobile-menu" aria-label="Mobile" className="site-mobile-menu animate-slide-in border-t-2 border-lilac px-6 pb-6 pt-3 xl:hidden">
             <LanguagePicker className="mb-3 md:hidden" />
             <ul className="flex flex-col gap-2">
               {navLinks.map((link, i) => (

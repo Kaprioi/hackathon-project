@@ -138,7 +138,8 @@ function Family({
   const [simple, setSimpleState] = useState(() => readSaved(SIMPLE_VIEW_KEY, (v) => v === true));
   const [alertSettings, setAlertSettingsState] = useState(() => readSaved(alertSettingsKey(userId), cleanAlertSettings));
   // The name "Read aloud" uses, from the Care profile page (saved in this browser).
-  const [who] = useState(() => readSaved(careProfileKey(userId), (v) => whoToSpeakOf((v as { name?: unknown } | null)?.name)));
+  const [savedName] = useState(() => readSaved(careProfileKey(userId), (v) => (v as { name?: unknown } | null)?.name));
+  const who = whoToSpeakOf(savedName, t);
   const checking = useCheckingOnIt(circle?.id, userId);
 
   function setSimple(on: boolean) {
@@ -329,7 +330,7 @@ function Family({
             )}
             {latest && (
               <div className="mt-5">
-                <ReadAloudButton text={spokenStatus(summary, who, clock)} big={simple} />
+                <ReadAloudButton text={spokenStatus(summary, who, clock, t)} big={simple} />
               </div>
             )}
             {!simple && latest && canCheckOn(latest) && (
@@ -393,7 +394,7 @@ function Family({
                       <span className="text-lg font-bold text-muted">{clock(e.created_at)}</span>
                       {alertType(e) && (
                         <div className="flex basis-full flex-wrap items-center gap-3">
-                          <ReadAloudButton text={spokenEvent(e, clock)} />
+                          <ReadAloudButton text={spokenEvent(e, clock, t)} />
                           {canCheckOn(e) && (
                             <CheckingOnIt
                               names={checking.whoIsChecking(e.id)}
