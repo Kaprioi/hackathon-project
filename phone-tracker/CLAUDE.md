@@ -27,7 +27,7 @@ A motorized stand that holds an iPhone, keeps one chosen person in view and poin
 ## Decisions (locked)
 
 1. **The software is a website**, the `/tracker` page of the team web app (code in `../src/tracker/`). The iPhone runs the AI in the page and talks to the ESP32 over Bluetooth. No laptop in the loop. On the iPhone it runs in the free **Bluefy** browser, because Safari can't use Bluetooth from a website. On a PC it runs in Chrome or Edge. Chosen Oct 23 because Apple builds on Windows. The Swift app in `app/` is a backup only.
-2. Which phone camera faces the person is a setting on the page. The default is the **front** camera, because SightLine mounts the phone screen-forward (it was the rear camera in the first plan).
+2. Which phone camera faces the person is a setting on the page (start screen, Settings, or the **Flip** button). The default is the **front** camera, because SightLine mounts the phone screen-forward (it was the rear camera in the first plan). The front camera is shown mirrored, like a selfie; the tracking brain always works on the unmirrored picture.
 3. Lynxmotion Pan and Tilt Kit (BPT-KT) with its two Hitec HS-422 servos, as sold.
 4. **Hardware: Kris's SightLine head** (branch `hardware-build-guide`, `hardware/` in the repo): two LD2410C radars angled 25° left and right, the iPhone on a backplate above them, WiFi alerts. Chosen Oct 23. Merging it with this project's Bluetooth link is proposed in a pull request for Kris to review. The single-radar Phone Tracker stand (`firmware/PhoneTracker_ESP32`) still works with the website as a fallback.
 5. Print the phone holder and base box instead of buying a clamp and a board.
@@ -62,7 +62,7 @@ A motorized stand that holds an iPhone, keeps one chosen person in view and poin
 | Adafruit ESP32 Feather V2 | Moves the servos, reads the radar(s), switches the mist | USB-C to a PC for uploading; a phone charger for the demo |
 | Pan servo (HS-422) | Left and right | Signal to pin 27 |
 | Tilt servo (HS-422) | Up and down | Signal to pin 33 |
-| Radar, SightLine: 2 × LD2410C over serial | Presence and which side is stronger | Left on RX/TX (GPIO 7/8), right on 32/14 |
+| Radar, SightLine: 2 × LD2410C over serial | Presence and which side is stronger | Left on RX/TX (GPIO 7/8), right on 32/14. The team has one radar until the second arrives: the firmware detects that at startup (`RADAR_COUNT`), and the single left radar then only reports presence |
 | Radar, single-radar fallback: 1 × LD2410C | OUT pin HIGH while someone is there | OUT to pin 32 |
 | MOSFET module | Switches the mist maker and fan | Signal from pin A0 (GPIO 26) |
 | 5V ultrasonic mist maker + 5V fan, in a tank beside the base | Makes the mist; the fan pushes it up a tube to the nozzle on the head | 5V through the MOSFET |
@@ -75,13 +75,13 @@ A motorized stand that holds an iPhone, keeps one chosen person in view and poin
 **Bluetooth protocol** (website `../src/tracker/stand.ts` and `config.ts`; firmware `.ino`)
 - Service UUID `6e400001-b5a3-f393-e0a9-e50e24dcca9e`.
 - Move `…0002` (write): text `pan,tilt` such as `90,90`. Pan is limited to 10–170° and tilt to 45–135°, and the firmware eases toward each target by 15% every 20 ms. While the camera is steering, the website repeats the aim every 250 ms even if it hasn't changed. On a SightLine stand, the radars steer again once moves stop for about 0.7 s.
-- Radar `…0003` (notify): `1` or `0` from the single-radar stand. SightLine sends `presence,left,right,pan,tilt` such as `1,42,13,95.0,90.0`, so the website knows where the radars have turned the head.
+- Radar `…0003` (notify): `1` or `0` from the single-radar stand. SightLine sends `presence,left,right,pan,tilt` such as `1,42,13,95.0,90.0`, so the website knows where the radars have turned the head. With one radar, right is always 0; the website only reads presence, pan and tilt.
 - Mist `…0004` (write): `1` = on, `0` = off. The website repeats `1` every second. The firmware turns the mist off after 3 s of silence, and when the phone disconnects.
 
 **Website states** (`../src/tracker/brain.ts`)
 - TAP A PERSON: boxes around everyone in view; tap one to pick them.
 - TRACKING: follows that person's body, so it keeps working when they turn away. A missed frame or a quick pass behind something is bridged by predicting their motion for 0.6 s.
-- HIDDEN: they vanished in the middle of the picture. Holds on the cover and follows it if it moves (it matches a small grey picture of the lump each frame); the radar confirms someone's inside.
+- HIDDEN: they vanished in the middle of the picture. Holds on the cover and follows it if it moves (it matches a small grey picture of the lump each frame); the radar confirms someone's inside. A person shape that stays on the moving cover for 0.5 s (walking around under a blanket, legs showing) is taken as them, whatever its colours. If it loses the cover for 1 s while the radar still senses someone, it stops sending moves so a two-radar stand steers by radar.
 - FOLLOWING: they left through the edge of the picture. Keeps turning that way at their speed (25–90°/s).
 - SEARCHING: not found there. Sweeps across the whole range once.
 - LOST: the cover went still and the radar read empty for 4 s, or the sweep found nothing. Compares everyone in view with the saved look (clothing colours) and locks back on when one matches.
@@ -115,14 +115,19 @@ Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on
 - `docs/DEMO_AND_PITCH.md`: the 36-hour plan, demo script, judge Q&A, the 360° answer.
 - `docs/STEAM.md`: the mist-that-follows-you design, tests and safety.
 - `docs/SESSION_LOG.md`: one entry per session.
+- `docs/HANDOFF_2026-10-24.md`: **the latest handoff. Read it first.** PRs, uncommitted work, phone testing (Cloudflare tunnel), gotchas, next steps.
 - `docs/HANDOFF.md`: the original handoff from claude.ai, kept for reference.
 
-## Status (as of Oct 23, 2026)
+## Status (as of Oct 24, 2026)
 
 - Plan: website + SightLine head + mist that follows you. Plain version first.
-- Website: works end to end in Chrome on Apple's PC with a still photo fed in as the camera. It locks on from behind, follows off the edge, sweeps, re-finds by clothes, and holds HIDDEN. 10 automated tests pass. Not yet tried with a live webcam, on the iPhone in Bluefy, or with the real stand.
+- Website: works end to end in Chrome on Apple's PC with a still photo fed in as the camera. It locks on from behind, follows off the edge, sweeps, re-finds by clothes, and holds HIDDEN. 13 automated tests pass. Not yet tried on a real phone (Samsung in Chrome, iPhone in Bluefy) or with the real stand.
+- Oct 24: the page was reworked for phones (bottom control bar, front/back **Flip**, mirrored selfie view, taps that ignore a resting thumb, either way up, safe areas, camera recovery after switching apps). Checked at phone sizes in Chrome with a fake camera; not on a real phone yet.
+- Oct 24: Kris merged PR #6 into `main` (1:48 AM), plus #8 (login, family dashboard) and #10 (the phone sends short movement events, including "Possible fall", to Supabase for the family page). Today's work (wall fix, phone page, blanket tracking) was combined with that on branch `tracker-phone-friendly`, in a new PR into `main`. The page now has Kris's privacy banner, sign-in and Stop watching.
+- Plan (Oct 24): pivot the pitch toward elderly care. Apple chose "fall alert + face check": fall detection from body pose on the tracked person, an "I'm OK" countdown, an alert to the family, and face recognition to confirm it's the elderly person. Not built yet.
 - Firmware: the single-radar `.ino` got the mist switch; never compiled or run on hardware. The SightLine merge is written as a proposal PR for Kris; not compiled.
-- 3D mockup of SightLine + mist: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD (made in a separate session).
+- 3D mockup of SightLine + mist, with a hole-by-hole breadboard layout: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD. Fallback without mist: https://claude.ai/artifact/S6Zg89U4N5bQv58RC92Qv3 (both made in a separate session).
+- Apple's first live webcam test (Oct 23): after hiding behind a wall, the box got stuck on something nearby and never followed again. Fixed: the target's look is now kept from the moment of the tap, a "sort of" match is only trusted for 1.5 s, a clearly better match anywhere wins, and the colour fingerprint was made finer (it used to score red, orange and brown as identical). Each box now shows its match number.
 - Parts: carts were nearly final on Oct 17. Which orders were placed is unknown. Humidifier parts not bought.
 - Printed parts: Kris has STLs for the SightLine base, lid and radar head. The nozzle arm isn't designed yet.
 
@@ -130,15 +135,15 @@ Tuning: constants in `../src/tracker/config.ts`; the most-tuned ones are also on
 
 1. Which iPhone goes on the rig (Apple's friend's), and in which case? SightLine assumes an iPhone 14 in a case.
 2. Does Bluefy on that iPhone allow the camera? Test: open https://webrtc.github.io/samples/src/content/getusermedia/gum/ in Bluefy.
-3. How does the phone get an https link to `/tracker`? The repo is already connected to Vercel (project `carenest` in the team's "Hackathon project" Vercel account). Vercel blocks preview builds of dennisliang07's commits because that account isn't a team member, so PR #6 has no preview link. The owner merging with a normal merge commit (not squash) should deploy it from `main`; likely, not yet confirmed. Alternatives: the owner adds Apple to the Vercel team (needs Pro), or a tunnel from the PC.
+3. How does the phone get an https link to `/tracker`? The repo is already connected to Vercel (project `carenest` in the team's "Hackathon project" Vercel account). Vercel blocks preview builds of dennisliang07's commits because that account isn't a team member, so PRs have no preview link. PR #6 is merged, so `main` should now deploy `/tracker`; not yet confirmed. Alternatives: the owner adds Apple to the Vercel team (needs Pro), or a tunnel from the PC.
 4. Will Kris accept the firmware merge PR (Bluetooth + mist added to SightLine, pan range widened to 10–170°)?
 5. Which orders were placed? Tick them in `docs/SHOPPING_LIST.md`. The humidifier parts need approval before buying.
 6. What are the event's real length, date and rules on pre-built hardware and code?
 
 ## Next steps
 
-1. Run the Bluefy camera test on the iPhone (open question 2).
-2. Ask the repo owner to merge PR #4 and PR #6 (website), then open the deployed `/tracker` on the iPhone in Bluefy. Check the frame rate.
+1. Test the phone-friendly page through the Cloudflare tunnel (`docs/HANDOFF_2026-10-24.md`): the Samsung in Chrome, the iPhone in Bluefy (also answers open question 2). Check tapping, Flip, both ways up, and the fps chip.
+2. Kris reviews and merges the `tracker-phone-friendly` PR; then open the deployed `/tracker` on the iPhone in Bluefy. Check the frame rate.
 3. Try `/tracker` with the PC webcam: walk out of view, hide behind a chair, come back.
 4. Kris reviews the firmware merge, PR #7 (into `hardware-build-guide`); upload it and test with the website (`docs/BUILD_STEPS.md`).
 5. Approve and buy the humidifier parts; test the mist reach and whether droplets reach the radars.

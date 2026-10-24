@@ -83,8 +83,17 @@ export const TUNING = {
   limitPauseMs: 700,
   /** Sweep speed while searching the room (degrees/second). */
   sweepSpeed: 30,
-  /** How quickly the saved look adapts to lighting changes (0 = never, 1 = instantly). */
-  lookUpdate: 0.05,
+  /** How quickly the saved look adapts to lighting changes (0 = never, 1 = instantly). Only while sure it's them. */
+  lookUpdate: 0.02,
+  /** Follow someone who only "sort of" looks like the target (over matchLimit) for at most this long. */
+  doubtMs: 1500,
+  /** Switch to another person if they look this much more like the target than the one we're on. */
+  switchMargin: 0.15,
+  /**
+   * ...and only if their match is under matchLimit x this. Measured on a busy street video:
+   * strangers scored under 0.38 in 9% of pairs but under 0.30 in only 1.4%.
+   */
+  switchStrict: 0.8,
   /** How much each new speed reading counts (0-1). Lower = smoother but slower to react. */
   velSmoothing: 0.3,
   /** Fastest believable movement (degrees/second), to ignore glitches. */
@@ -93,14 +102,26 @@ export const TUNING = {
   latencyMs: 80,
   /** How sure the cover tracker must be (0-1) before the stand follows a moving blanket. */
   lumpMinScore: 0.55,
+  /**
+   * Walking around under a blanket: a person shape sitting on the moving cover for
+   * this long counts as them, whatever its colours...
+   */
+  coverPersonMs: 500,
+  /** ...if its box overlaps the cover this much (0-1)... */
+  coverPersonOverlap: 0.4,
+  /** ...and it stays put on the cover (moves less than this, as a fraction of the frame, relative to it). */
+  coverPersonDrift: 0.04,
+  /** Lost the cover for this long while the radar still senses someone: stop aiming and let the radars steer. */
+  coverLostMs: 1000,
 };
 
-/** Width of the small copy of each frame used for colours and the cover tracker. */
+/** Long side of the small copy of each frame used for colours and the cover tracker. */
 export const ANALYSIS_WIDTH = 320;
 
 /**
- * Width of the copy the person detector sees. Smaller is faster: on a laptop's
- * built-in graphics, 640 took about 70 ms a frame against 90 ms for the full 1280.
+ * Long side of the copy the person detector sees (its width with the phone sideways).
+ * Smaller is faster: on a laptop's built-in graphics, 640 took about 70 ms a frame
+ * against 90 ms for the full 1280.
  */
 export const DETECT_WIDTH = 640;
 
@@ -110,6 +131,7 @@ export const MIST_FOLLOW_MODES = ["tracking", "hidden", "following"] as const;
 /**
  * Which tracking states let the camera steer the stand. In the others (TAP A PERSON
  * and LOST) the website stops sending moves, and a two-radar SightLine stand
- * steers by radar instead, which also works in the dark.
+ * steers by radar instead, which also works in the dark. HIDDEN also stops sending
+ * moves once it loses track of the cover while the radar still senses someone.
  */
 export const CAMERA_STEERS_IN = ["tracking", "hidden", "following", "searching"] as const;

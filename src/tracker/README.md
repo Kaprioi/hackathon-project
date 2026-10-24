@@ -4,7 +4,7 @@ Finds people with the phone's camera, follows the one you tap, and drives the st
 
 | File | What it does |
 |---|---|
-| `TrackerPage.tsx` | The page: camera view, boxes, tap to pick, status, mist buttons, settings. Runs the loop once per camera frame. |
+| `TrackerPage.tsx` | The page: camera view, boxes, tap to pick, status, mist buttons, front/back camera switch, settings. Laid out for phones either way up (safe areas, big buttons), and works on a PC. Runs the loop once per camera frame. |
 | `detector.ts` | Finds people in a frame with Google MediaPipe (EfficientDet-Lite0). Runs on the device; no video leaves it. |
 | `brain.ts` | Decides what to do: TRACKING, HIDDEN, FOLLOWING, SEARCHING, LOST, and where to point. No camera or Bluetooth code, so it's testable. |
 | `appearance.ts` | The "look": clothing colours of the top and bottom half, used to tell people apart and re-find the target. |
@@ -17,4 +17,4 @@ Finds people with the phone's camera, follows the one you tap, and drives the st
 | `events.test.mjs` | Tests for `events.ts` with made-up people boxes. |
 | `brain.test.mjs` | Tests with made-up frames, including a simulated room. Run `npm run test:tracker`. |
 
-Each frame: camera → 640-wide copy → `detector.ts` → `brain.ts` (with a 320-wide copy for colours and the cover tracker) → `stand.ts`, and `detector.ts` → `events.ts` → `cloud.ts` for the family page.
+Each frame: camera → copy 640 on its long side → `detector.ts` → `brain.ts` (with a copy 320 on its long side for colours and the cover tracker) → `stand.ts`, and `detector.ts` → `events.ts` → `cloud.ts` for the family page. With the phone upright, the page swaps the camera's width and height angles before calling `brain.ts`.

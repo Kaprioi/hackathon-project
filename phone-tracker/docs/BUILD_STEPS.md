@@ -47,7 +47,7 @@ Tools: small Phillips screwdriver, wire strippers or scissors, double-sided foam
 
 ## Part B2: the humidifier (both stands)
 
-The mist maker and its fan sit in a closed tank **beside** the base box, never inside it. A tube carries the mist up to a nozzle on the head. Geometry is in the 3D mockup: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD
+The mist maker and its fan sit in a closed tank **beside** the base box, never inside it. A tube carries the mist up to a nozzle on the head. Geometry and a hole-by-hole breadboard layout are in the 3D mockup: https://claude.ai/artifact/VGajiyE2hiaV4B1B3DpeaD. If the mist parts aren't ready, build the same head without it (A0 left unconnected; the website still tracks): https://claude.ai/artifact/S6Zg89U4N5bQv58RC92Qv3
 
 9. **Tank.** About 1.5 L, with a lid. The floating mist maker sits in the water. Its driver board stays dry on the lid. The 5V fan sits on the lid, blowing **into** the tank. A spigot in the lid takes the tube. Use distilled water.
 10. **Tube and nozzle.** About 16 mm across, light silicone or CPAP hose, roughly 1 m. Clip it to the C bracket near the tilt axle, so it doesn't lever the head, with a loose loop for the full pan and tilt. It should run **downhill** from the nozzle to the tank, with no dips, so condensation drains back. The nozzle sits on a printed arm beside the phone and points where the camera points. Its tip goes ahead of and outside both radar windows.
@@ -85,15 +85,22 @@ The mist maker and its fan sit in a closed tank **beside** the base box, never i
 On the PC (testing):
 
 17. In the repo folder, run `npm install` once, then `npm run dev`. Open **http://localhost:5173/tracker** in **Chrome or Edge**. Safari and Firefox can't do Bluetooth.
-18. Click **Start camera** and allow the camera. The first start downloads the AI model (a few MB). Boxes appear around people. Tap one: TRACKING.
+18. Click **Start camera** and allow the camera. The first start downloads the AI model (a few MB). Boxes appear around people. Tap one: TRACKING. The front camera (and a PC webcam) is shown mirrored, like a selfie.
 19. Without the stand, the camera doesn't move, but the dial in the corner shows where the stand would point. Walk out of view and watch it go FOLLOWING, then SEARCHING, then LOST. Walk back in and it re-finds you.
+
+On a phone, held in your hand (a quick test before the stand):
+
+- Either way up works. Pick **Front** or **Back** on the start screen; while it runs, **Flip** in the bottom bar switches cameras (and lets go of the person, since the picture changes).
+- Tap a person with a quick tap. A thumb resting on the screen or a drag is ignored. Android phones buzz briefly when it locks on.
+- **Release** sits next to the state at the top left. **Show log** there lists the last decisions.
+- **Full screen** (Android and PCs) hides the browser bars. iPhones don't allow it from a web page.
 20. To check the tracking logic without a camera: `npm run test:tracker`.
 
 On the iPhone (the demo):
 
 21. The page must be on **https**, so it has to be deployed (Vercel; open question 3 in `CLAUDE.md`). Open `https://<the site>/tracker` in **Bluefy**, not Safari.
-22. Turn **off** rotation lock and hold the phone sideways. The page warns you if the picture is upright.
-23. **Connect stand** → pick **PhoneTracker**. Then **Start camera**. In Settings, pick the camera that faces the person: **Front** for SightLine, where the screen faces forward.
+22. Turn **off** rotation lock and put the phone in the stand sideways. Once the stand is connected, the page warns you if the picture is upright.
+23. On the start screen pick the camera that faces the person (**Front** for SightLine, where the screen faces forward), then **Start camera**. Then **Connect stand** in the bottom bar → pick **PhoneTracker**.
 
 ## Part E: tuning
 
@@ -102,7 +109,7 @@ All of these are on the page's **Settings** panel and are saved in the browser.
 24. **Directions.** Settings → Test the motors (press Release first). **Left** should bring what was on the left of the screen toward the middle. If it does the opposite, press **Flip left/right**. Same with **Up** and **Flip up/down**.
 25. **Feel.** If it overshoots and swings back past you, lower **Camera width**. If it lags behind you, raise it. If it twitches while you sit still, raise **Dead zone** to 4–5.
 26. **Hiding.** Get under a blanket within about 3 m. The box should turn dashed and say HIDDEN within about half a second. In HLKRadarTool, cap the radar's range at about 3 m.
-27. **Re-finding.** Walk out and wait for LOST. Note the "Closest match" number when you walk back in, then when a teammate walks in. Set **Match strictness** between the two.
+27. **Re-finding.** Every box shows a number: how much that person looks like the one you tapped (0.00 = same clothes colours). It turns green when it's under **Match strictness**, meaning "that's them". Note your own number as you walk around the room, then a teammate's. Set **Match strictness** between the two.
 28. **Mist aim.** **Aim height** 0.35 aims at the chest. For someone lying in bed, try 0.2–0.3. Don't aim straight at the face.
 
 ## Backup: the native iPhone app (needs the Mac)
@@ -122,6 +129,8 @@ Only if the website can't be used on the iPhone. It has no mist control and no F
 | "This browser can't use Bluetooth" | Safari or Firefox | iPhone: Bluefy. PC: Chrome or Edge |
 | "Can't open the camera" | Page not on https | Use the deployed https link, or `localhost` on the PC |
 | Camera never starts in Bluefy | Bluefy camera permission | iPhone Settings → Bluefy → Camera on; reload |
+| "The camera is blocked for this page" | Camera permission was refused once | Chrome: tap the icon left of the address → Permissions → Camera → Allow; reload. Bluefy: as above |
+| "The camera stopped" | Another app took the camera (FaceTime, the Camera app) | Close that app, then **Restart camera** |
 | "Turn the phone sideways" banner | Rotation lock on | Turn it off in Control Center |
 | Very low fps | Slow graphics, or the phone is hot | Close other apps; check the fps chip |
 | Motors twitch or buzz | ESP32 GND not on the – rail | Add the GND wire |
@@ -138,6 +147,7 @@ Only if the website can't be used on the iPhone. It has no mist control and no F
 | Flickers between TRACKING and HIDDEN | Detector missing frames | Better light; fewer people in view |
 | Never goes LOST | Radar still senses someone nearby | Shorten the radar range |
 | Locks onto the wrong person | Match strictness too loose | Lower it (step 27) |
+| Box sticks to a coat, chair or door after you hide | Something near you looks like a person to the detector | It gives up within 1.5 s and re-finds you by your number; if not, lower Match strictness |
 | Never locks back on | Match strictness too strict, or the target changed clothes | Raise it (step 27) |
 
 ## Reference videos and guides

@@ -1,12 +1,13 @@
 // The Phone Tracker page (/tracker). Shows the camera, draws a box around each
 // person, lets you tap one to follow, and drives the stand and its humidifier.
+// Laid out for phones first (either way up), and still works on a PC.
 //
 // How the pieces fit:
 //   camera frame -> detector.ts (find people) -> brain.ts (decide) -> stand.ts (Bluetooth to the ESP32)
 //                                               -> events.ts (small text events) -> cloud.ts (Supabase, for the family page)
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ButtonHTMLAttributes, PointerEvent, ReactNode } from "react";
+import type { ButtonHTMLAttributes, CSSProperties, PointerEvent, ReactNode } from "react";
 import { Link } from "react-router";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
@@ -21,37 +22,19 @@ import {
   MIST_FOLLOW_MODES,
   TUNING,
 } from "./config.ts";
+import { Cloud } from "./cloud.ts";
 import type { PersonDetector } from "./detector.ts";
 import { createPersonDetector } from "./detector.ts";
-import { Cloud } from "./cloud.ts";
 import type { MovementEvent } from "./events.ts";
 import { Reporter } from "./events.ts";
 import type { Angles, Box } from "./geometry.ts";
+import { centerX, centerY, contains } from "./geometry.ts";
 import { ServoModel } from "./servoModel.ts";
 import type { StandStatus } from "./stand.ts";
 import { Stand } from "./stand.ts";
 
 type MistMode = "off" | "on" | "follow";
-
-/** Is someone signed in, so updates can go to the family page? */
-type Account = "checking" | "signed-in" | "signed-out" | "no-database";
-
-/** Plain words for the "last update sent" line. */
-const EVENT_WORDS: Record<MovementEvent["kind"], string> = {
-  moving: "Moving around",
-  still: "Staying still",
-  nobody: "Nobody in view",
-  fall: "Possible fall",
-  heartbeat: "Still watching",
-  started: "Started watching",
-  stopped: "Stopped watching",
-};
-
-function describe(e: MovementEvent): string {
-  return [EVENT_WORDS[e.kind], e.zone && `${e.zone} side`, e.posture && e.posture !== "unknown" && e.posture]
-    .filter(Boolean)
-    .join(" - ");
-}
+type Camera = Settings["camera"];
 
 interface Snapshot {
   mode: Mode;
@@ -70,7 +53,58 @@ interface LogLine {
   note: string;
 }
 
+/** Is someone signed in, so updates can go to the family page? */
+type Account = "checking" | "signed-in" | "signed-out" | "no-database";
+
+/** Plain words for the "family sees" line. */
+const EVENT_WORDS: Record<MovementEvent["kind"], string> = {
+  moving: "Moving around",
+  still: "Staying still",
+  nobody: "Nobody in view",
+  fall: "Possible fall",
+  heartbeat: "Still watching",
+  started: "Started watching",
+  stopped: "Stopped watching",
+};
+
+function describe(e: MovementEvent): string {
+  return [EVENT_WORDS[e.kind], e.zone && `${e.zone} side`, e.posture && e.posture !== "unknown" && e.posture]
+    .filter(Boolean)
+    .join(" - ");
+}
+
 const SETTINGS_KEY = "phoneTracker.settings.v1";
+
+/** A touch counts as a tap only if it's this short and moves this little. */
+const TAP_MAX_MS = 600;
+const TAP_MAX_MOVE_PX = 20;
+
+const MIST_OPTIONS: [MistMode, string][] = [
+  ["off", "Off"],
+  ["on", "On"],
+  ["follow", "Follow me"],
+];
+
+// Keep controls clear of the notch, rounded corners and the home bar.
+const SIDES = {
+  paddingLeft: "max(0.5rem, env(safe-area-inset-left))",
+  paddingRight: "max(0.5rem, env(safe-area-inset-right))",
+};
+const SAFE_TOP: CSSProperties = { ...SIDES, paddingTop: "max(0.5rem, env(safe-area-inset-top))" };
+const SAFE_BOTTOM: CSSProperties = { ...SIDES, paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" };
+const SAFE_ALL: CSSProperties = { ...SAFE_TOP, ...SAFE_BOTTOM };
+const MIRROR: CSSProperties = { transform: "scaleX(-1)" };
+
+// The ring that flashes where you tap.
+const TAP_RING_CSS = `
+@keyframes tracker-tap {
+  from { transform: translate(-50%, -50%) scale(0.3); opacity: 1; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+.tracker-tap {
+  position: absolute; width: 72px; height: 72px; border: 3px solid #fff; border-radius: 9999px;
+  pointer-events: none; animation: tracker-tap 0.45s ease-out forwards;
+}`;
 
 function loadSettings(): Settings {
   try {
@@ -87,6 +121,59 @@ function saveSettings(s: Settings): void {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   } catch {
     // not saved; fine
+  }
+}
+
+/** The kind of error the browser gave, like "NotAllowedError", or "". */
+function errorName(e: unknown): string {
+  return typeof e === "object" && e !== null && "name" in e ? String(e.name) : "";
+}
+
+/** Turns a camera error into words that say what to do. */
+function cameraErrorText(e: unknown): string {
+  const name = errorName(e);
+  if (name === "NotAllowedError" || name === "SecurityError")
+    return "The camera is blocked for this page. Allow it in the browser's site settings (the icon next to the address), then reload.";
+  if (name === "NotFoundError" || name === "OverconstrainedError") return "No camera found on this device.";
+  if (name === "NotReadableError" || name === "AbortError")
+    return "The camera is busy. Close other apps or tabs that use it, then try again.";
+  return `Couldn't start the camera: ${e instanceof Error ? e.message : String(e)}`;
+}
+
+/**
+ * Opens the front or back camera. `avoid` is the camera that was open before a flip:
+ * if asking by direction gives that same camera again (common on a PC with two
+ * webcams, which don't say which way they face), take a different one.
+ */
+async function openCamera(camera: Camera, avoid?: string): Promise<MediaStream> {
+  const size = { width: { ideal: 1280 }, height: { ideal: 720 } };
+  const get = (video: MediaTrackConstraints) => navigator.mediaDevices.getUserMedia({ video, audio: false });
+  const byDirection = () => get({ facingMode: { ideal: camera === "front" ? "user" : "environment" }, ...size });
+  let stream: MediaStream;
+  try {
+    stream = await byDirection();
+  } catch (e) {
+    // Right after closing the other camera, some phones still call it busy. Try once more.
+    if (errorName(e) !== "NotReadableError" && errorName(e) !== "AbortError") throw e;
+    await new Promise((r) => setTimeout(r, 400));
+    stream = await byDirection();
+  }
+  if (avoid && stream.getVideoTracks()[0]?.getSettings().deviceId === avoid) {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const other = devices.find((d) => d.kind === "videoinput" && d.deviceId && d.deviceId !== avoid);
+    if (other) {
+      stream.getTracks().forEach((t) => t.stop());
+      stream = await get({ deviceId: { exact: other.deviceId }, ...size });
+    }
+  }
+  return stream;
+}
+
+async function countCameras(): Promise<number> {
+  try {
+    return (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput").length;
+  } catch {
+    return 0;
   }
 }
 
@@ -107,7 +194,14 @@ function contentRect(cw: number, ch: number, vw: number, vh: number) {
   return { x: (cw - w) / 2, y: (ch - h) / 2, w, h };
 }
 
-function drawOverlay(canvas: HTMLCanvasElement, video: HTMLVideoElement, people: Box[], out: BrainOutput): void {
+function drawOverlay(
+  canvas: HTMLCanvasElement,
+  video: HTMLVideoElement,
+  people: Box[],
+  out: BrainOutput,
+  matchLimit: number,
+  mirrored: boolean,
+): void {
   const dpr = window.devicePixelRatio || 1;
   const cw = canvas.clientWidth;
   const ch = canvas.clientHeight;
@@ -120,15 +214,32 @@ function drawOverlay(canvas: HTMLCanvasElement, video: HTMLVideoElement, people:
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cw, ch);
   const r = contentRect(cw, ch, video.videoWidth, video.videoHeight);
-  const toScreen = (b: Box) => ({ x: r.x + b.x * r.w, y: r.y + b.y * r.h, w: b.w * r.w, h: b.h * r.h });
+  // A mirrored (selfie) picture is flipped left to right on screen, so flip the boxes too.
+  const toScreen = (b: Box) => ({
+    x: r.x + (mirrored ? 1 - b.x - b.w : b.x) * r.w,
+    y: r.y + b.y * r.h,
+    w: b.w * r.w,
+    h: b.h * r.h,
+  });
 
-  // Everyone the detector sees: thin white boxes.
+  // Everyone the detector sees: thin white boxes, each labelled with how much they
+  // look like the target (0.00 = same clothes colours; under "Match strictness" = counts as them).
   ctx.lineWidth = 2;
   ctx.strokeStyle = "rgba(255,255,255,0.75)";
-  for (const p of people) {
+  ctx.font = "600 14px ui-monospace, monospace";
+  people.forEach((p, i) => {
     const s = toScreen(p);
     ctx.strokeRect(s.x, s.y, s.w, s.h);
-  }
+    const m = out.matches[i];
+    if (m === null || m === undefined) return;
+    const label = m.toFixed(2);
+    const lx = s.x + 4;
+    const ly = Math.max(r.y + 4, s.y + 4);
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    ctx.fillRect(lx - 2, ly - 2, ctx.measureText(label).width + 8, 20);
+    ctx.fillStyle = m <= matchLimit ? "#3ddc97" : "#ffffff";
+    ctx.fillText(label, lx + 2, ly + 13);
+  });
 
   // The target: thick coloured box, dashed when it's a guess (hidden under a cover).
   const color = MODE_STYLE[out.mode].stroke;
@@ -142,10 +253,11 @@ function drawOverlay(canvas: HTMLCanvasElement, video: HTMLVideoElement, people:
   }
 
   // Ran out of the picture: a big arrow on that side.
-  if (out.mode === "following" && out.exitSide !== 0) {
-    const x = out.exitSide < 0 ? r.x + 40 : r.x + r.w - 40;
+  const side = mirrored ? -out.exitSide : out.exitSide;
+  if (out.mode === "following" && side !== 0) {
+    const x = side < 0 ? r.x + 40 : r.x + r.w - 40;
     const y = r.y + r.h / 2;
-    const d = out.exitSide < 0 ? -1 : 1;
+    const d = side < 0 ? -1 : 1;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(x + d * 24, y);
@@ -156,6 +268,47 @@ function drawOverlay(canvas: HTMLCanvasElement, video: HTMLVideoElement, people:
   }
 }
 
+// Icon shapes from Lucide (lucide.dev, ISC licence).
+const ICON = {
+  flip: (
+    <>
+      <path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" />
+      <path d="M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="m18 22-3-3 3-3" />
+      <path d="m6 2 3 3-3 3" />
+    </>
+  ),
+  bluetooth: <path d="m7 7 10 10-5 5V2l5 5L7 17" />,
+  settings: (
+    <>
+      <path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3" />
+      <path d="M14 2v4M8 10v4M16 18v4" />
+    </>
+  ),
+  drop: <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z" />,
+  expand: <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />,
+  shrink: <path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" />,
+  stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
+};
+
+function Icon({ children, className = "size-6" }: { children: ReactNode; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
 /** A half-circle dial showing where the stand is told to point. */
 function PanDial({ aim }: { aim: Angles | null }) {
   const pan = aim?.pan ?? LIMITS.center;
@@ -164,13 +317,16 @@ function PanDial({ aim }: { aim: Angles | null }) {
   const nx = 40 + 30 * Math.cos(angle);
   const ny = 40 - 30 * Math.sin(angle);
   return (
-    <div className="flex items-center gap-2 rounded-2xl bg-black/60 px-3 py-2 text-base" aria-label={`Stand pointing at ${pan.toFixed(0)} degrees`}>
-      <svg width="80" height="46" viewBox="0 0 80 46" aria-hidden="true">
+    <div
+      className="flex items-center gap-1.5 rounded-2xl bg-black/65 px-2 py-1 text-sm"
+      aria-label={`Stand pointing at ${pan.toFixed(0)} degrees`}
+    >
+      <svg width="56" height="32" viewBox="0 0 80 46" aria-hidden="true">
         <path d="M 6 40 A 34 34 0 0 1 74 40" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="4" />
         <line x1="40" y1="40" x2={nx} y2={ny} stroke="#ffd84d" strokeWidth="4" strokeLinecap="round" />
         <circle cx="40" cy="40" r="4" fill="#ffd84d" />
       </svg>
-      <div className="leading-tight">
+      <div className="leading-tight whitespace-nowrap">
         <div>Pan {pan.toFixed(0)}°</div>
         <div className="text-white/90">Tilt {(aim?.tilt ?? LIMITS.center).toFixed(0)}°</div>
       </div>
@@ -178,9 +334,9 @@ function PanDial({ aim }: { aim: Angles | null }) {
   );
 }
 
-function Chip({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "good" | "warn" }) {
-  const toneClass = tone === "good" ? "bg-leaf text-white" : tone === "warn" ? "bg-sun text-ink" : "bg-black/60 text-white";
-  return <span className={`rounded-full px-3 py-1 text-base font-semibold ${toneClass}`}>{children}</span>;
+function Chip({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "good" }) {
+  const toneClass = tone === "good" ? "bg-leaf text-white" : "bg-black/65 text-white";
+  return <span className={`rounded-full px-2.5 py-0.5 text-sm font-semibold ${toneClass}`}>{children}</span>;
 }
 
 function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
@@ -188,10 +344,76 @@ function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { active?: bool
   return (
     <button
       {...rest}
-      className={`min-h-11 rounded-xl px-4 py-2 font-bold disabled:opacity-40 ${
+      className={`min-h-11 rounded-xl px-4 py-2 font-bold transition-transform active:scale-95 disabled:opacity-40 ${
         active ? "bg-brand text-white" : "bg-white/90 text-ink"
       } ${className}`}
     />
+  );
+}
+
+/** A square button for the bottom bar: an icon with a short word under it. */
+function BarButton(
+  props: ButtonHTMLAttributes<HTMLButtonElement> & { icon: ReactNode; label: string; active?: boolean; good?: boolean },
+) {
+  const { icon, label, active, good, className = "", ...rest } = props;
+  const color = active ? "bg-brand text-white" : good ? "bg-leaf text-white" : "bg-white/10 text-white";
+  return (
+    <button
+      {...rest}
+      className={`flex min-h-12 min-w-14 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-1 text-sm leading-none font-bold transition-transform active:scale-95 disabled:opacity-40 ${color} ${className}`}
+    >
+      <Icon className="size-5">{icon}</Icon>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+/** Two or three choices side by side, one picked. */
+function Choice<T extends string>(props: {
+  label: string;
+  options: [T, string][];
+  value: T;
+  onChange: (v: T) => void;
+  disabled?: boolean;
+  icon?: ReactNode;
+}) {
+  const { label, options, value, onChange, disabled, icon } = props;
+  return (
+    <div role="group" aria-label={label} className="flex items-center gap-1 rounded-2xl bg-white/10 p-1">
+      {icon && (
+        <span className="flex items-center gap-1 px-1.5 text-sm font-bold">
+          <Icon className="size-5">{icon}</Icon>
+          {label}
+        </span>
+      )}
+      {options.map(([v, text]) => (
+        <button
+          key={v}
+          aria-pressed={value === v}
+          disabled={disabled}
+          onClick={() => onChange(v)}
+          className={`min-h-10 rounded-xl px-3 text-sm font-bold transition-transform active:scale-95 disabled:opacity-40 ${
+            value === v ? "bg-brand text-white" : "text-white"
+          }`}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ErrorBanner({ text, onDismiss }: { text: string; onDismiss: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="pointer-events-auto flex max-w-xl flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-2xl bg-red-700 px-4 py-2 text-sm font-semibold text-white"
+    >
+      <span>{text}</span>
+      <button className="min-h-11 px-2 underline" onClick={onDismiss}>
+        Dismiss
+      </button>
+    </div>
   );
 }
 
@@ -200,32 +422,44 @@ export default function TrackerPage() {
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const analysisRef = useRef<HTMLCanvasElement | null>(null);
   const detectorRef = useRef<PersonDetector | null>(null);
+  const detectorLoadRef = useRef<Promise<PersonDetector> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const deviceIdRef = useRef<string | undefined>(undefined);
+  const cameraRequestRef = useRef(0); // only the newest camera request may finish
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const settingsRef = useRef<Settings>(loadSettings());
   const brainRef = useRef<Brain>(new Brain(settingsRef.current));
   const standRef = useRef<Stand>(new Stand());
   const servoRef = useRef<ServoModel>(new ServoModel());
   const tapRef = useRef<{ x: number; y: number } | null>(null);
+  const pointersRef = useRef(new Map<number, { x: number; y: number; t: number }>());
   const mistModeRef = useRef<MistMode>("off");
   const lastAimRef = useRef<Angles | null>(null);
   const testingRef = useRef(false); // true while the motor test buttons are in charge
+  const mirroredRef = useRef(settingsRef.current.camera === "front");
   const reporterRef = useRef<Reporter>(new Reporter());
   const cloudRef = useRef<Cloud | null>(null);
   const sendChainRef = useRef<Promise<void>>(Promise.resolve());
+  const watchingRef = useRef(false); // true from "Start watching" until "Stop watching" (flips don't count)
 
   const [running, setRunning] = useState(false);
+  const [account, setAccount] = useState<Account>(supabase ? "checking" : "no-database");
+  const [lastSent, setLastSent] = useState("");
+  const [sendError, setSendError] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [settings, setSettings] = useState<Settings>(settingsRef.current);
   const [showSettings, setShowSettings] = useState(false);
+  const [showLog, setShowLog] = useState(() => window.matchMedia?.("(min-width: 1024px)").matches ?? false);
   const [mistMode, setMistMode] = useState<MistMode>("off");
   const [standStatus, setStandStatus] = useState<StandStatus>(standRef.current.status);
   const [radar, setRadar] = useState<boolean | null>(null);
+  const [mirrored, setMirrored] = useState(mirroredRef.current);
+  const [cameraCount, setCameraCount] = useState(0);
+  const [cameraStopped, setCameraStopped] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [ripple, setRipple] = useState<{ x: number; y: number; key: number } | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
-  const [account, setAccount] = useState<Account>(supabase ? "checking" : "no-database");
-  const [lastSent, setLastSent] = useState("");
-  const [sendError, setSendError] = useState("");
   const [snap, setSnap] = useState<Snapshot>({
     mode: "idle",
     note: "Tap a person to lock on.",
@@ -236,6 +470,9 @@ export default function TrackerPage() {
     mistOn: false,
     portrait: false,
   });
+
+  const canFullscreen = !!document.fullscreenEnabled; // Android and PCs; not iPhone
+  const isTouch = window.matchMedia?.("(pointer: coarse)").matches ?? false;
 
   // Keep the screen showing the stand's state when Bluetooth or the radar changes.
   useEffect(() => {
@@ -272,6 +509,38 @@ export default function TrackerPage() {
     );
   }, []);
 
+  // While this page is open: use the whole screen (under the notch too, with the
+  // controls padded clear of it), a black browser bar on Android, and its own tab title.
+  useEffect(() => {
+    const viewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    const viewportBefore = viewport?.content;
+    if (viewport) viewport.content = "width=device-width, initial-scale=1.0, viewport-fit=cover";
+    const theme = document.createElement("meta");
+    theme.name = "theme-color";
+    theme.content = "#000000";
+    document.head.appendChild(theme);
+    const titleBefore = document.title;
+    document.title = "Phone Tracker";
+    return () => {
+      if (viewport && viewportBefore !== undefined) viewport.content = viewportBefore;
+      theme.remove();
+      document.title = titleBefore;
+    };
+  }, []);
+
+  useEffect(() => {
+    const onChange = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  // The tap ring fades by itself; remove it afterwards.
+  useEffect(() => {
+    if (!ripple) return;
+    const id = window.setTimeout(() => setRipple(null), 500);
+    return () => window.clearTimeout(id);
+  }, [ripple]);
+
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     const next = { ...settingsRef.current, ...patch };
     settingsRef.current = next;
@@ -285,67 +554,147 @@ export default function TrackerPage() {
     streamRef.current = null;
   }, []);
 
-  const startCamera = useCallback(async () => {
-    setError("");
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError("This browser can't open the camera. The page must be opened over https (or on localhost).");
-      return;
-    }
-    setLoading(true);
+  /** Keeps the screen from dimming while tracking. The browser drops this whenever the page is hidden. */
+  const keepScreenOn = useCallback(async () => {
+    if (wakeLockRef.current && !wakeLockRef.current.released) return;
     try {
-      stopCamera();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: settingsRef.current.camera === "front" ? "user" : "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
-      streamRef.current = stream;
-      const video = videoRef.current!;
-      video.srcObject = stream;
-      await video.play();
-      if (!detectorRef.current) detectorRef.current = await createPersonDetector();
-      if (supabase && !cloudRef.current) {
-        try {
-          cloudRef.current = await Cloud.connect(supabase);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          setSendError(msg);
-          setError(`Your family won't see updates: ${msg}`);
-        }
-      }
-      report(reporterRef.current.start(performance.now()));
-      try {
-        wakeLockRef.current = (await navigator.wakeLock?.request("screen")) ?? null;
-      } catch {
-        // keeping the screen on is a nice-to-have
-      }
-      setRunning(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
+      wakeLockRef.current = (await navigator.wakeLock?.request("screen")) ?? null;
+    } catch {
+      // keeping the screen on is a nice-to-have
     }
-  }, [stopCamera, report]);
+  }, []);
+
+  const startCamera = useCallback(
+    async (avoidDeviceId?: string) => {
+      setError("");
+      setCameraStopped(false);
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError("This browser can't open the camera. The page must be opened over https (or on localhost).");
+        return;
+      }
+      const request = ++cameraRequestRef.current;
+      setLoading(true);
+      try {
+        stopCamera(); // phones can only have one camera open at a time
+        let stream: MediaStream;
+        try {
+          stream = await openCamera(settingsRef.current.camera, avoidDeviceId);
+        } catch (e) {
+          if (request === cameraRequestRef.current) setError(cameraErrorText(e));
+          return;
+        }
+        if (request !== cameraRequestRef.current) {
+          stream.getTracks().forEach((t) => t.stop()); // a newer request (another flip) took over
+          return;
+        }
+        streamRef.current = stream;
+        const track = stream.getVideoTracks()[0];
+        const info = track?.getSettings() ?? {};
+        deviceIdRef.current = info.deviceId;
+        // Show the front camera mirrored, like a selfie. Phones say which way a camera
+        // faces; PC webcams usually don't, so go by the setting.
+        const mirror = info.facingMode ? info.facingMode === "user" : settingsRef.current.camera === "front";
+        mirroredRef.current = mirror;
+        setMirrored(mirror);
+        track?.addEventListener("ended", () => {
+          if (streamRef.current === stream) setCameraStopped(true);
+        });
+        const video = videoRef.current!;
+        video.srcObject = stream;
+        try {
+          await video.play();
+        } catch (e) {
+          if (errorName(e) !== "AbortError") throw e; // replaced by a newer stream
+        }
+        void countCameras().then(setCameraCount);
+        if (!detectorRef.current) {
+          detectorLoadRef.current ??= createPersonDetector();
+          try {
+            detectorRef.current = await detectorLoadRef.current;
+          } catch (e) {
+            detectorLoadRef.current = null;
+            stopCamera();
+            setError(
+              `Couldn't load the AI model. Check the internet connection and try again. (${e instanceof Error ? e.message : String(e)})`,
+            );
+            return;
+          }
+        }
+        // First start (not a camera flip or a wake-up): connect to the family page and say so.
+        if (!watchingRef.current) {
+          if (supabase && !cloudRef.current) {
+            try {
+              cloudRef.current = await Cloud.connect(supabase);
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              setSendError(msg);
+              setError(`Your family won't see updates: ${msg}`);
+            }
+          }
+          watchingRef.current = true;
+          report(reporterRef.current.start(performance.now()));
+        }
+        void keepScreenOn();
+        setRunning(true);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (request === cameraRequestRef.current) setLoading(false);
+      }
+    },
+    [stopCamera, keepScreenOn, report],
+  );
 
   const stopWatching = useCallback(() => {
-    report(reporterRef.current.stop());
+    if (watchingRef.current) report(reporterRef.current.stop());
+    watchingRef.current = false;
+    cameraRequestRef.current++; // cancel a camera start that's still under way
     stopCamera();
+    brainRef.current.release();
     setRunning(false);
+    setLoading(false);
+    setCameraStopped(false);
     void wakeLockRef.current?.release();
     wakeLockRef.current = null;
   }, [stopCamera, report]);
+
+  /** Switch to the front or back camera. The picture changes completely, so let go of the target. */
+  const chooseCamera = useCallback(
+    (camera: Camera) => {
+      if (camera === settingsRef.current.camera) return;
+      updateSettings({ camera });
+      if (!running) return;
+      brainRef.current.release();
+      void startCamera(deviceIdRef.current);
+    },
+    [running, updateSettings, startCamera],
+  );
+
+  // Coming back to the page (after switching apps or locking the phone): turn the
+  // screen lock back on, and wake the camera if the phone paused or closed it.
+  useEffect(() => {
+    if (!running) return;
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      void keepScreenOn();
+      const track = streamRef.current?.getVideoTracks()[0];
+      if (!track || track.readyState === "ended") void startCamera();
+      else if (videoRef.current?.paused) void videoRef.current.play().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [running, startCamera, keepScreenOn]);
 
   // Clean up when leaving the page.
   useEffect(() => {
     const stand = standRef.current;
     return () => {
-      if (streamRef.current) report(reporterRef.current.stop());
+      if (watchingRef.current) report(reporterRef.current.stop());
+      watchingRef.current = false;
       stopCamera();
       detectorRef.current?.close();
       detectorRef.current = null;
+      detectorLoadRef.current = null;
       stand.disconnect();
       void wakeLockRef.current?.release();
     };
@@ -366,9 +715,26 @@ export default function TrackerPage() {
     let fps = 0;
     let lastUi = 0;
     let lastNote = "";
+    let lastError = "";
+    let cameraSteering = false; // did the camera steer the stand last frame?
 
+    // Runs once per animation frame. If anything inside throws, show it on screen
+    // instead of silently freezing the boxes.
     const tick = () => {
       raf = requestAnimationFrame(tick);
+      try {
+        step();
+      } catch (e) {
+        const msg = `Tracker error: ${e instanceof Error ? e.message : String(e)}`;
+        if (msg !== lastError) {
+          lastError = msg;
+          console.error(e);
+          setError(msg);
+        }
+      }
+    };
+
+    const step = () => {
       const video = videoRef.current;
       const detector = detectorRef.current;
       if (!video || !detector || !actx || !dctx || video.readyState < 2 || video.currentTime === lastVideoTime) return;
@@ -377,10 +743,13 @@ export default function TrackerPage() {
       const t = performance.now();
       const vw = video.videoWidth;
       const vh = video.videoHeight;
+      const longSide = Math.max(vw, vh);
 
-      // The detector gets a 640-wide copy (faster than the full-size frame).
-      const dw = Math.min(DETECT_WIDTH, vw);
-      const dh = Math.max(1, Math.round((dw * vh) / vw));
+      // The detector gets a smaller copy, 640 on its long side (faster than the full-size
+      // frame). Measuring the long side keeps an upright phone as fast as a sideways one.
+      const dScale = Math.min(1, DETECT_WIDTH / longSide);
+      const dw = Math.max(1, Math.round(vw * dScale));
+      const dh = Math.max(1, Math.round(vh * dScale));
       if (detectCanvas.width !== dw || detectCanvas.height !== dh) {
         detectCanvas.width = dw;
         detectCanvas.height = dh;
@@ -393,9 +762,10 @@ export default function TrackerPage() {
         setError(e instanceof Error ? e.message : String(e));
       }
 
-      // A smaller copy again for clothes colours and the cover tracker.
-      const aw = ANALYSIS_WIDTH;
-      const ah = Math.max(1, Math.round((aw * vh) / vw));
+      // A smaller copy again (320 on its long side) for clothes colours and the cover tracker.
+      const aScale = ANALYSIS_WIDTH / longSide;
+      const aw = Math.max(1, Math.round(vw * aScale));
+      const ah = Math.max(1, Math.round(vh * aScale));
       if (analysis.width !== aw || analysis.height !== ah) {
         analysis.width = aw;
         analysis.height = ah;
@@ -406,11 +776,16 @@ export default function TrackerPage() {
       // Where was the camera pointing when this frame was taken? Without a stand it never moves.
       const stand = standRef.current;
       const servo = servoRef.current;
-      const cameraSteering = (CAMERA_STEERS_IN as readonly string[]).includes(brainRef.current.currentMode);
       // When the radars are steering (SightLine stand), trust the angle the stand reports.
       if (stand.connected && !cameraSteering && stand.reported) servo.sync(stand.reported, t);
       servo.step(t);
       const camera = stand.connected ? servo.at(t - TUNING.latencyMs) : { pan: LIMITS.center, tilt: LIMITS.center };
+
+      // Held upright, the picture's width is the camera's narrow side, so swap the two
+      // camera angles. Then a step to the side counts the same either way up.
+      const s = settingsRef.current;
+      const portrait = vh > vw;
+      brainRef.current.settings = portrait ? { ...s, fovH: s.fovV, fovV: s.fovH } : s;
 
       const tap = tapRef.current;
       tapRef.current = null;
@@ -425,8 +800,15 @@ export default function TrackerPage() {
 
       for (const event of reporterRef.current.update(t, people, vw / vh)) report(event);
 
+      // A short buzz when a tap locks on (Android phones; iPhones can't vibrate from a web page).
+      if (tap && out.mode === "tracking" && out.target) {
+        const b = out.target;
+        if (contains(b, tap.x, tap.y) || Math.hypot(centerX(b) - tap.x, centerY(b) - tap.y) < 0.15) navigator.vibrate?.(25);
+      }
+
       if (out.mode !== "idle") testingRef.current = false; // tracking takes over from the test buttons
-      if (out.aim && (CAMERA_STEERS_IN as readonly string[]).includes(out.mode)) {
+      cameraSteering = !!out.aim && (CAMERA_STEERS_IN as readonly string[]).includes(out.mode);
+      if (out.aim && cameraSteering) {
         lastAimRef.current = out.aim;
         if (stand.connected) {
           servo.setTarget(out.aim);
@@ -442,7 +824,8 @@ export default function TrackerPage() {
         mode === "on" || (mode === "follow" && (MIST_FOLLOW_MODES as readonly string[]).includes(out.mode));
       stand.setMist(mistOn);
 
-      if (overlayRef.current) drawOverlay(overlayRef.current, video, people, out);
+      if (overlayRef.current)
+        drawOverlay(overlayRef.current, video, people, out, settingsRef.current.matchLimit, mirroredRef.current);
 
       frames++;
       if (t - fpsStart > 1000) {
@@ -465,7 +848,7 @@ export default function TrackerPage() {
           fps,
           people: people.length,
           mistOn,
-          portrait: vh > vw,
+          portrait,
         });
       }
     };
@@ -473,14 +856,32 @@ export default function TrackerPage() {
     return () => cancelAnimationFrame(raf);
   }, [running, report]);
 
-  const onTap = (e: PointerEvent<HTMLCanvasElement>) => {
+  // Tapping a person. Only a quick, still touch counts: a thumb resting on the edge
+  // while you hold the phone, a drag, or a pinch is ignored.
+  const onPointerDown = (e: PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+  };
+
+  const onPointerUp = (e: PointerEvent<HTMLCanvasElement>) => {
+    const down = pointersRef.current.get(e.pointerId);
+    pointersRef.current.delete(e.pointerId);
+    if (!down || performance.now() - down.t > TAP_MAX_MS) return;
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > TAP_MAX_MOVE_PX) return;
     const video = videoRef.current;
     if (!video?.videoWidth) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const r = contentRect(rect.width, rect.height, video.videoWidth, video.videoHeight);
-    const x = (e.clientX - rect.left - r.x) / r.w;
-    const y = (e.clientY - rect.top - r.y) / r.h;
-    if (x >= 0 && x <= 1 && y >= 0 && y <= 1) tapRef.current = { x, y };
+    const sx = (down.x - rect.left - r.x) / r.w;
+    const y = (down.y - rect.top - r.y) / r.h;
+    const x = mirroredRef.current ? 1 - sx : sx;
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    tapRef.current = { x, y };
+    setRipple({ x: down.x - rect.left, y: down.y - rect.top, key: performance.now() });
+  };
+
+  const onPointerCancel = (e: PointerEvent<HTMLCanvasElement>) => {
+    pointersRef.current.delete(e.pointerId);
   };
 
   const connectStand = async () => {
@@ -498,6 +899,16 @@ export default function TrackerPage() {
     setMistMode(m);
   };
 
+  const closeSettings = useCallback(() => {
+    testingRef.current = false;
+    setShowSettings(false);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+  };
+
   const testMove = (pan: number, tilt: number) => {
     const stand = standRef.current;
     testingRef.current = true;
@@ -510,106 +921,163 @@ export default function TrackerPage() {
   };
 
   const tracking = snap.mode !== "idle";
-  const standLabel =
+  const connected = standStatus === "connected";
+  const standButton =
     standStatus === "connected"
-      ? "Stand connected"
+      ? { label: "Disconnect", onClick: () => standRef.current.disconnect() }
       : standStatus === "connecting"
-        ? "Connecting..."
+        ? { label: "Connecting", onClick: undefined }
         : standStatus === "unsupported"
-          ? "No Bluetooth here"
-          : "No stand";
+          ? { label: "No Bluetooth", onClick: undefined }
+          : { label: "Connect stand", onClick: () => void connectStand() };
 
   return (
-    <main className="on-dark fixed inset-0 overflow-hidden bg-black text-white select-none">
-      <video ref={videoRef} className="absolute inset-0 h-full w-full object-contain" playsInline muted />
+    <main
+      className="on-dark fixed inset-0 touch-manipulation overflow-hidden bg-black text-white select-none [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none]"
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <style>{TAP_RING_CSS}</style>
+      <video
+        ref={videoRef}
+        className="absolute inset-0 h-full w-full object-contain"
+        style={mirrored ? MIRROR : undefined}
+        playsInline
+        muted
+      />
       <canvas
         ref={overlayRef}
         className="absolute inset-0 h-full w-full touch-none"
-        onPointerDown={onTap}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
         aria-label="Camera view. Tap a person to follow them."
       />
+      {ripple && <span key={ripple.key} className="tracker-tap" style={{ left: ripple.x, top: ripple.y }} aria-hidden="true" />}
 
-      {/* The privacy sign: always on screen while the camera is on */}
-      {running && (
-        <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 bg-leaf px-4 py-2 text-center text-lg font-extrabold text-white">
-          <span>● Camera on - video stays on this phone</span>
-          <span className="text-base font-bold">
-            {sendError
-              ? "Family can't see updates right now"
-              : cloudRef.current
-                ? `Family sees: ${lastSent || "starting..."}`
-                : "Not signed in: family can't see updates"}
-          </span>
+      {running && loading && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="rounded-full bg-black/75 px-4 py-2 font-semibold">Switching camera...</span>
         </div>
       )}
 
-      {/* Top: what it's doing, and the stand's status */}
-      <div className={`pointer-events-none absolute inset-x-0 flex flex-wrap ${running ? "top-20 sm:top-12" : "top-0"} items-start justify-between gap-2 p-3`}>
-        <div className="pointer-events-auto max-w-xl rounded-2xl bg-black/60 px-4 py-2" aria-live="polite">
-          <span className={`rounded-full px-3 py-1 font-mono text-base font-extrabold ${MODE_STYLE[snap.mode].pill}`}>
-            {MODE_LABEL[snap.mode]}
-          </span>
+      {/* Top: the privacy sign (always on screen while the camera is on), then what it's
+          doing on the left and readings on the right */}
+      <div className="pointer-events-none absolute inset-x-0 top-0">
+        {running && (
+          <div
+            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 bg-leaf px-3 py-1.5 text-center font-extrabold text-white"
+            style={{ ...SIDES, paddingTop: "max(0.375rem, env(safe-area-inset-top))" }}
+          >
+            <span className="text-base">● Camera on - video stays on this phone</span>
+            <span className="text-sm font-bold">
+              {sendError
+                ? "Family can't see updates right now"
+                : cloudRef.current
+                  ? `Family sees: ${lastSent || "starting..."}`
+                  : "Not signed in: family can't see updates"}
+            </span>
+          </div>
+        )}
+      <div className="flex items-start justify-between gap-2 pt-2" style={running ? SIDES : SAFE_TOP}>
+        <section className="pointer-events-auto max-w-[min(30rem,62vw)] min-w-0 rounded-2xl bg-black/70 px-3 py-2" aria-live="polite">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2.5 py-0.5 font-mono text-sm font-extrabold ${MODE_STYLE[snap.mode].pill}`}>
+              {MODE_LABEL[snap.mode]}
+            </span>
+            {tracking && (
+              <button
+                className="min-h-9 rounded-full bg-white/90 px-3 text-sm font-bold text-ink transition-transform active:scale-95"
+                onClick={() => brainRef.current.release()}
+              >
+                Release
+              </button>
+            )}
+          </div>
           <p className="mt-1 text-base leading-snug">{running ? snap.note : "Start the camera to begin."}</p>
           {snap.match !== null && (snap.mode === "lost" || snap.mode === "searching" || snap.mode === "following") && (
-            <p className="text-base text-white/90">
-              Closest match {snap.match.toFixed(2)} (locks on below {(settings.matchLimit * (snap.mode === "following" ? TUNING.followLookSlack : 1)).toFixed(2)})
+            <p className="text-sm text-white/90">
+              Closest match {snap.match.toFixed(2)} (locks on below{" "}
+              {(settings.matchLimit * (snap.mode === "following" ? TUNING.followLookSlack : 1)).toFixed(2)})
             </p>
           )}
-        </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Chip tone={standStatus === "connected" ? "good" : "plain"}>{standLabel}</Chip>
-          <Chip tone={radar ? "good" : "plain"}>{radar === null ? "Radar: -" : radar ? "Radar: someone there" : "Radar: empty"}</Chip>
-          <Chip tone={snap.mistOn ? "good" : "plain"}>Mist {snap.mistOn ? "on" : "off"}</Chip>
+          {log.length > 0 && (
+            <button
+              className="min-h-9 text-sm font-semibold text-white/90 underline underline-offset-2"
+              onClick={() => setShowLog((v) => !v)}
+              aria-expanded={showLog}
+            >
+              {showLog ? "Hide log" : "Show log"}
+            </button>
+          )}
+          {showLog && (
+            <ol className="space-y-0.5 border-t border-white/15 pt-1 text-sm" aria-label="What the tracker decided">
+              {log.map((l, i) => (
+                <li key={`${l.time}-${i}`} className={i === 0 ? "" : "text-white/80"}>
+                  <span className="font-mono">{l.time}</span> {l.note}
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
           {running && <Chip>{snap.fps.toFixed(0)} fps</Chip>}
+          {connected && (
+            <Chip tone={radar ? "good" : "plain"}>
+              {radar === null ? "Radar: -" : radar ? "Radar: someone" : "Radar: empty"}
+            </Chip>
+          )}
+          {(connected || mistMode !== "off") && <Chip tone={snap.mistOn ? "good" : "plain"}>Mist {snap.mistOn ? "on" : "off"}</Chip>}
+          {running && <PanDial aim={snap.aim} />}
         </div>
       </div>
+      </div>
 
-      {snap.portrait && running && (
-        <div className="absolute inset-x-0 top-1/3 mx-auto w-fit rounded-2xl bg-sun px-4 py-2 font-bold text-ink">
-          Turn the phone sideways and switch off rotation lock.
-        </div>
-      )}
-
-      {/* Bottom: the log on the left, controls on the right */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-3">
-        <ol className="max-w-md space-y-0.5 rounded-2xl bg-black/70 px-3 py-2 text-base empty:hidden" aria-label="What the tracker decided">
-          {log.map((l, i) => (
-            <li key={`${l.time}-${i}`} className={i === 0 ? "" : "text-white/85"}>
-              <span className="font-mono">{l.time}</span> {l.note}
-            </li>
-          ))}
-        </ol>
-        <div className="pointer-events-auto ml-auto flex flex-col items-end gap-2">
-          <PanDial aim={snap.aim} />
-          <div className="flex flex-wrap justify-end gap-2 rounded-2xl bg-black/60 p-2" role="group" aria-label="Humidifier">
-            <span className="self-center px-1 text-base font-semibold">Mist</span>
-            <Button active={mistMode === "off"} onClick={() => chooseMist("off")}>Off</Button>
-            <Button active={mistMode === "on"} onClick={() => chooseMist("on")}>On</Button>
-            <Button active={mistMode === "follow"} onClick={() => chooseMist("follow")}>Follow me</Button>
+      {/* Bottom: messages, then the controls */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2" style={SAFE_BOTTOM}>
+        {snap.portrait && running && connected && (
+          <p className="rounded-xl bg-sun px-3 py-1.5 text-center text-sm font-bold text-ink">
+            Turn the phone sideways for the stand, and switch off rotation lock.
+          </p>
+        )}
+        {cameraStopped && (
+          <div
+            role="alert"
+            className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-red-700 px-3 py-2 text-sm font-semibold"
+          >
+            The camera stopped. Another app may be using it.
+            <Button onClick={() => void startCamera()}>Restart camera</Button>
           </div>
-          <div className="flex flex-wrap justify-end gap-2">
-            {standStatus !== "connected" ? (
-              <Button onClick={connectStand} disabled={standStatus === "unsupported" || standStatus === "connecting"}>
-                Connect stand
-              </Button>
-            ) : (
-              <Button onClick={() => standRef.current.disconnect()}>Disconnect</Button>
+        )}
+        {error && running && <ErrorBanner text={error} onDismiss={() => setError("")} />}
+        <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-3xl bg-black/65 p-1.5">
+          <Choice label="Mist" icon={ICON.drop} options={MIST_OPTIONS} value={mistMode} onChange={chooseMist} />
+          <div className="flex items-center gap-1.5">
+            {cameraCount > 1 && (
+              <BarButton
+                icon={ICON.flip}
+                label="Flip"
+                aria-label="Switch between the front and back camera"
+                onClick={() => chooseCamera(settings.camera === "front" ? "back" : "front")}
+                disabled={loading}
+              />
             )}
-            {tracking && <Button onClick={() => brainRef.current.release()}>Release</Button>}
-            {running && (
-              <Button onClick={stopWatching} className="min-h-12 text-lg">
-                Stop watching
-              </Button>
-            )}
-            <Button
+            <BarButton
+              icon={ICON.bluetooth}
+              label={standButton.label}
+              good={connected}
+              onClick={standButton.onClick}
+              disabled={!standButton.onClick}
+            />
+            <BarButton
+              icon={ICON.settings}
+              label="Settings"
+              active={showSettings}
               onClick={() => {
                 testingRef.current = false;
                 setShowSettings((v) => !v);
               }}
-              active={showSettings}
-            >
-              Settings
-            </Button>
+            />
+            {running && <BarButton icon={ICON.stop} label="Stop" aria-label="Stop watching" onClick={stopWatching} />}
           </div>
         </div>
       </div>
@@ -618,49 +1086,63 @@ export default function TrackerPage() {
         <SettingsPanel
           settings={settings}
           update={updateSettings}
-          close={() => {
-            testingRef.current = false;
-            setShowSettings(false);
-          }}
+          close={closeSettings}
           testMove={testMove}
-          canTest={standStatus === "connected" && !tracking}
-          restartCamera={running ? startCamera : null}
+          canTest={connected && !tracking}
+          chooseCamera={chooseCamera}
+          cameraBusy={loading}
+          mirrored={mirrored}
+          fullscreen={canFullscreen ? { on: fullscreen, toggle: toggleFullscreen } : null}
         />
       )}
 
       {!running && (
-        <div className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-black p-6">
-          <div className="max-w-lg space-y-5 text-center">
-            <h1 className="text-3xl font-extrabold">Phone camera</h1>
-            <p className="text-xl">
+        <div className="absolute inset-0 z-10 overflow-y-auto bg-black" style={SAFE_ALL}>
+          <div className="mx-auto flex min-h-full max-w-lg flex-col items-center justify-center gap-3 px-2 py-3 text-center [@media(min-height:600px)]:gap-4 [@media(min-height:600px)]:py-6">
+            <h1 className="text-2xl font-extrabold [@media(min-height:600px)]:text-3xl">Phone camera</h1>
+            <p className="text-base [@media(min-height:600px)]:text-xl">
               Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a
               few words, how things are going.
             </p>
-            <p className="rounded-2xl bg-white px-4 py-3 text-lg font-bold text-ink">
+            <p className="rounded-2xl bg-white px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
               Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or
               pictures ever leave it.
             </p>
+            {isTouch && account !== "signed-out" && (
+              <Choice
+                label="Which camera"
+                options={[
+                  ["front", "Front (screen side)"],
+                  ["back", "Back"],
+                ]}
+                value={settings.camera}
+                onChange={(c) => updateSettings({ camera: c })}
+                disabled={loading}
+              />
+            )}
             {account === "signed-out" ? (
               <div className="space-y-3">
-                <p className="text-xl">Please sign in first, so your family can see the updates.</p>
+                <p className="text-base [@media(min-height:600px)]:text-xl">Please sign in first, so your family can see the updates.</p>
                 <Link
                   to="/login"
-                  className="inline-flex min-h-16 items-center justify-center rounded-2xl bg-white px-8 text-2xl font-extrabold text-brand no-underline"
+                  className="inline-flex min-h-14 items-center justify-center rounded-2xl bg-white px-8 text-xl font-extrabold text-brand no-underline [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl"
                 >
                   Sign in
                 </Link>
               </div>
             ) : (
               <button
-                onClick={startCamera}
+                onClick={() => void startCamera()}
                 disabled={loading || account === "checking"}
-                className="min-h-16 w-full rounded-2xl bg-white px-8 text-2xl font-extrabold text-brand disabled:opacity-60"
+                className="min-h-14 w-full rounded-2xl bg-white px-8 text-xl font-extrabold text-brand transition-transform active:scale-95 disabled:opacity-60 [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl"
               >
-                {loading ? "Starting... (the first time takes a little longer)" : "Start watching"}
+                {loading ? "Starting..." : "Start watching"}
               </button>
             )}
+            {loading && <p className="text-base text-white/90">The first start downloads the AI model (a few MB).</p>}
+            {error && <ErrorBanner text={error} onDismiss={() => setError("")} />}
             {account === "no-database" && (
-              <p className="text-lg text-sun">
+              <p className="text-base text-sun">
                 The database isn't set up on this website yet, so you can try the camera but your family won't see
                 anything.
               </p>
@@ -674,15 +1156,6 @@ export default function TrackerPage() {
           </div>
         </div>
       )}
-
-      {error && (
-        <div role="alert" className="absolute inset-x-0 bottom-28 mx-auto w-fit max-w-[90%] rounded-2xl bg-red-700 px-4 py-2 font-semibold">
-          {error}{" "}
-          <button className="ml-2 min-h-12 px-2 underline" onClick={() => setError("")}>
-            Dismiss
-          </button>
-        </div>
-      )}
     </main>
   );
 }
@@ -693,10 +1166,33 @@ function SettingsPanel(props: {
   close: () => void;
   testMove: (pan: number, tilt: number) => void;
   canTest: boolean;
-  restartCamera: (() => Promise<void>) | null;
+  chooseCamera: (camera: Camera) => void;
+  cameraBusy: boolean;
+  mirrored: boolean;
+  /** Full screen on/off, where the browser allows it (Android and PCs, not iPhone). */
+  fullscreen: { on: boolean; toggle: () => void } | null;
 }) {
-  const { settings: s, update, close, testMove, canTest, restartCamera } = props;
-  const slider = (label: string, key: "matchLimit" | "aimHeight" | "fovH" | "deadZoneDeg", min: number, max: number, step: number, help: string) => (
+  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen } = props;
+  // The test buttons go by the screen. On a mirrored picture the screen's left is the camera's right.
+  const side = mirrored ? -1 : 1;
+
+  // Escape closes the panel on a PC.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [close]);
+
+  const slider = (
+    label: string,
+    key: "matchLimit" | "aimHeight" | "fovH" | "deadZoneDeg",
+    min: number,
+    max: number,
+    step: number,
+    help: string,
+  ) => (
     <label className="block">
       <span className="flex justify-between font-semibold">
         <span>{label}</span>
@@ -704,7 +1200,7 @@ function SettingsPanel(props: {
       </span>
       <input
         type="range"
-        className="h-12 w-full"
+        className="h-12 w-full accent-[#3ddc97]"
         min={min}
         max={max}
         step={step}
@@ -716,69 +1212,98 @@ function SettingsPanel(props: {
   );
 
   return (
-    <div className="absolute inset-y-0 right-0 w-full max-w-sm space-y-4 overflow-y-auto bg-ink/95 p-4 text-white">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-extrabold">Settings</h2>
-        <Button onClick={close}>Close</Button>
+    <div className="absolute inset-0 z-20 flex justify-end bg-black/40" onClick={close}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        className="flex h-full w-full max-w-sm flex-col bg-ink/95 text-white"
+        style={SAFE_ALL}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-white/10 px-2 py-2">
+          <h2 className="text-xl font-extrabold">Settings</h2>
+          <Button onClick={close}>Close</Button>
+        </div>
+
+        <div className="flex-1 space-y-5 overflow-y-auto overscroll-contain px-2 py-4">
+          <fieldset className="space-y-2">
+            <legend className="font-semibold">Camera facing the person</legend>
+            <div className="flex flex-wrap gap-2">
+              {(["front", "back"] as const).map((c) => (
+                <Button key={c} active={s.camera === c} disabled={cameraBusy} onClick={() => chooseCamera(c)}>
+                  {c === "front" ? "Front (screen side)" : "Back"}
+                </Button>
+              ))}
+            </div>
+            <p className="text-base text-white/90">
+              Front for the SightLine stand, where the screen faces the person. The front camera is shown mirrored, like
+              a selfie.
+            </p>
+          </fieldset>
+
+          {fullscreen && (
+            <fieldset className="space-y-2">
+              <legend className="font-semibold">Screen</legend>
+              <Button active={fullscreen.on} onClick={fullscreen.toggle}>
+                {fullscreen.on ? "Leave full screen" : "Full screen"}
+              </Button>
+              <p className="text-base text-white/90">Hides the browser's bars, so the camera picture is bigger.</p>
+            </fieldset>
+          )}
+
+          <fieldset className="space-y-2">
+            <legend className="font-semibold">Motor directions</legend>
+            <p className="text-base text-white/90">If the stand turns away from you, flip that direction.</p>
+            <div className="flex flex-wrap gap-2">
+              <Button active={s.panSign === -1} onClick={() => update({ panSign: s.panSign === 1 ? -1 : 1 })}>
+                Flip left/right
+              </Button>
+              <Button active={s.tiltSign === -1} onClick={() => update({ tiltSign: s.tiltSign === 1 ? -1 : 1 })}>
+                Flip up/down
+              </Button>
+            </div>
+          </fieldset>
+
+          {slider("Match strictness", "matchLimit", 0.15, 0.7, 0.01, "Lower = harder to fool, but slower to recognise you again. Set it between your own 'closest match' number and a friend's.")}
+          {slider("Aim height", "aimHeight", 0.1, 0.7, 0.05, "Where the camera and mist aim: 0.1 = head, 0.35 = chest, 0.6 = hips.")}
+          {slider("Camera width (degrees)", "fovH", 40, 100, 1, "How wide the camera sees with the phone sideways. If the stand overshoots you, lower it; if it lags behind, raise it.")}
+          {slider("Dead zone (degrees)", "deadZoneDeg", 0.5, 8, 0.5, "Ignore smaller moves. Raise it if the stand twitches while you sit still.")}
+
+          <fieldset className="space-y-2">
+            <legend className="font-semibold">Test the motors</legend>
+            <p className="text-sm text-white/70">
+              {canTest
+                ? "Left should bring what was on the left of the screen toward the middle. If it does the opposite, flip left/right above. Same for Up."
+                : "Connect the stand and press Release first."}
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <span />
+              <Button disabled={!canTest} onClick={() => testMove(LIMITS.center, LIMITS.center - 30 * s.tiltSign)}>
+                Up
+              </Button>
+              <span />
+              <Button disabled={!canTest} onClick={() => testMove(LIMITS.center - 50 * s.panSign * side, LIMITS.center)}>
+                Left
+              </Button>
+              <Button disabled={!canTest} onClick={() => testMove(LIMITS.center, LIMITS.center)}>
+                Center
+              </Button>
+              <Button disabled={!canTest} onClick={() => testMove(LIMITS.center + 50 * s.panSign * side, LIMITS.center)}>
+                Right
+              </Button>
+              <span />
+              <Button disabled={!canTest} onClick={() => testMove(LIMITS.center, LIMITS.center + 30 * s.tiltSign)}>
+                Down
+              </Button>
+              <span />
+            </div>
+          </fieldset>
+
+          {/* Resets the tuning; the camera choice stays as it is. */}
+          <Button onClick={() => update({ ...DEFAULT_SETTINGS, camera: s.camera })}>Reset to defaults</Button>
+        </div>
       </div>
-
-      <fieldset className="space-y-2">
-        <legend className="font-semibold">Camera facing the person</legend>
-        <div className="flex gap-2">
-          {(["front", "back"] as const).map((c) => (
-            <Button
-              key={c}
-              active={s.camera === c}
-              onClick={() => {
-                update({ camera: c });
-                void restartCamera?.();
-              }}
-            >
-              {c === "front" ? "Front (screen side)" : "Back"}
-            </Button>
-          ))}
-        </div>
-      </fieldset>
-
-      <fieldset className="space-y-2">
-        <legend className="font-semibold">Motor directions</legend>
-        <p className="text-base text-white/90">If the stand turns away from you, flip that direction.</p>
-        <div className="flex gap-2">
-          <Button active={s.panSign === -1} onClick={() => update({ panSign: s.panSign === 1 ? -1 : 1 })}>
-            Flip left/right
-          </Button>
-          <Button active={s.tiltSign === -1} onClick={() => update({ tiltSign: s.tiltSign === 1 ? -1 : 1 })}>
-            Flip up/down
-          </Button>
-        </div>
-      </fieldset>
-
-      {slider("Match strictness", "matchLimit", 0.15, 0.7, 0.01, "Lower = harder to fool, but slower to recognise you again. Set it between your own 'closest match' number and a friend's.")}
-      {slider("Aim height", "aimHeight", 0.1, 0.7, 0.05, "Where the camera and mist aim: 0.1 = head, 0.35 = chest, 0.6 = hips.")}
-      {slider("Camera width (degrees)", "fovH", 40, 100, 1, "How wide the camera sees. If the stand overshoots you, lower it; if it lags behind, raise it.")}
-      {slider("Dead zone (degrees)", "deadZoneDeg", 0.5, 8, 0.5, "Ignore smaller moves. Raise it if the stand twitches while you sit still.")}
-
-      <fieldset className="space-y-2">
-        <legend className="font-semibold">Test the motors</legend>
-        <p className="text-base text-white/90">
-          {canTest
-            ? "Left should bring what was on the left of the screen toward the middle. If it does the opposite, flip left/right above. Same for Up."
-            : "Connect the stand and press Release first."}
-        </p>
-        <div className="grid grid-cols-3 gap-2">
-          <span />
-          <Button disabled={!canTest} onClick={() => testMove(LIMITS.center, LIMITS.center - 30 * s.tiltSign)}>Up</Button>
-          <span />
-          <Button disabled={!canTest} onClick={() => testMove(LIMITS.center - 50 * s.panSign, LIMITS.center)}>Left</Button>
-          <Button disabled={!canTest} onClick={() => testMove(LIMITS.center, LIMITS.center)}>Center</Button>
-          <Button disabled={!canTest} onClick={() => testMove(LIMITS.center + 50 * s.panSign, LIMITS.center)}>Right</Button>
-          <span />
-          <Button disabled={!canTest} onClick={() => testMove(LIMITS.center, LIMITS.center + 30 * s.tiltSign)}>Down</Button>
-          <span />
-        </div>
-      </fieldset>
-
-      <Button onClick={() => update({ ...DEFAULT_SETTINGS })}>Reset to defaults</Button>
     </div>
   );
 }
