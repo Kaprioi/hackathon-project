@@ -12,6 +12,7 @@ const navLinks = [
   { to: "/login", label: "Sign in" },
   { to: "/tracker", label: "Phone camera" },
   { to: "/dashboard", label: "Family" },
+  { to: "/profile", label: "Care profile" },
 ];
 
 /** The CareNest heart. It beats when you hover the logo. */
