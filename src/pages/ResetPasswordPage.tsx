@@ -47,7 +47,7 @@ export default function ResetPasswordPage() {
 
   return (
     <AuthLayout title={title}>
-      <Reveal appear>
+      <Reveal>
       {!supabase ? (
         <NotConfigured />
       ) : session === undefined ? (

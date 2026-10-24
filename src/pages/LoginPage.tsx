@@ -132,7 +132,7 @@ export default function LoginPage() {
 
   return (
     <AuthLayout title={titles[mode]}>
-      <Reveal appear>
+      <Reveal>
       {!supabase ? (
         <NotConfigured />
       ) : session === undefined ? (

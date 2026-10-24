@@ -24,7 +24,7 @@ export default function ButtonLink({
   children: React.ReactNode;
 }) {
   return (
-    <Link to={to} className={`${base} ${variants[variant]}`}>
+    <Link to={to} className={`${base} ${variants[variant]} lift`}>
       {children}
     </Link>
   );

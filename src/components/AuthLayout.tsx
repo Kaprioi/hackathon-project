@@ -17,7 +17,7 @@ export const linkButton =
   "inline-flex min-h-12 items-center rounded-xl px-1 text-lg font-bold text-brand underline underline-offset-4 hover:text-brand-dark";
 
 const buttonBase =
-  "inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border-[3px] px-7 text-xl font-extrabold transition-colors disabled:cursor-not-allowed disabled:opacity-70";
+  "inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border-[3px] px-7 text-xl font-extrabold transition-colors disabled:cursor-not-allowed disabled:opacity-70 lift";
 export const primaryButton = `${buttonBase} border-brand bg-brand text-white shadow-[0_6px_0_var(--color-brand-dark)] hover:bg-brand-dark`;
 export const outlineButton = `${buttonBase} border-brand bg-white text-brand hover:bg-lilac`;
 

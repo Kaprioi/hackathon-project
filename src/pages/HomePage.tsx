@@ -100,6 +100,7 @@ export default function HomePage() {
         {/* Hero */}
         <section className="px-6 pb-20 pt-8" aria-labelledby="hero-title">
           <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
+            <Reveal stagger>
             <div>
               <h1 id="hero-title" className="text-4xl font-extrabold leading-tight md:text-5xl">
                 Stay close to the people you love,{" "}
@@ -127,7 +128,8 @@ export default function HomePage() {
                 ))}
               </ul>
             </div>
-            <Reveal>
+            </Reveal>
+            <Reveal pop delay={350}>
             <HeroIllustration />
             </Reveal>
           </div>
@@ -183,7 +185,7 @@ export default function HomePage() {
               Made to be simple for everyone — grandparents included.
             </p>
             </Reveal>
-            <Reveal stagger>
+            <Reveal stagger cards>
             <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {features.map((feature) => (
                 <li key={feature.title} className={`${feature.bg} rounded-[32px] p-7`}>
@@ -200,7 +202,7 @@ export default function HomePage() {
         {/* Family */}
         <section className="px-6 py-20" aria-labelledby="family-title">
           <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
-            <Reveal>
+            <Reveal pop>
             <FamilyIllustration />
             </Reveal>
             <Reveal delay={150}>
