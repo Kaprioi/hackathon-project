@@ -31,6 +31,7 @@ import type { PersonDetector } from "./detector.ts";
 import { Cloud } from "./cloud.ts";
 import type { MovementEvent } from "./events.ts";
 import { Reporter } from "./events.ts";
+import { shouldSendInactive, startWatch, watchSaw } from "../family/noMovement.ts";
 import type { Angles, Box } from "./geometry.ts";
 import { ServoModel } from "./servoModel.ts";
 import type { StandStatus } from "./stand.ts";
@@ -50,6 +51,7 @@ const EVENT_WORDS: Record<MovementEvent["kind"], string> = {
   heartbeat: "Still watching",
   started: "Started watching",
   stopped: "Stopped watching",
+  inactive: "No movement for a while",
 };
 
 function describe(e: MovementEvent): string {
@@ -228,6 +230,8 @@ export default function TrackerPage() {
   const reporterRef = useRef<Reporter>(new Reporter());
   const cloudRef = useRef<Cloud | null>(null);
   const sendChainRef = useRef<Promise<void>>(Promise.resolve());
+  // When someone last moved, for the one "No movement for a while" event (see noMovement.ts).
+  const stillWatchRef = useRef(startWatch(Date.now()));
   const watchingRef = useRef(false); // true from "started" until "stopped" is sent
   const tabsRef = useRef<BroadcastChannel | null>(null);
 
@@ -281,16 +285,35 @@ export default function TrackerPage() {
   const report = useCallback((event: MovementEvent) => {
     const cloud = cloudRef.current;
     if (!cloud) return;
+    stillWatchRef.current = watchSaw(stillWatchRef.current, event.kind, Date.now());
     sendChainRef.current = sendChainRef.current.then(() =>
       cloud.send(event).then(
         () => {
           setLastSent(describe(event));
           setSendError("");
         },
-        (e: unknown) => setSendError(e instanceof Error ? e.message : String(e)),
+        (e: unknown) => {
+          // "inactive" is an extra: a database that hasn't been updated for it yet
+          // (see supabase/migrations) shouldn't show an error.
+          if (event.kind !== "inactive") setSendError(e instanceof Error ? e.message : String(e));
+        },
       ),
     );
   }, []);
+
+  // Once a minute while watching: if nobody has moved for 3 hours during the day
+  // (8:00 to 21:00), send one "inactive" event so the family can be told, even
+  // when nobody has the family page open. The next movement starts it over.
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      if (!watchingRef.current || !shouldSendInactive(stillWatchRef.current, now)) return;
+      stillWatchRef.current = { ...stillWatchRef.current, told: true };
+      report({ kind: "inactive", zone: null, posture: null });
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, [running, report]);
 
   // Check whether someone is signed in (the family page only works for signed-in people).
   useEffect(() => {

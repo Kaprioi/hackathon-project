@@ -16,6 +16,7 @@ import {
   cleanAlertSettings,
   cleanSpokenAlerts,
   highlightFor,
+  isQuietTime,
   spokenAlert,
   spokenEvent,
   spokenStatus,
@@ -25,6 +26,9 @@ import {
 import { spokenClock } from "../family/readAloud";
 import { useCheckingOnIt } from "../family/useCheckingOnIt";
 import { useSpokenAlerts } from "../family/useSpokenAlerts";
+import { cleanNoMovementSettings, noMovementLine, spokenNoMovement, type NoMovementSettings } from "../family/noMovement";
+import { useNoMovement } from "../family/useNoMovement";
+import NoMovementSettingsFields from "../components/NoMovementSettings";
 import {
   AlertSettingsPanel,
   CheckingOnIt,
@@ -68,6 +72,7 @@ const smallButton =
 const SIMPLE_VIEW_KEY = "carenest-simple-view";
 const SPOKEN_ALERTS_KEY = "carenest-spoken-alerts";
 const alertSettingsKey = (userId: string) => `carenest-alert-settings-${userId}`;
+const noMovementKey = (userId: string) => `carenest-no-movement-${userId}`;
 
 function readSaved<T>(key: string, clean: (saved: unknown) => T): T {
   try {
@@ -153,6 +158,11 @@ function Family({
   // The name "Read aloud" uses, from the Care profile page (saved in this browser).
   const [savedName] = useState(() => readSaved(careProfileKey(userId), (v) => (v as { name?: unknown } | null)?.name));
   const who = whoToSpeakOf(savedName, t);
+  // "No movement for a while": daytime starts from the Care profile's wake-up and bed times until changed.
+  const [noMovementSettings, setNoMovementSettingsState] = useState(() => {
+    const profile = readSaved(careProfileKey(userId), (v) => (v ?? {}) as { wake?: unknown; bed?: unknown });
+    return readSaved(noMovementKey(userId), (v) => cleanNoMovementSettings(v, profile.wake, profile.bed));
+  });
   const checking = useCheckingOnIt(circle?.id, userId);
   // Spoken alerts: say new alerts out loud by themselves (off until switched on).
   const [spokenOn, setSpokenOnState] = useState(() => readSaved(SPOKEN_ALERTS_KEY, cleanSpokenAlerts));
@@ -178,6 +188,11 @@ function Family({
   function setAlertSettings(next: AlertSettings) {
     setAlertSettingsState(next);
     save(alertSettingsKey(userId), next);
+  }
+
+  function setNoMovementSettings(next: NoMovementSettings) {
+    setNoMovementSettingsState(next);
+    save(noMovementKey(userId), next);
   }
 
   // Refresh "2 minutes ago" (and notice a camera that went quiet) every 20 seconds,
@@ -293,6 +308,13 @@ function Family({
   const sayTime = (ms: number) => (lang === "en" ? localTime(ms, t) : spokenClock(lang, clock)(new Date(ms).toISOString()));
   const daySpoken = spokenDay(summariseDay(todayEvents, now, { t, timeOf: sayTime }), who, t);
   const { latest } = summary;
+  const noMovement = useNoMovement({
+    circleId: circle?.id,
+    liveEvents: events,
+    now,
+    cameraOn: summary.cameraOn,
+    settings: noMovementSettings,
+  });
 
   // Say "Phone stopped watching" once when the phone goes quiet while this page is
   // open. (A "stopped" message from the phone is said by spoken.heard instead.)
@@ -303,6 +325,17 @@ function Family({
     if (wasSilent.current === false && summary.phoneSilent) silent(summary.lastHeard);
     wasSilent.current = summary.phoneSilent;
   }, [summary.phoneSilent, summary.lastHeard, silent]);
+
+  // Say "No movement for 3 hours - maybe give Mum a call" once for each quiet spell
+  // (unless it is quiet hours). It clears by itself on the next movement.
+  const { headsUp } = spoken;
+  const quietSince = noMovement.since;
+  useEffect(() => {
+    if (quietSince === null || isQuietTime(alertSettings, new Date())) return;
+    headsUp(`no-movement-${quietSince}`, (_, t) =>
+      spokenNoMovement(quietSince, Date.now(), whoToSpeakOf(savedName, t), t),
+    );
+  }, [quietSince, alertSettings, headsUp, savedName]);
 
   return (
     <SiteLayout title="Family page">
@@ -397,6 +430,14 @@ function Family({
                 />
               </div>
             )}
+            {noMovement.since !== null && (
+              <p
+                className={`mt-4 rounded-2xl border-[3px] border-coral bg-sun p-4 font-bold text-ink ${simple ? "text-3xl" : "text-xl"}`}
+              >
+                {noMovementLine(noMovement.since, now, who, t)}
+                {!simple && <> {t("The Call buttons are just below.")}</>}
+              </p>
+            )}
             {summary.phoneSilent && summary.lastHeard && (
               <p className="mt-4 text-xl font-bold">
                 {t("The phone last checked in {when}.", { when: timeAgo(summary.lastHeard.created_at, now, t) })}{" "}
@@ -468,7 +509,11 @@ function Family({
             </section>
           )}
 
-          {!simple && <AlertSettingsPanel settings={alertSettings} onChange={setAlertSettings} />}
+          {!simple && (
+            <AlertSettingsPanel settings={alertSettings} onChange={setAlertSettings}>
+              <NoMovementSettingsFields settings={noMovementSettings} onChange={setNoMovementSettings} />
+            </AlertSettingsPanel>
+          )}
 
           {!simple && circle && circle.owner_id === userId && <AddFamily circleId={circle.id} />}
         </div>

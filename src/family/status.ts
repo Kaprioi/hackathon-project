@@ -41,6 +41,8 @@ export function whatHappened(e: Pick<EventRow, "kind" | "posture">, t: Translate
       return t("Phone started watching");
     case "stopped":
       return t("Phone stopped watching");
+    case "inactive":
+      return t("No movement for a while");
   }
 }
 

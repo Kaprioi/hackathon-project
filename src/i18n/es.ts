@@ -386,6 +386,19 @@ const es: Record<string, string> = {
   Until: "Hasta",
   'A possible fall always shows in "Right now", even in quiet hours.':
     "Una posible caída siempre aparece en «Ahora mismo», también en las horas de descanso.",
+  // "No movement for a while"
+  "No movement for a while": "Sin movimiento desde hace rato",
+  "No movement for 1 hour - maybe give {who} a call.": "Sin movimiento desde hace 1 hora: quizá convenga llamar a {who}.",
+  "No movement for {n} hours - maybe give {who} a call.": "Sin movimiento desde hace {n} horas: quizá convenga llamar a {who}.",
+  "CareNest heads-up.": "Aviso amable de CareNest.",
+  "Tell me if nobody has moved for a while during the day": "Avisarme si nadie se ha movido en un buen rato durante el día",
+  "After how long": "Después de cuánto tiempo",
+  "1 hour": "1 hora",
+  "{n} hours": "{n} horas",
+  "Daytime starts": "El día empieza",
+  "Daytime ends": "El día termina",
+  "Only daytime counts, so a good night's sleep never sets it off. Daytime comes from the wake-up and bed times on the Care profile, if they are filled in.":
+    "Solo cuenta el día, así que una buena noche de sueño nunca lo activa. El horario del día sale de las horas de levantarse y acostarse del Perfil de cuidado, si están rellenadas.",
   "Alerts by phone message or email are coming later.": "Los avisos por mensaje o correo electrónico llegarán más adelante.",
   "Spoken alerts": "Avisos hablados",
   "Say new alerts out loud on this device.": "Decir en voz alta los avisos nuevos en este dispositivo.",

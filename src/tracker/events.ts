@@ -8,7 +8,8 @@
 import type { Box } from "./geometry.ts";
 import { area, centerX } from "./geometry.ts";
 
-export type EventKind = "moving" | "still" | "nobody" | "fall" | "heartbeat" | "started" | "stopped";
+// "inactive" is sent once when nobody has moved for hours during the day (see TrackerPage.tsx and family/noMovement.ts).
+export type EventKind = "moving" | "still" | "nobody" | "fall" | "heartbeat" | "started" | "stopped" | "inactive";
 export type Zone = "left" | "middle" | "right";
 export type Posture = "standing" | "sitting" | "lying" | "unknown";
 
