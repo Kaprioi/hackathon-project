@@ -274,6 +274,7 @@ arduino-cli monitor -p $PORT -c baudrate=115200</pre><button class="copy">Copy</
 
           <li class="step" data-parts="box,breadboard,feather,jack" data-parts-card="shoebox,breadboard,feather,jack">
             <header><h3>Set up power on the breadboard</h3><span class="time">20 min</span></header>
+            <p><a href="https://claude.ai/artifact/LCoogDED7yccUiKpo8iZvD" target="_blank" rel="noopener"><b>See these wires in 3D →</b></a> The wiring model shows the exact breadboard hole for every wire.</p>
             <ol>
               <li data-mode="print">Drop one <b>1/4"-20 nut</b> into the hex pocket in the box floor. The breadboard will hold it in.</li>
               <li>Peel the breadboard's backing and stick it in the box floor.</li>
@@ -283,6 +284,7 @@ arduino-cli monitor -p $PORT -c baudrate=115200</pre><button class="copy">Copy</
               <li data-mode="card">Screw two wires into a <b>female barrel adapter</b>: red into <b>+</b>, black into <b>−</b>. Hot glue it inside the box, right behind the power hole, so the plug can push in from outside.</li>
               <li>Red wire → the breadboard's <b>red (+) rail</b>. Black wire → the <b>blue (−) rail</b>.</li>
               <li>Jumper from the Feather's <b>GND</b> pin → the blue (−) rail. Every part must share this ground.</li>
+              <li><b>Link the rails.</b> A half-size breadboard has a red and a blue rail along both long edges, and the two edges aren't connected. Add a red jumper from one red (+) rail to the other, and a black jumper from one blue (−) rail to the other.</li>
             </ol>
             <div class="warn"><b>Don't</b> connect the red 5V rail to any Feather pin. The Feather gets its own power from USB-C (laptop while building, a phone charger for the demo). Always unplug the power supply before changing wires.</div>
             <div class="step-foot"><button class="btn show3d">Show in 3D</button><label class="done-toggle"><input type="checkbox"> Done</label></div>
@@ -290,6 +292,7 @@ arduino-cli monitor -p $PORT -c baudrate=115200</pre><button class="copy">Copy</
 
           <li class="step" data-parts="panServo,tiltServo,breadboard">
             <header><h3>Wire the two servos</h3><span class="time">10 min</span></header>
+            <p><a href="https://claude.ai/artifact/LCoogDED7yccUiKpo8iZvD" target="_blank" rel="noopener"><b>See the servo wires in 3D →</b></a> The wiring model shows the exact breadboard hole for every wire.</p>
             <p>Each servo has a 3-wire plug. Push male-to-male jumpers into it:</p>
             <ul>
               <li><span class="wire w-blk"></span><b>Black</b> → blue (−) rail</li>
@@ -314,6 +317,7 @@ arduino-cli monitor -p $PORT -c baudrate=115200</pre><button class="copy">Copy</
 
           <li class="step" data-parts="radarL,radarR,feather">
             <header><h3>Wire the two radars</h3><span class="time">20 min</span></header>
+            <p><a href="https://claude.ai/artifact/LCoogDED7yccUiKpo8iZvD" target="_blank" rel="noopener"><b>See the radar wires in 3D →</b></a> The wiring model shows the exact breadboard hole for every wire.</p>
             <p>Each radar has 5 pins. <b>Read the labels printed on your board</b>; the order differs between sellers. Use male-to-female jumpers (female end on the radar):</p>
             <div class="table-wrap"><table>
               <thead><tr><th>Radar pin</th><th>Left radar →</th><th>Right radar →</th></tr></thead>
@@ -421,6 +425,7 @@ arduino-cli monitor -p $PORT -c baudrate=115200</pre><button class="copy">Copy</
 
       <section aria-labelledby="wiring">
         <h2 id="wiring">Full wiring at a glance</h2>
+        <p><a href="https://claude.ai/artifact/LCoogDED7yccUiKpo8iZvD" target="_blank" rel="noopener"><b>Open the 3D wiring model →</b></a> Every wire below, shown in its breadboard hole.</p>
         <div class="table-wrap"><table>
           <thead><tr><th>From</th><th>To</th></tr></thead>
           <tbody>
@@ -428,6 +433,7 @@ arduino-cli monitor -p $PORT -c baudrate=115200</pre><button class="copy">Copy</
             <tr><td>Barrel adapter <b>+</b></td><td>Red (+) rail</td></tr>
             <tr><td>Barrel adapter <b>−</b></td><td>Blue (−) rail</td></tr>
             <tr><td>Feather GND</td><td>Blue (−) rail</td></tr>
+            <tr><td>Red rail / blue rail (one edge)</td><td>Red rail / blue rail (other edge)</td></tr>
             <tr class="group"><td colspan="2">Servos</td></tr>
             <tr><td>Both servos: black / red</td><td>Blue (−) / red (+) rails</td></tr>
             <tr><td>Pan servo yellow</td><td>Feather 27</td></tr>
