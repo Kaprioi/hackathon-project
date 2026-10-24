@@ -1,7 +1,7 @@
 """Generates the SightLine 3D-printable parts as STL files.
 
     pip install manifold3d trimesh numpy
-    python make_parts.py            # writes stl/base_box.stl, base_lid.stl, radar_head.stl, radar_phone_head.stl
+    python make_parts.py            # writes the STLs in stl/ (radar_phone_head_single.stl is the one-radar head)
 
 All sizes are millimetres. Print in PLA, 0.2 mm layers, 20% infill, no supports.
 """
@@ -117,11 +117,15 @@ def radar_holder():
     return body.mirror([0, 1, 0]).translate([-w / 2, 0, 0])
 
 
-def radar_head():
+def head_plate():
     plate = box(*PLATE, (-PLATE[0] / 2, -PLATE[1] / 2, 0))
     for y in (-8, 8):
         plate = plate - slot(22, 3.4, 20, (0, y, -5))   # fits most bracket hole patterns
-    plate = plate - cyl(20, 8, (0, 0, -5))              # wire bundle
+    return plate - cyl(20, 8, (0, 0, -5))               # wire bundle
+
+
+def radar_head():
+    plate = head_plate()
     for side in (-1, 1):
         plate = plate + radar_holder().rotate([0, 0, -side * TOE]).translate(
             [side * 17, PLATE[1] / 2, PLATE[2] - 0.01])
@@ -139,9 +143,13 @@ PHONE_FRONT_Y, PHONE_DEPTH, PHONE_Z0 = -5.5, 13, 28   # case face line, shelf de
 SHELF_W = 44                                          # stays clear of the radar slots
 
 
-def radar_phone_head():
+def radar_phone_head(single=False):
+    """single=True: one radar facing straight ahead, for one-radar mode."""
     y_back = PHONE_FRONT_Y - BACK_T
-    head = radar_head()
+    if single:
+        head = head_plate() + radar_holder().translate([0, PLATE[1] / 2, PLATE[2] - 0.01])
+    else:
+        head = radar_head()
     head = head + box(BACK_W, BACK_T, BACK_TOP - PLATE[2], (-BACK_W / 2, y_back, PLATE[2] - 0.01))
     # shelf the case rests on while the glue cures, with a 45° wedge under it so it prints without supports
     shelf = box(SHELF_W, BACK_T + PHONE_DEPTH, 3, (-SHELF_W / 2, y_back, PHONE_Z0 - 3))
@@ -174,3 +182,4 @@ if __name__ == "__main__":
     save(base_lid(), out / "base_lid.stl")
     save(radar_head(), out / "radar_head.stl")
     save(radar_phone_head(), out / "radar_phone_head.stl")
+    save(radar_phone_head(single=True), out / "radar_phone_head_single.stl")

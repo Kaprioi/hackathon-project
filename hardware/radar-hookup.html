@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Radar Hookup</title>
+<meta name="description" content="Step-by-step 3D guide to wiring the LD2410C radar sensor to the SightLine breadboard, one wire at a time.">
+<link rel="icon" href="data:,">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+/* Layout: one big model with a step card under it. One wire per step, so a
+   first-timer only ever has to find one pin and one hole. */
+:root {
+  --bg: #F2F4F1; --surface: #FFFFFF; --stage: #E3E8E4; --ink: #18201D; --muted: #5B6863;
+  --line: #CED7D2; --accent: #0E7369; --accent-soft: #D6ECE8; --alert: #B4610E; --alert-soft: #F6E6D3;
+  --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111614; --surface: #18201D; --stage: #1D2623; --ink: #E3EAE6; --muted: #9AA8A2; --line: #2C3833;
+  --accent: #45B9AD; --accent-soft: #173A36; --alert: #E39B4C; --alert-soft: #3A2B1B; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #111614; --surface: #18201D; --stage: #1D2623; --ink: #E3EAE6; --muted: #9AA8A2; --line: #2C3833;
+  --accent: #45B9AD; --accent-soft: #173A36; --alert: #E39B4C; --alert-soft: #3A2B1B; color-scheme: dark; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 1.05rem; line-height: 1.55; }
+h1, h2 { font-family: var(--font-display); line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(1.7rem, 3.2vw, 2.3rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.3rem, 2.4vw, 1.7rem); font-weight: 800; }
+p { margin: 0; }
+code { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: anywhere; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.wrap { max-width: 1100px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 22px 48px; display: grid; gap: 16px; }
+.eyebrow { font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+.intro { display: grid; gap: 6px; }
+.intro p { color: var(--muted); max-width: 70ch; }
+.stage { position: relative; height: min(58vh, 520px); border-radius: 14px; overflow: hidden; background: var(--stage); border: 1px solid var(--line); }
+@media (max-width: 700px) { .stage { height: 340px; } }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.note { position: absolute; left: 12px; bottom: 10px; font-size: 0.78rem; color: var(--muted); pointer-events: none; }
+.card { display: grid; gap: 12px; padding: 18px 20px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.progress { display: flex; gap: 6px; }
+.progress i { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
+.progress i.on { background: var(--accent); }
+.count { font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--muted); }
+.route { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-family: var(--font-mono); font-size: 0.98rem; }
+.route .end { padding: 6px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-weight: 700; }
+.route .wire { width: 46px; height: 8px; border-radius: 4px; }
+.how { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
+.tipbox { background: var(--alert-soft); border-radius: 8px; padding: 10px 13px; font-size: 0.95rem; }
+.tipbox b { color: var(--alert); }
+.nav { display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
+.btn { font: inherit; font-weight: 700; padding: 10px 18px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+</style>
+
+<main class="wrap">
+  <div class="intro">
+    <span class="eyebrow">SightLine · step 6</span>
+    <h1>Radar Hookup</h1>
+    <p>Connecting the one LD2410C radar sensor takes four wires. Go one at a time: each step lights up the pin on the sensor and the hole on the breadboard. Unplug the 5V supply and USB-C first.</p>
+  </div>
+
+  <div class="stage" id="stage"><span class="note" id="note">Drag to turn the view · scroll or pinch to zoom</span></div>
+
+  <section class="card" aria-live="polite">
+    <div class="progress" id="progress"></div>
+    <span class="count" id="count"></span>
+    <h2 id="title"></h2>
+    <div class="route" id="route"></div>
+    <ol class="how" id="how"></ol>
+    <div class="tipbox" id="tip"></div>
+    <div class="nav">
+      <button class="btn" id="back">← Back</button>
+      <button class="btn primary" id="next">Next →</button>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ---------- breadboard layout (mm), same as the full wiring model ----------
+const P = 2.54;
+const ROW_U = { a: 0, b: 1, c: 2, d: 3, e: 4, f: 7, g: 8, h: 9, i: 10, j: 11 };
+const RAIL_U = { "top-": -3, "top+": -4, "bottom-": 14, "bottom+": 15 };
+const colX = (c) => (c - 15.5) * P;
+const rowY = (u) => (5.5 - u) * P;
+const BB = { w: 82, d: 55, h: 9.5 };
+const hole = (name) => {
+  const m = name.match(/^([a-j])(\d+)$/);
+  if (m) return { x: colX(+m[2]), y: rowY(ROW_U[m[1]]), z: BB.h };
+  const [rail, col] = name.split(" ");
+  return { x: colX(+col), y: rowY(RAIL_U[rail]), z: BB.h };
+};
+const PINS16 = ["RST", "3V", "NC", "GND", "A0", "A1", "A2", "A3", "A4", "A5", "SCK", "MO", "MI", "RX", "TX", "37"];
+const PINS12 = ["BAT", "EN", "USB", "13", "12", "27", "33", "15", "32", "14", "SCL", "SDA"];
+
+// The radar sits on the table just below the breadboard, pins toward the board.
+const RADAR = { x: 14, y: -46 };
+const RADAR_PINS = ["TX", "RX", "OUT", "GND", "VCC"];   // one common order; go by your board's labels
+const radarPin = (label) => ({ x: RADAR.x + (RADAR_PINS.indexOf(label) - 2) * P, y: RADAR.y + 6.5, z: 6.2 });
+
+const RED = 0xD23B2E, BLACK = 0x2B2B2B, GREEN = 0x2E9B57, BLUE = 0x2F6FD0;
+const hex = (c) => "#" + c.toString(16).padStart(6, "0");
+
+const STEPS = [
+  { title: "Meet the radar sensor",
+    route: null,
+    how: ["Find the small board labeled <b>LD2410C</b>, about the size of a postage stamp.",
+          "Look along one edge for <b>5 metal pins</b> in a row. Tiny letters next to them read <b>TX, RX, OUT, GND, VCC</b>.",
+          "The <b>other side</b> of the board has a flat printed pattern: that's the antenna. Later it faces the room.",
+          "You'll use the <b>4 wires</b> from the sensor's bag (they have holes on both ends). Pin <b>OUT</b> stays empty."],
+    tip: "<b>Read your own board's letters.</b> Sellers put the pins in different orders. This model shows one common order, so always match by name, not by position.",
+    focus: "radar" },
+  { title: "Wire 1: power (VCC)",
+    color: RED, pin: "VCC", to: "bottom+ 22", toName: "bottom red (+) line",
+    how: ["Take a <b>red</b> wire (any color works, red just helps you remember).",
+          "Push one end onto the sensor pin labeled <b>VCC</b>.",
+          "Push the other end into the <b>bottom red (+) line</b> of the breadboard. Any hole along that line works; the model uses the one under column 22."],
+    tip: "<b>VCC means power.</b> It goes to the red line, which carries 5V from the barrel jack." },
+  { title: "Wire 2: ground (GND)",
+    color: BLACK, pin: "GND", to: "bottom- 21", toName: "bottom blue (−) line",
+    how: ["Take a <b>black</b> wire.",
+          "Push one end onto the sensor pin labeled <b>GND</b>.",
+          "Push the other end into the <b>bottom blue (−) line</b>, right next to the red one. Any hole along it works."],
+    tip: "<b>GND means ground.</b> Red and blue must never swap: VCC on red, GND on blue." },
+  { title: "Wire 3: sensor talks (TX)",
+    color: GREEN, pin: "TX", to: "j16", toName: "hole j16 (Feather RX)",
+    how: ["Take a <b>green</b> wire.",
+          "Push one end onto the sensor pin labeled <b>TX</b>.",
+          "Find the Feather's pin labeled <b>RX</b>. It's the 3rd pin from the right end of the Feather's long pin row.",
+          "Push the wire into the empty hole right next to it, in the bottom row <b>j</b>: hole <b>j16</b>."],
+    tip: "<b>TX goes to RX on purpose.</b> TX means \"talks\" and RX means \"listens\": the sensor's talk wire goes to the Feather's listen pin." },
+  { title: "Wire 4: sensor listens (RX)",
+    color: BLUE, pin: "RX", to: "j17", toName: "hole j17 (Feather TX)",
+    how: ["Take a <b>blue</b> wire.",
+          "Push one end onto the sensor pin labeled <b>RX</b>.",
+          "Push the other end into hole <b>j17</b>: right next to the Feather's <b>TX</b> pin, one hole to the right of the green wire."],
+    tip: "<b>Crossed again, on purpose:</b> sensor RX goes to Feather TX." },
+  { title: "Check it works",
+    route: null,
+    how: ["Look: <b>4 wires</b> on VCC, GND, TX, RX. Nothing on <b>OUT</b>.",
+          "Plug in the Feather's USB-C cable, then the 5V supply.",
+          "In the same terminal window you used to load the program, run: <code>arduino-cli monitor -p $PORT -c baudrate=115200</code>",
+          "Press the tiny <b>Reset</b> button on the Feather. You should see <b>Radar OK</b>.",
+          "Wave your hand in front of the sensor: the <b>radar=</b> number jumps up."],
+    tip: "<b>Says \"Radar NOT found\"?</b> Swap the green and blue wires at the breadboard (TX and RX are the usual mix-up), then press Reset again.",
+    focus: "all" },
+];
+const WIRE_STEPS = STEPS.filter((s) => s.pin);
+
+// ---------- step card ----------
+let step = 0, onStep = () => {};
+const $ = (s) => document.querySelector(s);
+STEPS.forEach(() => $("#progress").appendChild(document.createElement("i")));
+function render() {
+  const s = STEPS[step];
+  $("#count").textContent = `Step ${step + 1} of ${STEPS.length}`;
+  $("#title").textContent = s.title;
+  $("#route").innerHTML = s.pin
+    ? `<span class="end">sensor pin ${s.pin}</span><span class="wire" style="background:${hex(s.color)}${s.color === BLACK ? ";outline:1px solid #888" : ""}"></span><span class="end">${s.toName}</span>`
+    : "";
+  $("#route").hidden = !s.pin;
+  $("#how").innerHTML = s.how.map((h) => `<li>${h}</li>`).join("");
+  $("#tip").innerHTML = s.tip;
+  [...$("#progress").children].forEach((el, i) => el.classList.toggle("on", i <= step));
+  $("#back").disabled = step === 0;
+  $("#next").textContent = step === STEPS.length - 1 ? "Start over" : "Next →";
+  onStep();
+}
+$("#back").addEventListener("click", () => { if (step > 0) { step--; render(); } });
+$("#next").addEventListener("click", () => { step = step === STEPS.length - 1 ? 0 : step + 1; render(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowRight") $("#next").click();
+  if (e.key === "ArrowLeft" && !$("#back").disabled) $("#back").click();
+});
+render();
+
+// ---------- 3D model ----------
+if (!window.THREE) $("#note").textContent = "The 3D model couldn't load here. The steps below still work.";
+else document.fonts.ready.then(build3D);
+
+function build3D() {
+  const stage = $("#stage");
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  stage.prepend(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, 1, 1, 3000);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.minDistance = 30; controls.maxDistance = 600;
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x50605a, 0.95));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(-80, 220, 120); scene.add(sun);
+
+  const V = (p) => new THREE.Vector3(p.x, p.z, -p.y);   // board plane → three.js (y up)
+  const root = new THREE.Group(); scene.add(root);
+  const mat = (color, extra = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.6 }, extra));
+  const box = (w, d, h, color, at, extra) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color, extra));
+    m.position.copy(V({ x: at.x, y: at.y, z: at.z + h / 2 })); root.add(m); return m;
+  };
+  function surfaceTexture(wmm, dmm, ppm, draw) {
+    const c = document.createElement("canvas");
+    c.width = Math.round(wmm * ppm); c.height = Math.round(dmm * ppm);
+    const g = c.getContext("2d"); g.scale(ppm, ppm); draw(g);
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 8; return t;
+  }
+  function flat(wmm, dmm, cx, cy, z, tex) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(wmm, dmm).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }));
+    m.position.copy(V({ x: cx, y: cy, z })); root.add(m); return m;
+  }
+  function sprite(text, at, size, color = "#18201D", bg = "rgba(255,255,255,0.95)") {
+    const c = document.createElement("canvas"); const g = c.getContext("2d");
+    g.font = "700 48px 'Atkinson Hyperlegible', sans-serif";
+    const w = g.measureText(text).width + 36; c.width = w; c.height = 72;
+    g.font = "700 48px 'Atkinson Hyperlegible', sans-serif";
+    g.fillStyle = bg; g.beginPath(); g.roundRect(0, 0, w, 72, 16); g.fill();
+    g.fillStyle = color; g.textBaseline = "middle"; g.fillText(text, 18, 38);
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+    s.scale.set(size * w / 72, size, 1); s.position.copy(V(at)); s.renderOrder = 10; root.add(s); return s;
+  }
+
+  // breadboard
+  box(BB.w, BB.d, BB.h, 0xF4F3EE, { x: 0, y: 0, z: 0 });
+  flat(BB.w, BB.d, 0, 0, BB.h + 0.02, surfaceTexture(BB.w, BB.d, 16, (g) => {
+    const X = (x) => x + BB.w / 2, Y = (y) => BB.d / 2 - y;
+    g.fillStyle = "#F4F3EE"; g.fillRect(0, 0, BB.w, BB.d);
+    g.fillStyle = "#E4E2DA"; g.fillRect(0, Y(rowY(4.6)), BB.w, rowY(4.6) - rowY(6.4));
+    for (const [rail, u] of Object.entries(RAIL_U)) {
+      const plus = rail.endsWith("+"), top = rail.startsWith("top");
+      const yy = rowY(u) + (plus ? (top ? 1.6 : -1.6) : (top ? -1.6 : 1.6));
+      g.strokeStyle = plus ? "#D23B2E" : "#2F6FD0"; g.lineWidth = 0.5;
+      g.beginPath(); g.moveTo(X(colX(0.6)), Y(yy)); g.lineTo(X(colX(30.4)), Y(yy)); g.stroke();
+      g.fillStyle = plus ? "#D23B2E" : "#2F6FD0"; g.font = "700 3.2px sans-serif"; g.textBaseline = "middle";
+      g.fillText(plus ? "+" : "−", X(colX(0.3)) - 1.6, Y(rowY(u)));
+    }
+    g.fillStyle = "#3A3F45";
+    for (let c = 1; c <= 30; c++) for (const u of [...Object.values(ROW_U), ...Object.values(RAIL_U)]) g.fillRect(X(colX(c)) - 0.55, Y(rowY(u)) - 0.55, 1.1, 1.1);
+    g.fillStyle = "#6A706C"; g.font = "600 1.9px 'JetBrains Mono', monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+    for (let c = 1; c <= 30; c++) if (c === 1 || c % 5 === 0) { g.fillText(String(c), X(colX(c)), Y(rowY(-1.35))); g.fillText(String(c), X(colX(c)), Y(rowY(12.35))); }
+    for (const [r, u] of Object.entries(ROW_U)) { g.fillText(r, X(colX(0.1)), Y(rowY(u))); g.fillText(r, X(colX(30.9)), Y(rowY(u))); }
+  }));
+
+  // Feather (columns 3-18; long pin row in row i, short row in row c)
+  const fx = colX(10.5), fy = (rowY(ROW_U.c) + rowY(ROW_U.i)) / 2, pcbZ = BB.h + 2.5;
+  for (const [u, n, first] of [[ROW_U.i, 16, 3], [ROW_U.c, 12, 7]]) box(n * P, P, 2.5, 0x1C1C1C, { x: colX(first + (n - 1) / 2), y: rowY(u), z: BB.h });
+  box(50.8, 22.86, 1.6, 0x15181B, { x: fx, y: fy, z: pcbZ });
+  flat(50.8, 22.86, fx, fy, pcbZ + 1.62, surfaceTexture(50.8, 22.86, 24, (g) => {
+    const X = (x) => x - (fx - 25.4), Y = (y) => (fy + 11.43) - y;
+    g.fillStyle = "#15181B"; g.fillRect(0, 0, 50.8, 22.86);
+    g.textAlign = "center"; g.textBaseline = "middle";
+    const lab = (t, x, y, hot) => { g.font = `700 ${t.length > 2 ? 1.25 : 1.6}px 'JetBrains Mono', monospace`; g.fillStyle = hot ? "#7FE0A0" : "#F4F3EE"; g.fillText(t, X(x), Y(y)); };
+    PINS16.forEach((t, k) => lab(t, colX(k + 3), rowY(ROW_U.i) + 2.3, t === "RX" || t === "TX"));
+    PINS12.forEach((t, k) => lab(t, colX(k + 7), rowY(ROW_U.c) - 2.3));
+    g.fillStyle = "#9AA8A2"; g.font = "700 1.6px 'Atkinson Hyperlegible', sans-serif";
+    g.fillText("ESP32 Feather V2", X(colX(12.2)), Y(fy)); g.fillText("USB-C", X(fx - 21), Y(fy));
+  }));
+  box(7.5, 9, 3.2, 0xB9BEC4, { x: fx - 24.6, y: fy, z: pcbZ + 1.6 }, { metalness: 0.7, roughness: 0.3 });
+  sprite("Feather", { x: fx, y: BB.d / 2 + 5, z: 2 }, 4);
+
+  // Radar: green board lying flat, chip side up, 5 pins standing at the edge nearest the board
+  const radarObjs = [];
+  radarObjs.push(box(22, 16, 1.2, 0x1F5E3B, { x: RADAR.x, y: RADAR.y, z: 0 }));
+  radarObjs.push(box(13, 2.5, 2.5, 0x1C1C1C, { x: RADAR.x, y: RADAR.y + 6.5, z: 1.2 }));
+  const pinMeshes = {};
+  RADAR_PINS.forEach((label) => {
+    const p = radarPin(label);
+    pinMeshes[label] = box(0.64, 0.64, 6, 0xC9A64B, { x: p.x, y: p.y, z: 3.7 }, { metalness: 0.7, roughness: 0.3 });
+  });
+  // Pin names printed on the board itself, next to each pin
+  flat(22, 16, RADAR.x, RADAR.y, 1.22, surfaceTexture(22, 16, 30, (g) => {
+    g.fillStyle = "#1F5E3B"; g.fillRect(0, 0, 22, 16);
+    g.fillStyle = "#EAF2EC"; g.font = "700 1.05px 'JetBrains Mono', monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+    RADAR_PINS.forEach((t, i) => g.fillText(t, 11 + (i - 2) * P, 4.2));
+    g.font = "700 1.7px 'Atkinson Hyperlegible', sans-serif"; g.fillText("HLK-LD2410C", 14.5, 12);
+    g.fillStyle = "#101418"; g.fillRect(3, 8, 5, 5);   // chip
+  }));
+  sprite("Radar sensor (LD2410C)", { x: RADAR.x, y: RADAR.y - 13, z: 3 }, 3.6);
+
+  // Markers: a glowing ring on the target hole, a glowing pin on the sensor
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.32, 12, 40).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xF2A04A }));
+  root.add(ring);
+  const pinLabel = sprite("", { x: 0, y: 0, z: 0 }, 3.4, "#FFFFFF", "rgba(14,115,105,0.95)");
+  const holeLabel = sprite("", { x: 0, y: 0, z: 0 }, 3.4, "#FFFFFF", "rgba(180,97,14,0.95)");
+  function setSpriteText(s, text, bg) {
+    const c = document.createElement("canvas"); const g = c.getContext("2d");
+    g.font = "700 48px 'Atkinson Hyperlegible', sans-serif";
+    const w = g.measureText(text).width + 36; c.width = w; c.height = 72;
+    g.font = "700 48px 'Atkinson Hyperlegible', sans-serif";
+    g.fillStyle = bg; g.beginPath(); g.roundRect(0, 0, w, 72, 16); g.fill();
+    g.fillStyle = "#FFFFFF"; g.textBaseline = "middle"; g.fillText(text, 18, 38);
+    s.material.map.dispose(); s.material.map = new THREE.CanvasTexture(c); s.material.needsUpdate = true;
+    s.scale.set(3.4 * w / 72, 3.4, 1);
+  }
+
+  // Wires (one per wire step)
+  const wires = WIRE_STEPS.map((s, i) => {
+    const a = radarPin(s.pin), b = hole(s.to);
+    const lift = 7 + i * 2.2;
+    const pts = [
+      { ...a, z: a.z - 1 }, { ...a, z: a.z + 3 },
+      { x: a.x + (b.x - a.x) * 0.3, y: a.y + (b.y - a.y) * 0.3, z: Math.max(a.z, b.z) + lift },
+      { x: a.x + (b.x - a.x) * 0.75, y: a.y + (b.y - a.y) * 0.75, z: Math.max(a.z, b.z) + lift },
+      { ...b, z: b.z + 3 }, { ...b, z: b.z - 1.5 },
+    ].map(V);
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, "centripetal"), 64, 0.62, 10, false), mat(s.color, { roughness: 0.45 }));
+    const capA = new THREE.Mesh(new THREE.BoxGeometry(2.3, 6, 2.3), mat(0x1C1C1C)); capA.position.copy(V({ ...a, z: a.z + 2 }));
+    const capB = new THREE.Mesh(new THREE.BoxGeometry(2.3, 6, 2.3), mat(0x1C1C1C)); capB.position.copy(V({ ...b, z: b.z + 3 }));
+    root.add(tube, capA, capB);
+    return { s, parts: [tube, capA, capB] };
+  });
+
+  // Camera moves smoothly to frame each step
+  const camGoal = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
+  function frame(points, dist) {
+    const c = points.reduce((acc, p) => acc.add(V(p)), new THREE.Vector3()).multiplyScalar(1 / points.length);
+    camGoal.target.copy(c);
+    camGoal.pos.set(c.x - dist * 0.15, c.y + dist * 0.85, c.z + dist * 0.75);
+  }
+  let animating = true;
+  controls.addEventListener("start", () => (animating = false));   // let the viewer take over
+
+  onStep = function apply() {
+    const s = STEPS[step];
+    const wireIndex = WIRE_STEPS.indexOf(s);
+    const doneUpTo = s.focus === "all" ? WIRE_STEPS.length - 1 : wireIndex;
+    wires.forEach((w, i) => {
+      const show = i <= doneUpTo;
+      w.parts.forEach((p) => { p.visible = show; });
+      const current = i === wireIndex;
+      const m = w.parts[0].material;
+      m.emissive = new THREE.Color(current ? 0xF2A04A : 0x000000); m.emissiveIntensity = current ? 0.35 : 0;
+      m.transparent = show && !current && s.focus !== "all"; m.opacity = m.transparent ? 0.35 : 1;
+    });
+    Object.entries(pinMeshes).forEach(([label, m]) => {
+      const hot = s.pin === label || (s.focus === "radar" && label !== "OUT");
+      m.material.color.set(hot ? 0x45B9AD : 0xC9A64B);
+      m.material.emissive = new THREE.Color(hot ? 0x45B9AD : 0x000000); m.material.emissiveIntensity = hot ? 0.6 : 0;
+    });
+    ring.visible = !!s.pin; pinLabel.visible = !!s.pin; holeLabel.visible = !!s.pin;
+    if (s.pin) {
+      const a = radarPin(s.pin), b = hole(s.to);
+      ring.position.copy(V({ ...b, z: b.z + 0.4 }));
+      setSpriteText(pinLabel, `pin ${s.pin}`, "rgba(14,115,105,0.95)");
+      pinLabel.position.copy(V({ ...a, z: a.z + 9 }));
+      setSpriteText(holeLabel, s.to.startsWith("j") ? `hole ${s.to}` : s.toName, "rgba(180,97,14,0.95)");
+      holeLabel.position.copy(V({ ...b, z: b.z + 11 }));
+      frame([a, b], 95);
+    } else if (s.focus === "radar") {
+      frame([{ x: RADAR.x, y: RADAR.y, z: 0 }], 70);
+    } else {
+      frame([{ x: 2, y: -18, z: 0 }], 165);
+    }
+    animating = true;
+  };
+  onStep();
+  camera.position.copy(camGoal.pos).add(new THREE.Vector3(0, 60, 60)); controls.target.copy(camGoal.target);
+
+  const applyTheme = () => renderer.setClearColor(new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue("--stage").trim()));
+  applyTheme();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+  new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  new ResizeObserver(resize).observe(stage); resize();
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  renderer.setAnimationLoop((t) => {
+    if (animating) {
+      const k = reduced ? 1 : 0.08;
+      camera.position.lerp(camGoal.pos, k); controls.target.lerp(camGoal.target, k);
+      if (camera.position.distanceTo(camGoal.pos) < 0.2) animating = false;
+    }
+    ring.scale.setScalar(1 + (reduced ? 0 : 0.18 * Math.sin(t / 220)));   // gentle pulse on the target hole
+    controls.update(); renderer.render(scene, camera);
+  });
+}
+</script>

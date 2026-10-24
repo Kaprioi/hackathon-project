@@ -10,6 +10,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, CSSProperties, PointerEvent, ReactNode } from "react";
 import { Link } from "react-router";
+import { buttonVariants } from "../components/ButtonLink";
+import { Blobs, LogoMark } from "../components/SiteLayout";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
 import { Brain, MODE_LABEL } from "./brain.ts";
@@ -144,7 +146,9 @@ const EVENT_WORDS: Record<MovementEvent["kind"], string> = {
 };
 
 function describe(e: MovementEvent): string {
-  return [EVENT_WORDS[e.kind], e.zone && `${e.zone} side`, e.posture && e.posture !== "unknown" && e.posture]
+  // "middle", not "middle side"
+  const where = e.zone && (e.zone === "middle" ? "middle" : `${e.zone} side`);
+  return [EVENT_WORDS[e.kind], where, e.posture && e.posture !== "unknown" && e.posture]
     .filter(Boolean)
     .join(" - ");
 }
@@ -498,10 +502,12 @@ function Choice<T extends string>(props: {
   onChange: (v: T) => void;
   disabled?: boolean;
   icon?: ReactNode;
+  /** On a light card (the start screen) instead of over the camera picture. */
+  light?: boolean;
 }) {
-  const { label, options, value, onChange, disabled, icon } = props;
+  const { label, options, value, onChange, disabled, icon, light } = props;
   return (
-    <div role="group" aria-label={label} className="flex items-center gap-1 rounded-2xl bg-white/10 p-1">
+    <div role="group" aria-label={label} className={`flex items-center gap-1 rounded-2xl p-1 ${light ? "bg-lilac" : "bg-white/10"}`}>
       {icon && (
         <span className="flex items-center gap-1 px-1.5 text-sm font-bold">
           <Icon className="size-5">{icon}</Icon>
@@ -515,7 +521,7 @@ function Choice<T extends string>(props: {
           disabled={disabled}
           onClick={() => onChange(v)}
           className={`min-h-10 rounded-xl px-3 text-sm font-bold transition-transform active:scale-95 disabled:opacity-40 ${
-            value === v ? "bg-brand text-white" : "text-white"
+            value === v ? "bg-brand text-white" : light ? "text-ink" : "text-white"
           }`}
         >
           {text}
@@ -1152,7 +1158,7 @@ export default function TrackerPage() {
       // Turn the picture so people stand upright for the AI. With the phone sideways and
       // auto-rotate off, the camera picture arrives on its side; turned, the AI finds
       // people it would otherwise miss. Everything after this works in the upright picture.
-      const turn: Turn = s.turn === "auto" ? pictureTurn(deviceTurnRef.current, screenAngle()) : (Number(s.turn) as Turn);
+      const turn: Turn = s.turn === "auto" ? pictureTurn(deviceTurnRef.current, screenAngle(), mirroredRef.current) : (Number(s.turn) as Turn);
       turnRef.current = turn;
       const sideways = turn === 90 || turn === 270;
       const uw = sideways ? vh : vw; // the upright picture's size
@@ -1389,6 +1395,7 @@ export default function TrackerPage() {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         aria-label="Camera view. Tap a person to follow them."
+        aria-hidden={!running}
       />
       {ripple && <span key={ripple.key} className="tracker-tap" style={{ left: ripple.x, top: ripple.y }} aria-hidden="true" />}
 
@@ -1400,10 +1407,11 @@ export default function TrackerPage() {
 
       {/* Top: the privacy sign (always on screen while the camera is on), then what it's
           doing on the left and readings on the right */}
-      <div className="pointer-events-none absolute inset-x-0 top-0">
+      {/* Before the camera starts, the start screen covers these: keep screen readers and the Tab key off them too */}
+      <div className="pointer-events-none absolute inset-x-0 top-0" inert={!running}>
         {running && (
           <div
-            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 bg-leaf px-3 py-1.5 text-center font-extrabold text-white"
+            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 bg-leaf px-3 py-1.5 text-center font-extrabold text-on-brand shadow-soft"
             style={{ ...SIDES, paddingTop: "max(0.375rem, env(safe-area-inset-top))" }}
           >
             <span className="text-base">● Camera on - video stays on this phone</span>
@@ -1493,7 +1501,11 @@ export default function TrackerPage() {
       </div>
 
       {/* Bottom: messages, then the controls */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2" style={SAFE_BOTTOM}>
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2"
+        style={SAFE_BOTTOM}
+        inert={!running}
+      >
         {snap.portrait && running && connected && (
           <p className="rounded-xl bg-sun px-3 py-1.5 text-center text-sm font-bold text-ink">
             Turn the phone sideways for the stand, and switch off rotation lock.
@@ -1562,62 +1574,73 @@ export default function TrackerPage() {
       )}
 
       {!running && (
-        <div className="absolute inset-0 z-10 overflow-y-auto bg-black" style={SAFE_ALL}>
-          <div className="mx-auto flex min-h-full max-w-lg flex-col items-center justify-center gap-3 px-2 py-3 text-center [@media(min-height:600px)]:gap-4 [@media(min-height:600px)]:py-6">
-            <h1 className="text-2xl font-extrabold [@media(min-height:600px)]:text-3xl">Phone camera</h1>
-            <p className="text-base [@media(min-height:600px)]:text-xl">
-              Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a
-              few words, how things are going.
-            </p>
-            <p className="rounded-2xl bg-white px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
-              Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or
-              pictures ever leave it.
-            </p>
-            {isTouch && account !== "signed-out" && (
-              <Choice
-                label="Which camera"
-                options={[
-                  ["front", "Front (screen side)"],
-                  ["back", "Back"],
-                ]}
-                value={settings.camera}
-                onChange={(c) => updateSettings({ camera: c })}
-                disabled={loading}
-              />
-            )}
-            {account === "signed-out" ? (
-              <div className="space-y-3">
-                <p className="text-base [@media(min-height:600px)]:text-xl">Please sign in first, so your family can see the updates.</p>
-                <Link
-                  to="/login"
-                  className="inline-flex min-h-14 items-center justify-center rounded-2xl bg-white px-8 text-xl font-extrabold text-brand no-underline [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl"
-                >
-                  Sign in
-                </Link>
-              </div>
-            ) : (
-              <button
-                onClick={() => void startCamera()}
-                disabled={loading || account === "checking"}
-                className="min-h-14 w-full rounded-2xl bg-white px-8 text-xl font-extrabold text-brand transition-transform active:scale-95 disabled:opacity-60 [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl"
+        <div className="on-light absolute inset-0 z-10 overflow-y-auto bg-cream text-ink select-text" style={SAFE_ALL}>
+          <div className="relative isolate flex min-h-full items-center justify-center px-2 py-3 [@media(min-height:600px)]:py-6">
+            <Blobs fixed />
+            <div className="flex w-full max-w-lg animate-slide-in flex-col items-center gap-2 [@media(max-height:599px)]:max-w-2xl rounded-[32px] bg-surface px-5 py-4 text-center shadow-lift [@media(min-height:600px)]:gap-4 [@media(min-height:600px)]:py-5 [@media(min-height:600px)]:sm:rounded-[40px] [@media(min-height:600px)]:sm:p-10">
+              {/* On a short screen (a phone turned sideways) the logo is skipped, so "Start watching" stays in view */}
+              <Link
+                to="/"
+                className="group flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline [@media(max-height:599px)]:hidden"
               >
-                {loading ? "Starting..." : "Start watching"}
-              </button>
-            )}
-            {loading && <p className="text-base text-white/90">The first start downloads the AI model (a few MB).</p>}
-            {error && <ErrorBanner text={error} onDismiss={() => setError("")} />}
-            {account === "no-database" && (
-              <p className="text-base text-sun">
-                The database isn't set up on this website yet, so you can try the camera but your family won't see
-                anything.
+                <LogoMark />
+                CareNest
+              </Link>
+              <h1 className="text-2xl font-extrabold [@media(min-height:600px)]:text-4xl">
+                Phone <span className="text-gradient-brand">camera</span>
+              </h1>
+              <p className="text-base text-muted [@media(min-height:600px)]:text-xl">
+                Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a
+                few words, how things are going.
               </p>
-            )}
-            {!Stand.supported() && (
-              <p className="text-base text-white/90">
-                Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this
-                page in the Bluefy app.
+              <p className="rounded-2xl bg-mint px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
+                Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or
+                pictures ever leave it.
               </p>
-            )}
+              {isTouch && account !== "signed-out" && (
+                <Choice
+                  light
+                  label="Which camera"
+                  options={[
+                    ["front", "Front (screen side)"],
+                    ["back", "Back"],
+                  ]}
+                  value={settings.camera}
+                  onChange={(c) => updateSettings({ camera: c })}
+                  disabled={loading}
+                />
+              )}
+              {account === "signed-out" ? (
+                <div className="w-full space-y-3">
+                  <p className="text-base [@media(min-height:600px)]:text-xl">Please sign in first, so your family can see the updates.</p>
+                  <Link to="/login" className={`${buttonVariants.primary} w-full text-xl [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}>
+                    Sign in
+                  </Link>
+                </div>
+              ) : (
+                <button
+                  onClick={() => void startCamera()}
+                  disabled={loading || account === "checking"}
+                  className={`${buttonVariants.primary} w-full text-xl disabled:opacity-60 [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}
+                >
+                  {loading ? "Starting..." : "Start watching"}
+                </button>
+              )}
+              {loading && <p className="text-base text-muted">The first start downloads the AI model (a few MB).</p>}
+              {error && <ErrorBanner text={error} onDismiss={() => setError("")} />}
+              {account === "no-database" && (
+                <p className="rounded-2xl bg-sun px-4 py-3 text-base text-ink">
+                  The database isn't set up on this website yet, so you can try the camera but your family won't see
+                  anything.
+                </p>
+              )}
+              {!Stand.supported() && (
+                <p className="text-base text-muted">
+                  Have a motor stand? This browser can't use Bluetooth, so it can't move the stand. On iPhone, open this
+                  page in the Bluefy app.
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1708,7 +1731,7 @@ function SettingsPanel(props: {
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
-        className="flex h-full w-full max-w-sm flex-col bg-ink/95 text-white"
+        className="flex h-full w-full max-w-sm flex-col bg-ink/95 text-white shadow-lift sm:rounded-l-[32px]"
         style={SAFE_ALL}
         onClick={(e) => e.stopPropagation()}
       >

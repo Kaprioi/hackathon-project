@@ -2,7 +2,7 @@
 
 **CareNest**: a phone standing on a table watches the room with its camera (all on the phone), and family see in plain words how their loved one is doing. No video or pictures ever leave the phone.
 
-The site has four pages:
+The site has seven pages:
 
 | Page | Address | What it is |
 | --- | --- | --- |
@@ -10,6 +10,9 @@ The site has four pages:
 | Sign in | `/login` | Sign in or create an account (email and password) |
 | Phone camera | `/tracker` | Open this on the phone on the table and press **Start watching** |
 | Family | `/dashboard` | What is happening right now, recent news, and adding family |
+| Care profile | `/profile` | A few questions about the person being cared for (age, routine, who they live with), then how likely a fall is and the times to keep an eye on |
+| Help | `/help` | Picture steps for getting started, what the Family page means, privacy, and common questions |
+| Your account | `/account` | Your email, the name family see, change your password, your family circles, and log out (signed-in only) |
 
 The "forgot password" email also brings people to `/reset-password` to choose a new password.
 
@@ -96,7 +99,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
 3. Set up the database (once per Supabase project). The tables live in `supabase/migrations/`. Either:
 
-   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, then do the same with `supabase/migrations/20261024010000_family_fixes.sql` (it makes adding family members safer: people are found by the email they signed up with, nobody can change the email on their profile, and the answer never reveals whether an email has an account), or
+   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, then do the same with `supabase/migrations/20261024010000_family_fixes.sql` (it makes adding family members safer: people are found by the email they signed up with, nobody can change the email on their profile, and the answer never reveals whether an email has an account), then the same with `supabase/migrations/20261024020000_checking_on_it.sql` (it lets family press "I'm checking on it" on a possible fall so everyone else sees who is handling it), or
    - with the [Supabase CLI](https://supabase.com/docs/guides/cli): `supabase link --project-ref <your-ref>` (ours is `egraxwvpbqmjfybdbjsg`) then `supabase db push`.
 
    What it creates:
@@ -108,8 +111,9 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
    | `care_circle_members` | Who is in which circle (owner or family) |
    | `devices` | Each phone used as a camera |
    | `movement_events` | Small text events from the phone: what happened, left/middle/right, posture, time. Never video or pictures |
+| `event_acknowledgements` | Who pressed "I'm checking on it" on which possible fall |
 
-   Row Level Security is on for every table, so people only see their own circle's rows. `movement_events` is added to Supabase Realtime so the family page can update live.
+   Row Level Security is on for every table, so people only see their own circle's rows. `movement_events` and `event_acknowledgements` are added to Supabase Realtime so the family page can update live.
 
 4. Start the app on your computer:
 
@@ -152,8 +156,18 @@ It also still drives the optional Phone Tracker stand: it follows the person you
 
 Where family members see how things are. After logging in, the login page brings you here; if nobody is logged in it sends you to `/login`. It shows:
 
-- **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns peach with a "please call or visit" note if the phone thinks someone may have fallen, and warns you if the phone has not checked in for over 3 minutes (it normally sends a heartbeat every minute).
+- **Right now**, in big words: for example "Moving around - left side - 2 minutes ago". The box turns red with a "please call or visit" note if the phone thinks someone may have fallen, and warns you if the phone has not checked in for over 3 minutes (it normally sends a heartbeat every minute).
 - **Recent news**: the last 10 events with their times.
 - **Add a family member** (only for the circle's owner): type the email of someone who already has a CareNest account, and they will see the same page. For privacy the page gives the same answer whether or not that email has an account. A family member's page shows the circle with the newest news, so they see the phone of the person they were added for.
 
 It updates by itself through Supabase Realtime, so there is no need to reload. To try the whole flow: sign in on a phone, open `/tracker` and press **Start watching**; sign in with the same account on a computer and open `/dashboard`. The plain-words logic is in `src/family/status.ts` and is tested by `npm test`.
+
+## Care profile page (`/profile`)
+
+A few simple questions, one at a time, about the person being cared for: their age, who they live with, when they wake up and go to bed, when they're on their own, how often they get up at night, past falls, walking aids and medicines. At the end it shows:
+
+- **Chance of a fall**: Lower, Medium or Higher, with the reasons in plain words.
+- **Times to keep an eye on**: for example overnight, the first hour after waking up, or afternoons when they're alone.
+- **Your answers**, each with a "Change" button, and "Start again".
+
+You have to be signed in to see it; if nobody is signed in it sends you to `/login`. It's a rough guide, not medical advice. For now the answers are only saved in that browser (one set per account), not in Supabase. The questions and scoring are in `src/family/careProfile.ts` and are tested by `npm test`.
