@@ -81,7 +81,24 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    For the login page's "forgot password" and sign-up emails to link back correctly, add `http://localhost:5173/**` in the Supabase dashboard under Authentication -> URL Configuration -> Redirect URLs. When the site is deployed somewhere, add its address there too.
 
-3. Start the app on your computer:
+3. Set up the database (once per Supabase project). The tables live in `supabase/migrations/`. Either:
+
+   - open the Supabase dashboard -> SQL Editor -> New query, paste the whole of `supabase/migrations/20261024000000_carenest_schema.sql` and press **Run**, or
+   - with the [Supabase CLI](https://supabase.com/docs/guides/cli): `supabase link --project-ref <your-ref>` then `supabase db push`.
+
+   What it creates:
+
+   | Table | What it holds |
+   | --- | --- |
+   | `profiles` | One row per account, made automatically when someone signs up |
+   | `care_circles` | One "home" per account (made at sign-up too). The owner can add family with `add_family_member(circle id, their email)` |
+   | `care_circle_members` | Who is in which circle (owner or family) |
+   | `devices` | Each phone used as a camera |
+   | `movement_events` | Small text events from the phone: what happened, left/middle/right, posture, time. Never video or pictures |
+
+   Row Level Security is on for every table, so people only see their own circle's rows. `movement_events` is added to Supabase Realtime so the family page can update live.
+
+4. Start the app on your computer:
 
    ```bash
    npm run dev
@@ -89,7 +106,7 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    Then open the address it prints (usually http://localhost:5173).
 
-4. Check that it builds for production (Vercel runs this too):
+5. Check that it builds for production (Vercel runs this too):
 
    ```bash
    npm run build
