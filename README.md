@@ -79,7 +79,9 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    `.env.local` is ignored by git, so real keys never get committed. On Vercel, add the same two variables under Project Settings -> Environment Variables.
 
-   For the login page's "forgot password" and sign-up emails to link back correctly, add `http://localhost:5173/**` in the Supabase dashboard under Authentication -> URL Configuration -> Redirect URLs. When the site is deployed somewhere, add its address there too.
+   Our Supabase project ("carenest") is already set up so its emails link back to the live site (https://carenest-eight-bay.vercel.app), Vercel preview sites, and `http://localhost:5173`. You can see this in the Supabase dashboard under Authentication -> URL Configuration. If you run the app on a different address, add it to the Redirect URLs there, or the "confirm your email" and "forgot password" links won't come back to it.
+
+   Supabase's built-in email service only sends a couple of emails an hour. Before real families sign up, set up your own email sender in Supabase under Authentication -> Emails -> SMTP Settings.
 
 3. Start the app on your computer:
 
@@ -97,7 +99,9 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    `npm run preview` serves that production build locally.
 
-Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, and colours and fonts in `src/index.css`. `vercel.json` makes links like `/login` work when the site is deployed.
+Where things live: pages are in `src/pages/` (routes are listed in `src/main.tsx`), shared pieces in `src/components/`, the Supabase connection in `src/lib/supabase.ts`, and colours and fonts in `src/index.css`. `vercel.json` makes links like `/login`, `/dashboard` and `/reset-password` work when the site is deployed.
+
+Logging in: `/login` has log in, create an account, and "forgot your password". The emails Supabase sends bring people back to `/dashboard` (after confirming a new account) or `/reset-password` (to choose a new password). `/dashboard` is a placeholder for now and sends people to `/login` if they aren't logged in.
 
 ## Phone Tracker page (`/tracker`)
 

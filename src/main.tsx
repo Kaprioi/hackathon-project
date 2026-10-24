@@ -6,6 +6,7 @@ import DashboardPage from "./pages/DashboardPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 // Phone Tracker: loaded only when someone opens /tracker, so the homepage stays fast.
 const TrackerPage = lazy(() => import("./tracker/TrackerPage.tsx"));
@@ -24,6 +25,7 @@ createRoot(document.getElementById("root")!).render(
           }
         />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

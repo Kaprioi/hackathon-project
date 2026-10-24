@@ -1,51 +1,52 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
-import ButtonLink from "../components/ButtonLink";
+import { useState } from "react";
+import { Navigate, useLocation } from "react-router";
+import AuthLayout, { Message, outlineButton } from "../components/AuthLayout";
 import { supabase } from "../lib/supabase";
+import { useSession } from "../lib/useSession";
 
 // A simple placeholder for after logging in. The real family dashboard will
 // replace this page later.
 export default function DashboardPage() {
-  const navigate = useNavigate();
-  const [email, setEmail] = useState<string | null | undefined>(undefined); // undefined = still checking
-
-  useEffect(() => {
-    if (!supabase) return setEmail(null);
-    supabase.auth.getSession().then(({ data }) => setEmail(data.session?.user.email ?? null));
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => setEmail(session?.user.email ?? null));
-    return () => data.subscription.unsubscribe();
-  }, []);
+  const session = useSession();
+  const location = useLocation();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [error, setError] = useState("");
 
   async function logOut() {
-    await supabase?.auth.signOut();
-    navigate("/");
+    setLoggingOut(true);
+    setError("");
+    // Once the session is gone, the redirect below takes people to the log in page.
+    const result = await supabase?.auth.signOut();
+    if (result?.error) {
+      setLoggingOut(false);
+      setError("Sorry, we couldn't log you out. Please check your internet connection and try again.");
+    }
   }
 
+  // Not logged in: send people to the log in page.
+  if (session === null) return <Navigate to="/login" replace state={loggingOut ? { loggedOut: true } : undefined} />;
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-6 px-6 text-center">
-      {email === undefined ? (
+    <AuthLayout title="Your dashboard">
+      {session === undefined ? (
         <p className="text-xl text-muted">Loading…</p>
-      ) : email === null ? (
-        <>
-          <h1 className="text-4xl font-extrabold">Please log in first</h1>
-          <p className="text-xl text-muted">You need to log in to see your family's dashboard.</p>
-          <ButtonLink to="/login">Go to log in</ButtonLink>
-        </>
       ) : (
-        <>
+        <div className="flex flex-col gap-5">
+          {location.state?.passwordChanged && <Message kind="success">Your new password is saved.</Message>}
+          <div aria-hidden="true" className="grid h-20 w-20 place-items-center rounded-full bg-mint text-4xl">
+            👋
+          </div>
           <h1 className="text-4xl font-extrabold">You're logged in</h1>
           <p className="text-xl text-muted">
-            Welcome, <strong className="text-ink">{email}</strong>. Your family dashboard is coming soon.
+            Welcome, <strong className="break-all text-ink">{session.user.email}</strong>. Your family dashboard is
+            coming soon.
           </p>
-          <button
-            type="button"
-            onClick={logOut}
-            className="inline-flex min-h-14 items-center justify-center rounded-2xl border-[3px] border-brand bg-white px-7 text-lg font-extrabold text-brand transition-colors hover:bg-lilac"
-          >
-            Log out
+          {error && <Message kind="error">{error}</Message>}
+          <button type="button" onClick={logOut} disabled={loggingOut} className={`${outlineButton} mt-2`}>
+            {loggingOut ? "Logging out…" : "Log out"}
           </button>
-        </>
+        </div>
       )}
-    </main>
+    </AuthLayout>
   );
 }
