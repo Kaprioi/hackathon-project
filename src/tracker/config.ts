@@ -55,9 +55,9 @@ export const TILT = {
  * How the firmware moves each motor toward the page's aim, every 20 ms: `ease` of the
  * remaining way (so it glides to a stop and never swings past), never faster than the top
  * speed, and not at all when the aim is within `deadband` (no twitching). Keep these the
- * same as in the firmware (PAN_TOP_SPEED, TILT_TOP_SPEED, MOVE_DEADBAND). The firmware's own
- * PID per motor (its inner loop, which replaces its old CAMERA_EASE step) is tuned to stay
- * within about 1° of this 25%-per-20-ms easing, so the page's guess (servoModel.ts) still fits.
+ * same as in the firmware (PAN_TOP_SPEED, TILT_TOP_SPEED, MOVE_DEADBAND). Whatever the
+ * firmware's inner loop is (its CAMERA_EASE step, or a PID per motor tuned to stay within about
+ * 1° of it), it must stay close to this 25%-per-20-ms easing, so the page's guess (servoModel.ts) still fits.
  *
  * Why no "speed up gently, slow down gently" profile: a motor that carries momentum, in a
  * loop where the camera always sees a moment late, swung back and forth in the tests (the

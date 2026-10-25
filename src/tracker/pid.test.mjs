@@ -61,6 +61,14 @@ test("anti-windup: after a long stretch frozen at a limit, there's nothing store
   assert.equal(pid.update(0, FRAME), 0, "back in range: no leftover push");
 });
 
+test("I: a gap since the last sighting adds up no more than one frame's worth", () => {
+  const pid = new Pid({ ...GAINS, ki: 1.5, iMax: 6 });
+  pid.update(4, FRAME);
+  const before = pid.integral;
+  pid.update(4, 550); // found again after a 550 ms dropout
+  assert.ok(pid.integral - before <= 1.5 * 4 * 0.1 + 1e-9, `I grew ${(pid.integral - before).toFixed(2)}°`);
+});
+
 test("D: on the measured error only, smoothed; no kick on the first frame after a reset or a gap", () => {
   const pid = new Pid({ ...GAINS, kp: 0, kd: 0.1, smoothMs: 0 });
   assert.equal(pid.update(10, FRAME), 0, "first frame: nothing to compare with");

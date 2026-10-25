@@ -52,6 +52,8 @@ export interface PidOptions {
 
 /** After a gap longer than this (ms), the error's speed starts afresh (it can't be measured across a gap). */
 const MAX_GAP_MS = 500;
+/** The I part adds up at most this long (ms) per update, about one camera frame: a gap since the last sighting isn't an error that stayed. */
+const MAX_I_MS = 100;
 
 export class Pid {
   gains: PidGains;
@@ -89,7 +91,7 @@ export class Pid {
 
     // I: add up an error that stays, only when allowed, and never past iMax either way.
     if (!opts.freeze && dt > 0 && Math.abs(error) > (opts.quiet ?? 0)) {
-      this.iTerm += g.ki * error * dt;
+      this.iTerm += g.ki * error * Math.min(dt, MAX_I_MS / 1000);
     }
     this.iTerm = Math.max(-g.iMax, Math.min(g.iMax, this.iTerm));
 
