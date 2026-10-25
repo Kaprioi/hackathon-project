@@ -179,3 +179,98 @@ test("bending down to pick something up, then standing again: no alert", () => {
   assert.deepEqual(run(w, 3000, 2000, () => ({ x: 0.3, y: 0.62, w: 0.4, h: 0.38 })), []);
   assert.deepEqual(run(w, 5000, 5000, () => tall), []);
 });
+
+// ---- Sitting down never raises the alert, and an alert doesn't repeat ----
+
+let seed3 = 11;
+/** -1 to 1, the same every run. */
+const rand3 = () => ((seed3 = (seed3 * 16807) % 2147483647) / 2147483647) * 2 - 1;
+/** The detector's box jumping about: its size by up to ±`size`, its place by up to ±1%. */
+const jitter = (b, size) => ({ x: b.x + 0.01 * rand3(), y: b.y + 0.01 * rand3(), w: b.w * (1 + size * rand3()), h: b.h * (1 + size * rand3()) });
+const between = (a, b, k) => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, w: a.w + (b.w - a.w) * k, h: a.h + (b.h - a.h) * k });
+/** Feeds `ms` of frames going smoothly from box `a` to box `b`. */
+const move = (w, t0, ms, a, b) => run(w, t0, ms, (t) => jitter(between(a, b, (t - t0) / ms), 0.04));
+// Elbows out on a table, legs hidden under it: as flat as the lying line (height/width 0.55).
+const atTable = { x: 0.3, y: 0.4, w: 0.36, h: 0.35 };
+
+test("walking up and sitting straight down at a table (a box as flat as lying): no alert, for minutes", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => jitter(tall, 0.04));
+  assert.deepEqual(move(w, 3000, 1000, tall, atTable), []);
+  assert.deepEqual(run(w, 4000, 120000, () => jitter(atTable, 0.04)), []);
+});
+
+test("eating at a table (the arms make the box wider and narrower all the time): not a seizure", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => jitter(tall, 0.04));
+  move(w, 3000, 1500, tall, atTable);
+  const eating = (t) => jitter({ ...atTable, w: atTable.w * (1 + 0.15 * Math.sin(t / 110)) }, 0.04);
+  assert.deepEqual(run(w, 4500, 120000, eating), []);
+});
+
+test("getting up and sitting back down at the table again and again: never an alert", () => {
+  const w = new EmergencyWatch();
+  for (let i = 0, t = 0; i < 6; i++, t += 20000) {
+    assert.deepEqual(run(w, t, 4000, () => jitter(tall, 0.04)), []);
+    assert.deepEqual(move(w, t + 4000, 1000, tall, atTable), []);
+    assert.deepEqual(run(w, t + 5000, 15000, (s) => jitter({ ...atTable, w: atTable.w * (1 + 0.06 * Math.sin(s / 110)) }, 0.04)), []);
+  }
+});
+
+test("resting the head on the arms at the table (flat, but the head only came half way down): no alert", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => jitter(tall, 0.04));
+  move(w, 3000, 1000, tall, { x: 0.3, y: 0.5, w: 0.38, h: 0.3 });
+  assert.deepEqual(run(w, 4000, 60000, () => jitter({ x: 0.3, y: 0.5, w: 0.38, h: 0.3 }, 0.04)), []);
+});
+
+test("a slow, jumpy detector (4 frames a second, the box jumping ±12%) at a table: no alert", () => {
+  const w = new EmergencyWatch();
+  const slow = (t0, ms, box) => {
+    const alerts = [];
+    for (let t = t0; t < t0 + ms; t += 250) if (w.update(t, box(t), ASPECT)) alerts.push(t);
+    return alerts;
+  };
+  const table = { x: 0.33, y: 0.38, w: 0.3, h: 0.34 }; // right on the lying line
+  slow(0, 3000, () => jitter(tall, 0.12));
+  assert.deepEqual(slow(3000, 1500, (t) => jitter(between(tall, table, (t - 3000) / 1500), 0.12)), []);
+  assert.deepEqual(slow(4500, 120000, () => jitter(table, 0.12)), []);
+});
+
+test("after an alert, sitting up isn't enough to watch again: they must stand up (or 2 minutes pass)", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => standing);
+  assert.equal(run(w, 3000, 4000, () => lying).length, 1, "a real fall");
+  // "I'm OK": they sit up for a while, then lie back down shaking. No second alert.
+  const sittingUp = { x: 0.35, y: 0.5, w: 0.3, h: 0.4 };
+  run(w, 7000, 10000, () => jitter(sittingUp, 0.04));
+  const shake = (t) => ({ ...lying, w: lying.w * (1 + 0.08 * Math.sin((2 * Math.PI * 2.5 * t) / 1000)) });
+  assert.deepEqual(run(w, 17000, 6000, shake), [], "only sat up: still quiet");
+  // 2 minutes after the alert it watches again, even without standing up.
+  run(w, 23000, 110000, () => jitter(sittingUp, 0.04));
+  assert.deepEqual(run(w, 133000, 6000, shake).map((x) => x.a), ["seizure"]);
+});
+
+test("after an alert, standing up for a few seconds watches again", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => standing);
+  assert.equal(run(w, 3000, 4000, () => lying).length, 1);
+  run(w, 7000, 1500, () => standing); // only a moment: not yet
+  run(w, 8500, 1000, () => jitter(atTable, 0.04));
+  run(w, 9500, 4000, () => standing); // up for 4 s
+  assert.deepEqual(run(w, 13500, 5000, () => lying).map((x) => x.a), ["fall"]);
+});
+
+test("a real fall still counts while the stand tilts down to follow them", () => {
+  // The stand tilts down as they go down: in the picture the box slides back up by 0.3 of the
+  // picture. Told the camera's tilt, the watch still sees how far they dropped.
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => tall);
+  const alerts = [];
+  for (let t = 3000; t < 10000; t += FRAME) {
+    const shift = Math.min(1, (t - 3000) / 800) * 0.3;
+    const a = w.update(t, { x: 0.25, y: 0.62 - shift, w: 0.5, h: 0.2 }, ASPECT, shift);
+    if (a) alerts.push(a);
+  }
+  assert.deepEqual(alerts, ["fall"]);
+});
