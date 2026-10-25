@@ -136,3 +136,43 @@ test("lying but moving across the floor (more than half its size in a few second
   const across = (t) => ({ ...lying, w: 0.4 * (1 + 0.1 * Math.sin(t / 80)), x: 0.05 + (t / 4000) * 0.5 });
   assert.ok(!run(w, 0, 4000, across).some((x) => x.a === "seizure"));
 });
+
+// The phone rides on the stand, so when the motor turns the picture slides and the edges of
+// the picture can cut the person off (the 15-degree tilt can't always keep a nearby person's
+// legs or head in view). The detector then only sees the part that's still in the picture.
+const FOV_H = 65;
+const FOV_V = 40;
+/** The person's whole box at level, as seen with the stand turned by pan/tilt degrees (cut to the picture). */
+function throughStand(body, pan, tilt) {
+  const x0 = Math.max(0, body.x - pan / FOV_H);
+  const y0 = Math.max(0, body.y + tilt / FOV_V);
+  const x1 = Math.min(1, body.x + body.w - pan / FOV_H);
+  const y1 = Math.min(1, body.y + body.h + tilt / FOV_V);
+  return x1 - x0 < 0.03 || y1 - y0 < 0.03 ? null : { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+const wave = (t, hz) => Math.sin((2 * Math.PI * hz * t) / 1000);
+
+test("sitting close at a table while the stand tilts up and down (legs cut off by the picture): no alert", () => {
+  const seated = { x: 0.3, y: 0.3, w: 0.4, h: 1.0 }; // legs reach below the picture
+  const box = (t) => throughStand({ ...seated, w: seated.w * (1 + 0.04 * rand2()) }, 0, 15 * wave(t, 0.5));
+  assert.deepEqual(run(new EmergencyWatch(), 0, 20000, box), []);
+});
+
+test("walking up and sitting down near the camera, the stand tilting down to follow: no alert", () => {
+  const box = (t) =>
+    t < 4000
+      ? throughStand({ x: 0.4, y: 0.1, w: 0.2, h: 0.85 }, 0, 0)
+      : throughStand({ x: 0.25, y: 0.45, w: 0.5, h: 0.9 }, 3 * wave(t, 0.3), 12 + 3 * wave(t, 0.7));
+  assert.deepEqual(run(new EmergencyWatch(), 0, 20000, box), []);
+});
+
+test("walking about while the stand pans to follow: no alert", () => {
+  const box = (t) => throughStand({ x: 0.43 + 0.05 * wave(t, 0.3), y: 0.15, w: 0.14 * (1 + 0.15 * wave(t, 1.8)), h: 0.7 }, 6 * wave(t, 0.3), 0);
+  assert.deepEqual(run(new EmergencyWatch(), 0, 20000, box), []);
+});
+
+test("a real fall while the stand tilts down to follow them: still a fall", () => {
+  const box = (t) =>
+    t < 3000 ? throughStand({ x: 0.43, y: 0.15, w: 0.14, h: 0.7 }, 0, 0) : throughStand({ x: 0.3, y: 0.62, w: 0.45, h: 0.16 }, 4, -8);
+  assert.deepEqual(run(new EmergencyWatch(), 0, 8000, box).map((x) => x.a), ["fall"]);
+});
