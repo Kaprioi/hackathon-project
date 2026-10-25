@@ -201,11 +201,14 @@ export function AlertSettingsPanel({
   settings,
   onChange,
   children,
+  plain = false,
 }: {
   settings: AlertSettings;
   onChange: (settings: AlertSettings) => void;
   /** More settings, shown after quiet hours. */
   children?: React.ReactNode;
+  /** Inside the family page's Settings section: a plain heading instead of its own fold. */
+  plain?: boolean;
 }) {
   const id = useId();
   const { t } = useLanguage();
@@ -214,15 +217,20 @@ export function AlertSettingsPanel({
   const row = "flex min-h-12 cursor-pointer items-center gap-4 text-xl font-bold";
   const timeInput =
     "min-h-14 rounded-2xl border-[3px] border-muted bg-surface px-4 text-xl text-ink hover:border-brand focus:border-brand disabled:opacity-60";
+  const Wrapper = plain ? "div" : "details";
 
   return (
-    <details className="group rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
-      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 text-2xl font-extrabold">
-        {t("Alert settings")}
-        <span aria-hidden="true" className="text-brand transition-transform group-open:rotate-180">
-          ▾
-        </span>
-      </summary>
+    <Wrapper className={plain ? "" : "group rounded-[32px] bg-surface p-6 shadow-soft sm:p-8"}>
+      {plain ? (
+        <h3 className="text-2xl font-extrabold">{t("Alert settings")}</h3>
+      ) : (
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 text-2xl font-extrabold">
+          {t("Alert settings")}
+          <span aria-hidden="true" className="text-brand transition-transform group-open:rotate-180">
+            ▾
+          </span>
+        </summary>
+      )}
       <p className="mt-2 text-lg text-muted">
         {t("Choose which news stands out in Recent news. Saved on this device only.")}
       </p>
@@ -298,7 +306,7 @@ export function AlertSettingsPanel({
       </fieldset>
       {children}
       <p className="mt-6 text-lg text-muted">{t("Alerts by phone message or email are coming later.")}</p>
-    </details>
+    </Wrapper>
   );
 }
 
