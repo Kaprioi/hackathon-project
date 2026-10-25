@@ -622,6 +622,35 @@ test(`looking away from you for more than ${TILT.holdMs / 1000} s (a big dead zo
   assertPanUnchanged(withHold, without, "big dead zone");
 });
 
+test("you leave during the cooldown: the tilt eases back to level, it doesn't jump", () => {
+  // A big dead zone leaves the stand looking below you; after the hold it eases back to you...
+  const you = (() => {
+    const straight = fixedCamera(HIGHER);
+    straight.show(HIGHER, 200);
+    return straight.outs.at(-1).aim.tilt;
+  })();
+  const sim = fixedCamera(UP_A_LITTLE, { deadZoneDeg: 8 });
+  sim.show(UP_A_LITTLE, 1000);
+  sim.glide(UP_A_LITTLE, HIGHER, 300);
+  while (sim.outs.at(-1).aim.tilt !== you) {
+    sim.show(HIGHER, FRAME_MS);
+    assert.ok(sim.outs.length < 200, "never eased back to you");
+  }
+  // ...and right then, at the start of the cooldown, you leave.
+  const backT = sim.outs.at(-1).t;
+  sim.show(null, 3000);
+  const after = sim.outs.filter((o) => o.t > backT);
+  const goneAt = after.find((o) => o.mode !== "tracking")?.t;
+  assert.ok(goneAt && goneAt - backT < TILT.cooldownMs, `noticed you're gone during the cooldown (${goneAt && goneAt - backT} ms)`);
+  let prev = you;
+  for (const o of after) {
+    const tilt = o.aim?.tilt ?? TILT.level;
+    assert.ok(Math.abs(tilt - prev) <= (TILT.returnSpeed * FRAME_MS) / 1000 + TILT.levelBand + 0.01, `jumped ${prev} -> ${tilt} at ${o.t - backT} ms (${o.mode})`);
+    prev = tilt;
+  }
+  assert.equal(after.at(-1).aim?.tilt ?? TILT.level, TILT.level, "ends level");
+});
+
 test("short looks up or down are followed exactly as before (the hold never steps in)", () => {
   const { withHold, without } = withAndWithoutHold(() => {
     const sim = fixedCamera(LEVEL);
@@ -728,10 +757,14 @@ test("tilt hold piece: back to neutral (not level) after holdMs away from it, th
     prev = told;
     assert.ok(t - start < TILT.holdMs + 2000, "took too long to get back");
   }
-  // Plain cooldown: stays on neutral (even as it moves) for cooldownMs, whatever the brain wants.
+  // Plain cooldown: stays on neutral for cooldownMs, whatever the brain wants, easing along
+  // with it when it moves (never jumping, say to level when the person leaves).
   const backAt = t;
-  while (t + FRAME_MS - backAt < TILT.cooldownMs) assert.equal(step(75, 87), 87, `cooldown at ${t - backAt} ms`);
-  assert.equal(step(75, 87), 75, "then follows the brain again");
+  assert.equal(step(75, 87), 87, "follows neutral moving a little");
+  assert.equal(step(75, 90), 87 + (TILT.returnSpeed * FRAME_MS) / 1000, "eases, doesn't jump, when neutral moves a lot");
+  while (step(75, 90) !== 90) assert.ok(t - backAt < TILT.cooldownMs, "should have reached neutral in the cooldown");
+  while (t + FRAME_MS - backAt < TILT.cooldownMs) assert.equal(step(75, 90), 90, `cooldown at ${t - backAt} ms`);
+  assert.equal(step(75, 90), 75, "then follows the brain again");
   assert.equal(hold.holding, false);
   hold.reset();
   assert.equal(step(70, 90), 70, "after reset it follows straight away");

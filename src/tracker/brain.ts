@@ -181,7 +181,8 @@ export function towardTilt(tilt: number, goal: number, ms: number): number {
  * straight at the person it follows, or level when it isn't following someone it can see.
  * Once the stand has been told a tilt more than TILT.levelBand away from neutral for more
  * than TILT.holdMs in a row, it eases back to neutral, then stays at neutral for
- * TILT.cooldownMs so it doesn't bounce straight back. Only the tilt: left and right never change.
+ * TILT.cooldownMs so it doesn't bounce straight back (easing along with it if neutral moves,
+ * say to level when the person leaves). Only the tilt: left and right never change.
  */
 export class TiltHold {
   /** Since when the stand has been told a tilt away from neutral (null = at neutral). */
@@ -209,7 +210,7 @@ export class TiltHold {
       }
     } else if (this.backAt !== null) {
       if (t - this.backAt >= TILT.cooldownMs) this.backAt = null;
-      else out = neutral;
+      else out = towardTilt(told, neutral, ms);
     }
     this.holding = out !== want;
     if (Math.abs(out - neutral) <= TILT.levelBand) this.awaySince = null;
