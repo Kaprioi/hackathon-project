@@ -28,6 +28,7 @@ import { area, centerX, centerY, clamp, contains, iou } from "./geometry.ts";
 import { LumpTracker, toGray } from "./lump.ts";
 import type { RadarEnergy } from "./radarGuide.ts";
 import { ListeningSweep, loudest, louderSide } from "./radarGuide.ts";
+import { TiltCheck } from "./tiltCheck.ts";
 
 export type Mode = "idle" | "tracking" | "hidden" | "following" | "searching" | "radar" | "lost";
 
@@ -108,6 +109,11 @@ export interface BrainOutput {
   faces: (boolean | null)[];
   /** True on the frame a tap locked onto someone (a new target). */
   picked: boolean;
+  /**
+   * True on the frame the brain found the up/down motor turning the wrong way for this
+   * stand (tiltCheck.ts) and flipped `tiltSign`. The page saves the flip in the settings.
+   */
+  flippedTilt: boolean;
 }
 
 /** Where the target is believed to be while out of view. */
@@ -130,6 +136,20 @@ export function whereaboutsText(w: Whereabouts, mirrored: boolean): string {
   if (w.side === 0) return `Out of view - not sure which side${radar}`;
   const left = mirrored ? w.side > 0 : w.side < 0;
   return `Out of view - to your ${left ? "left" : "right"}${radar}`;
+}
+
+/**
+ * How far down the picture to aim (0 = top, 1 = bottom): `aimHeight` of the way down the
+ * person's box (the chest, by default), so the face stays in view. When the top of the box
+ * is close to the top of the picture, their head may be cut off (they stood up, or came
+ * closer): then aim higher, up to the box's very top once it touches the edge, so the
+ * camera tilts up until the head is back in. It changes smoothly with the box, so the
+ * stand doesn't jump or rock up and down when the head comes back into view.
+ * `headroom` 0 turns this off (a webcam beside the stand: tilting can't bring the head in).
+ */
+export function aimPointY(b: Box, aimHeight: number, headroom: number = TUNING.headroom): number {
+  const room = headroom > 0 ? Math.min(1, Math.max(0, b.y) / headroom) : 1;
+  return b.y + b.h * aimHeight * room;
 }
 
 /**
@@ -186,6 +206,11 @@ export class Brain {
   private chainTrusted = true;
   /** Where the target was last seen, as a room direction in servo degrees. */
   private bearing: Angles = { pan: LIMITS.center, tilt: LIMITS.center };
+  /** Does the camera turn with the stand's head (the phone on it)? From the latest frame. */
+  private cameraOnHead = true;
+  /** Checks that the up/down motor turns the right way; `flippedTilt` says it flipped this frame. */
+  private tiltCheck = new TiltCheck();
+  private flippedTilt = false;
   /** How fast the target was moving (degrees per second). */
   private vel: Angles = { pan: 0, tilt: 0 };
   private lastBox: Box | null = null;
@@ -281,10 +306,13 @@ export class Brain {
     this.faceNotes = [];
     this.others = [];
     this.note = "Released. Tap a person to lock on.";
+    this.tiltCheck.reset();
   }
 
   update(frameIn: FrameInput): BrainOutput {
     const strongCount = frameIn.people.length;
+    this.cameraOnHead = !frameIn.head;
+    this.flippedTilt = false;
     // After a long pause (page hidden, phone locked) people may have moved: don't carry notes over.
     if (frameIn.t - this.prevT > TUNING.longGapMs) {
       this.faceNotes = [];
@@ -380,7 +408,8 @@ export class Brain {
     const matches = this.mode === "idle" ? allLooks.map(() => null) : allLooks.map((l) => this.dist(l));
     const faces = this.mode === "idle" ? f.people.map(() => null) : faceOf;
     const aimVel = this.aim && this.aimVel && (this.CAN_PREDICT as readonly Mode[]).includes(this.mode) ? this.aimVel : null;
-    return { mode: this.mode, target, aim: this.aim, aimVel, note: this.note, match, matches, exitSide, whereabouts, faces, picked };
+    const flippedTilt = this.flippedTilt;
+    return { mode: this.mode, target, aim: this.aim, aimVel, note: this.note, match, matches, exitSide, whereabouts, faces, picked, flippedTilt };
   }
 
   /**
@@ -508,6 +537,7 @@ export class Brain {
   /** Locks onto the person under the tap. Returns false (and changes nothing) if nobody is there. */
   private pick(f: FrameInput, looks: (Look | null)[]): boolean {
     const { x, y } = f.tap!;
+    this.tiltCheck.reset();
     let chosen = -1;
     // The smallest box under the finger (so tapping a child in front of an adult picks the child).
     f.people.forEach((p, i) => {
@@ -629,11 +659,24 @@ export class Brain {
   /** Update everything we know after spotting the target (person `i`). */
   private seen(f: FrameInput, i: number, look: Look | null): void {
     const box = f.people[i];
-    const w = this.toWorld(box, f.camera);
     const dt = (f.t - this.lastSeenT) / 1000;
     // Same box moving smoothly from the last frame (not a jump to something else)?
     const smooth = !!this.lastBox && dt < 0.4 && iou(box, this.lastBox) > 0.3;
     if (!smooth) this.chainTrusted = false;
+    // Up/down turning the wrong way for this stand (tilting away from them)? Flip it.
+    // Only when the camera rides on the head: a webcam beside it doesn't tilt.
+    const s = this.settings;
+    const y = aimPointY(box, s.aimHeight);
+    if (this.cameraOnHead && this.mode === "tracking" && this.tiltCheck.update(f.t, f.camera.tilt, y, s.tiltSign, s.fovV, smooth)) {
+      this.settings = { ...s, tiltSign: s.tiltSign === 1 ? -1 : 1 };
+      this.flippedTilt = true;
+    }
+    const w = this.toWorld(box, f.camera);
+    if (this.flippedTilt) {
+      // Up and down meant the opposite until now: start the up/down guesses afresh.
+      this.bearing = { ...this.bearing, tilt: w.tilt };
+      this.vel = { ...this.vel, tilt: 0 };
+    }
     if (dt > 0 && dt < 0.5) {
       const vp = clamp((w.pan - this.bearing.pan) / dt, -TUNING.maxSpeed, TUNING.maxSpeed);
       const vt = clamp((w.tilt - this.bearing.tilt) / dt, -TUNING.maxSpeed, TUNING.maxSpeed);
@@ -675,11 +718,13 @@ export class Brain {
     // hunt back and forth when the real motor is slower than the page thinks.)
     if (Math.hypot(this.vel.pan, this.vel.tilt) > TUNING.stillSpeed) this.aimVel = { ...this.vel };
     const unsure = d !== null && d > this.settings.matchLimit;
-    const note = this.faceKnown.has(i)
-      ? "Tracking you. Recognised your face."
-      : unsure
-        ? "Not sure that's you (the colours don't match). Checking..."
-        : "Tracking you.";
+    const note = this.flippedTilt
+      ? "Up and down was the wrong way round for this stand, so it's flipped now (Settings: Flip up/down)."
+      : this.faceKnown.has(i)
+        ? "Tracking you. Recognised your face."
+        : unsure
+          ? "Not sure that's you (the colours don't match). Checking..."
+          : "Tracking you.";
     this.setMode("tracking", f.t, this.mode === "tracking" ? note : this.note);
   }
 
@@ -1213,7 +1258,7 @@ export class Brain {
   private toWorld(b: Box, camera: Angles): Angles {
     const s = this.settings;
     const ax = b.x + b.w / 2;
-    const ay = b.y + b.h * s.aimHeight;
+    const ay = aimPointY(b, s.aimHeight, this.cameraOnHead ? TUNING.headroom : 0);
     return {
       pan: camera.pan + s.panSign * (ax - 0.5) * s.fovH,
       tilt: camera.tilt + s.tiltSign * (ay - 0.5) * s.fovV,

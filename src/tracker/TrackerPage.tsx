@@ -24,6 +24,7 @@ import {
   ANALYSIS_WIDTH,
   CAMERA_STEERS_IN,
   DEFAULT_SETTINGS,
+  cameraTurnsWithStand,
   DETECT_WIDTH,
   EMERGENCY,
   FACE,
@@ -185,12 +186,6 @@ const TAP_RING_CSS = `
  */
 function defaultSettings(): Settings {
   return { ...DEFAULT_SETTINGS, faces: !isIPhone() };
-}
-
-/** True if the camera turns with the stand (the phone on it), false for a computer's webcam beside it. */
-function cameraTurnsWithStand(s: Settings): boolean {
-  if (s.cameraOnStand !== "auto") return s.cameraOnStand === "yes";
-  return window.matchMedia?.("(pointer: coarse)").matches ?? false; // phones and tablets
 }
 
 function loadSettings(): Settings {
@@ -670,7 +665,8 @@ export default function TrackerPage() {
   const [error, setError] = useState("");
   const [settings, setSettings] = useState<Settings>(settingsRef.current);
   const [showSettings, setShowSettings] = useState(false);
-  const [showLog, setShowLog] = useState(() => window.matchMedia?.("(min-width: 1024px)").matches ?? false);
+  // The page always lays itself out for the iPhone on the stand, so the log starts folded away.
+  const [showLog, setShowLog] = useState(false);
   const [standStatus, setStandStatus] = useState<StandStatus>(standRef.current.status);
   const [radar, setRadar] = useState<boolean | null>(null);
   const [radarEnergy, setRadarEnergy] = useState<RadarEnergy | null>(null);
@@ -1308,6 +1304,9 @@ export default function TrackerPage() {
         faces: s.faces ? faceWatcher.takeVerdicts() : [],
       });
 
+      // The up/down motor turned the wrong way for this stand, so the brain flipped it: keep that.
+      if (out.flippedTilt) updateSettings({ tiltSign: s.tiltSign === 1 ? -1 : 1 });
+
       // A tap that picked someone new: forget the old target's face. (A tap on nobody keeps it.)
       if (out.picked) {
         faceWatcher.forget();
@@ -1383,7 +1382,7 @@ export default function TrackerPage() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [running, report, loadFaces, faceWatcher, raiseAlarm]);
+  }, [running, report, loadFaces, faceWatcher, raiseAlarm, updateSettings]);
 
   // Tapping a person. Only a quick, still touch counts: a thumb resting on the edge
   // while you hold the phone, a drag, or a pinch is ignored.
@@ -1849,17 +1848,16 @@ function SettingsPanel(props: {
             <Choice
               label="Camera turns with the stand"
               options={[
-                ["auto", "Auto"],
                 ["yes", "Yes"],
                 ["no", "No"],
               ]}
-              value={s.cameraOnStand}
+              value={cameraTurnsWithStand(s) ? "yes" : "no"}
               onChange={(cameraOnStand) => update({ cameraOnStand })}
             />
             <p className="text-base text-white/90">
-              Yes when this phone sits on the stand. No when testing with a computer's webcam next to the stand: then
-              the motor still turns toward you, but the page doesn't think the picture turned with it. Auto picks yes on
-              phones, no on computers. Now: {cameraTurnsWithStand(s) ? "yes" : "no"}.
+              Yes (the usual) when this phone sits on the stand: the camera turns left, right, up and down with the
+              motor. No only when testing with a computer's webcam next to the stand: then the motor still turns toward
+              you, but the page doesn't think the picture turned with it.
             </p>
           </fieldset>
 

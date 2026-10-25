@@ -75,9 +75,10 @@ export interface Settings {
   /** Watch the tracked person for a fall or seizure and raise the emergency alert (emergency.ts). */
   emergency: boolean;
   /**
-   * Does the camera turn with the stand? Yes for the phone on the stand. No for a laptop's
-   * webcam beside the stand (testing on a PC): then the page must not think the picture
-   * turns when the motor does. "auto" = yes on phones and tablets, no on computers.
+   * Does the camera turn with the stand? Yes for the phone on the stand (the default on
+   * every device: the page always assumes it runs on the iPhone on the stand). No for a
+   * laptop's webcam beside the stand (testing on a PC): then the page must not think the
+   * picture turns when the motor does. "auto" is from older saved settings and counts as yes.
    */
   cameraOnStand: "auto" | "yes" | "no";
 }
@@ -94,8 +95,13 @@ export const DEFAULT_SETTINGS: Settings = {
   turn: "auto",
   faces: true, // the page starts with false on iPhones (see TrackerPage loadSettings)
   emergency: true,
-  cameraOnStand: "auto",
+  cameraOnStand: "yes",
 };
+
+/** True if the camera turns with the stand (the phone on it), false for a computer's webcam beside it. */
+export function cameraTurnsWithStand(s: Pick<Settings, "cameraOnStand">): boolean {
+  return s.cameraOnStand !== "no";
+}
 
 /** Timing and behaviour of the tracking brain. */
 export const TUNING = {
@@ -103,6 +109,11 @@ export const TUNING = {
   coastMs: 600,
   /** A box this close to the left or right edge (fraction of the frame) counts as "at the edge". */
   edgeMargin: 0.1,
+  /**
+   * Up and down: a box whose top is closer than this to the top of the picture (fraction of
+   * the picture's height) may have the head cut off, so the aim moves up toward the box's top (brain.ts aimPointY).
+   */
+  headroom: 0.1,
   /** Hidden and the radar reads empty for this long: give up and switch to Lost. */
   lostAfterMs: 4000,
   /** Hidden with no radar connected (testing on a PC): give up after this long. */

@@ -28,6 +28,8 @@ Finds people with the phone's camera, follows the one you tap, and drives the st
 | `radar.test.mjs` | Tests for the radar-guided search: a simulated room with a fake radar (walk out left, double back, someone else, radar quiet, Bluetooth drop, a laptop webcam beside the stand). |
 | `stand.test.mjs` | Tests how often aims are sent to the stand, with a fake Bluetooth stand and a fake clock. |
 | `motion.test.mjs` | Tests how smoothly and quickly the stand follows someone walking, stopping and standing still, including with a motor slower than the page thinks. |
+| `tiltCheck.ts` | Notices when the up/down motor tilts the wrong way for this stand (away from you instead of toward you), so the brain can flip up/down by itself. |
+| `tilt.test.mjs` | Tests following up and down with the iPhone on the stand: standing up, sitting or crouching, coming closer, head kept in the picture, no rocking, and the automatic up/down flip. |
 
 Each frame: camera → copy 640 on its long side → `detector.ts` → `brain.ts` (with a copy 320 on its long side for colours and the cover tracker) → `stand.ts`, and `detector.ts` → `events.ts` → `cloud.ts` for the family page. With the phone upright, the page swaps the camera's width and height angles before calling `brain.ts`.
 
@@ -43,7 +45,7 @@ When you walk out of the camera's view, the phone turns the stand to look for yo
 4. **It keeps looking while the radar hears someone**, a few times at most (`RADAR.rounds`), so a dog or a fan can't keep it searching forever. Then LOST.
 5. **The radar is quiet:** nobody's in the room, so it behaves as it always did: turn the way you went, sweep once, then LOST. If the radar was quiet for a while and then hears someone again, it turns to see who it is.
 6. **Only one boss.** While the page is connected over Bluetooth, the stand only moves when the page says so, and holds still otherwise (before you tap someone, or in LOST). Only when Bluetooth drops (page closed, phone out of range) does the stand's own radar steering take over (`hardware/firmware/sightline/sightline.ino`).
-7. **Testing with a laptop's webcam** next to the stand: set "Camera turns with the stand" to No (Auto does this on computers). Then the motor turns toward you, and when you step out of the webcam's view it points where the radar hears you and stays there, without sweeping the room (the webcam can't see where the motor points).
+7. **Testing with a laptop's webcam** next to the stand: set "Camera turns with the stand" to No (it's Yes by default on every device, because the page assumes it's the iPhone on the stand). Then the motor turns toward you, and when you step out of the webcam's view it points where the radar hears you and stays there, without sweeping the room (the webcam can't see where the motor points).
 
 Settings are in `RADAR` in `config.ts`. The switch for one or two radars is `RADAR.count`, but a stand running the SightLine firmware in this repo says how many it has, and that wins. Set the firmware's `RADAR_COUNT` to match the head.
 
@@ -71,4 +73,6 @@ Settings are in `RADAR` in `config.ts`. The switch for one or two radars is `RAD
 **Why both matter:** the camera is precise and knows who, but only sees about 65° of the room and nothing in the dark. The radar hears the whole room, through covers, but can't tell people (or a dog) apart. Together, the radar says where to look and the camera says who it is.
 
 **How the motor moves:** every 20 ms the firmware moves each motor a quarter of the remaining way to the page's aim, at most 280°/s left-right and 200°/s up-down, and ignores aims within 0.3° (no twitching). It never swings past the aim. A "speed up, slow down" motor with momentum was tried and made the stand hunt back and forth (the camera always sees a moment late), so `motion.test.mjs` checks for that.
+
+**Up and down** work the same way as left and right: the page aims the tilt motor at your chest (Aim height), so your face stays in the picture. If the top of your box touches the top of the picture (your head may be cut off, say after standing up or coming closer), it aims higher, up to the top of the box, until your head is back in. If the tilt motor is mounted the other way round, the stand tilts away from you; the page notices within about a second, flips "Flip up/down" in Settings by itself and says so in the log. `tilt.test.mjs` checks all of this.
 
