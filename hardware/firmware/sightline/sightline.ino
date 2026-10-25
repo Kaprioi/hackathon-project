@@ -130,30 +130,35 @@ const uint32_t CAMERA_HOLD_MS = 700;     // the website's aims count as "person 
 //     that tick but remembers its I part and speed, so while someone walks it carries
 //     on smoothly next tick. After PID_HOLD_TICKS of holding still it forgets them.
 // The motors can't report where they are, so "where the motor is" is where this board
-// last told it to be. The website's copy of the motion (MOTION in src/tracker/config.ts)
-// assumes 25% of the remaining way per 20 ms: pan's KP 12.5 x 0.02 s is exactly that, so
-// with I and D small its guess stays close (tilt stays a little behind it, see TILT_KP). The exception is the first ~0.1 s of a big jump:
-// the gentle speed-up keeps the motor a few degrees behind the guess until it gets going.
+// last told it to be. The website guesses where the camera points with the old easing
+// (MOTION in src/tracker/config.ts: 25% of the remaining way per 20 ms). The gains below
+// are picked so this board stays close to that guess (see "PID gains").
 const uint32_t CAMERA_TICK_MS = 20;
 const float PAN_TOP_SPEED = 280;         // degrees/second (HS-422: about 285 unloaded; was 240)
 const float TILT_TOP_SPEED = 200;        // tilt lifts the phone: a little gentler
 const float MOVE_DEADBAND = 0.3;         // degrees
 // PID gains: speed (degrees/second) = KP x distance left + I - KD x speed it's already moving at.
 //   KP (per second): how hard it heads for the aim. 12.5 = 25% of the way per 20 ms.
-//   KI (per second, squared): slowly adds speed while the motor keeps lagging a moving aim
-//      (someone walking), so it catches up instead of always trailing. Only works within
-//      PID_I_ZONE of the aim, and never adds more than PID_I_MAX (anti-windup).
+//   KI (per second, squared): slowly adds speed while the motor keeps lagging a moving aim.
+//      Only works within PID_I_ZONE of the aim, and never adds more than PID_I_MAX (anti-windup).
 //   KD (no unit): takes off this fraction of the speed it is already moving at, which
 //      smooths out jumpy aims. It looks at the motor's own movement, not at the aim, so a
 //      sudden new aim doesn't cause a kick.
-// Tilt carries the phone's weight, and is on purpose a little softer than the old easing
-// (25% of the way per 20 ms), so the website's up/down check never sees the motor ahead
-// of its guess: a lower KP (11 x 0.02 s = 22% of the way per tick), a much softer I,
-// more D, and it speeds up and slows down more gently.
-const float PAN_KP = 12.5, PAN_KI = 20, PAN_KD = 0.05;
-const float TILT_KP = 11, TILT_KI = 4, TILT_KD = 0.15;
-const float PAN_ACCEL = 3000;            // degrees/second, per second (full speed in about 0.1 s)
-const float TILT_ACCEL = 1200;           // gentler: about 0.17 s to full speed with the phone on it
+// These numbers come from the simulation/tuning runs of the whole phone + stand loop
+// (2240 runs). The website guesses where the camera points with the old 25%-per-20-ms
+// easing; with these gains the board stays within about 1 degree (pan) of that guess, so
+// the website doesn't over-correct and the stand doesn't swing back and forth.
+// The I part is 0 on purpose: the motors have no position sensor, so this board's error
+// is only the aim minus its own last command. An I part can't see the motor sagging and
+// would only add lag; the website's outer loop fixes sagging through the camera instead.
+// KI stays here (with its I zone and cap) so it can be turned on later.
+// Tilt carries the phone's weight: it keeps a little D (0.1) and speeds up more gently.
+// It is never ahead of the old easing (0.000 deg in the first 100 ms, at most 0.04 deg at
+// the very end) and doesn't swing past.
+const float PAN_KP = 12.5, PAN_KI = 0, PAN_KD = 0;
+const float TILT_KP = 12.5, TILT_KI = 0, TILT_KD = 0.1;
+const float PAN_ACCEL = 12000;           // degrees/second, per second (full speed in about 0.02 s)
+const float TILT_ACCEL = 3000;           // gentler with the phone on it: about 0.07 s to full speed
 const float PID_I_ZONE = 12;             // degrees: the I part only works this close to the aim
 const float PID_I_MAX = 60;              // degrees/second: the most speed the I part can add
 const float PID_RESET_JUMP = PID_I_ZONE; // degrees: an aim jumping further than this in one tick clears the I part
