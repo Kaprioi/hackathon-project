@@ -461,7 +461,7 @@ for (const webcam of [null, "fixed"]) {
   });
 }
 
-test("turning to look at someone: quick (25% a tick, at most 280°/s), and it glides in without passing the target", () => {
+test("turning to look at someone: steady (12% a tick, at most 120°/s), and it glides in without passing the target", () => {
   // The page's copy of the firmware's motor steering.
   const motor = new ServoModel();
   motor.step(0);
@@ -475,7 +475,8 @@ test("turning to look at someone: quick (25% a tick, at most 280°/s), and it gl
     assert.ok(motor.current.pan - last <= (MOTION.panSpeed * 20) / 1000 + 1e-9, `never faster than ${MOTION.panSpeed}°/s`);
     last = motor.current.pan;
   }
-  assert.ok(t <= 340, `a 60° turn should take about a third of a second, took ${t} ms (was 460)`);
+  // Calmer since the phone on its tall arm shook the head (config.ts MOTION): was 340 ms at 25% and 280°/s.
+  assert.ok(t <= 720, `a 60° turn should take about 0.7 s, took ${t} ms`);
 });
 
 // ---------- with Dennis's "keep the person when they turn around" ----------

@@ -97,8 +97,10 @@ test("walking across the room: the stand keeps you near the middle, with little 
   const walking = s.log.filter((l) => l.t > from + 600); // once it has caught up
   assert.ok(walking.every((l) => l.mode === "tracking"));
   const lag = walking.reduce((a, l) => a + Math.abs(l.pan - l.you), 0) / walking.length;
-  // Before these changes it lagged about 4.5° behind (camera aims only 15 times a second, no lead).
-  assert.ok(lag < 3, `on average ${lag.toFixed(1)}° behind you`);
+  // Once it lagged about 4.5° behind (camera aims only 15 times a second, no lead), then under
+  // 3° with a 25%, 280°/s motor. The pan motor is calmer now (it shook the phone on its tall
+  // arm, config.ts MOTION), so it trails a brisk walk by about 6°: still well inside the picture.
+  assert.ok(lag < 7, `on average ${lag.toFixed(1)}° behind you`);
 });
 
 test("you stop: it glides back onto you once, without swinging back and forth, then holds still", () => {
@@ -262,7 +264,8 @@ test("a phone's real delays (the AI, then Bluetooth): the stand follows you with
   const now = follow(true);
   assert.ok(now.swings <= 4, `swung back and forth ${now.swings} times after you stopped (was ${before.swings})`);
   assert.ok(now.off < 2.5, `on average ${now.off.toFixed(1)}° off you after you stopped`);
-  assert.ok(before.swings >= 3 * Math.max(1, now.swings), `the old guess swung ${before.swings} times, the new one ${now.swings}`);
+  // (With the old 25%, 280°/s motor the old guess swung at least 3x as often as the new one. With
+  // the calmer motor and the steadier aim both settle, so that comparison no longer applies.)
 });
 
 test("where the camera points is known between camera frames, not just at them", () => {
@@ -361,4 +364,36 @@ test("standing still while the box jumps about a little: the stand holds still, 
   const spread = Math.max(...log.map((l) => l.pan)) - Math.min(...log.map((l) => l.pan));
   assert.ok(backAndForths(log) <= 6, `twitched back and forth ${backAndForths(log)} times in 8 s (was over 20)`);
   assert.ok(spread < 3, `wandered over ${spread.toFixed(1)}°`);
+});
+
+test("standing still while the box jumps about a lot (close up, arms moving): the stand holds still", () => {
+  // Someone close to the camera gets a box that jumps by 5% of the picture from frame to frame.
+  // That gave them a jumpy speed, the page took them for walking, aimed at every jump and the
+  // stand hunted from side to side (Oct 25: "it keeps moving itself" while standing still).
+  for (const you of [90, 112]) {
+    const log = phoneStand(you, 0.05, 12000).filter((l) => l.t > 3000);
+    const spread = Math.max(...log.map((l) => l.pan)) - Math.min(...log.map((l) => l.pan));
+    assert.ok(backAndForths(log) <= 3, `at ${you}°: turned back and forth ${backAndForths(log)} times in 9 s (was over 20)`);
+    assert.ok(spread < 4, `at ${you}°: wandered over ${spread.toFixed(1)}°`);
+  }
+});
+
+test("up/down stuck at its limit (a dead tilt motor, or someone below its range): left/right still holds still", () => {
+  // The tilt motor on the stand doesn't turn, so the picture never moves up or down while the
+  // page's guess of the tilt does: the up/down aim runs to the end of its range and stays there.
+  // Both axes used to move whenever either was past the dead zone, so the stuck tilt switched
+  // the left/right dead zone off: the pan followed every little jump of the box.
+  const brain = new Brain({ ...DEFAULT_SETTINGS });
+  let seed = 9;
+  const jump = () => (((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1) * 0.03 * FOV;
+  let told = null;
+  let panMoves = 0;
+  for (let t = 0; t < 12000; t += 110) {
+    const camera = { pan: 90, tilt: told ? told.tilt : 90 }; // the guess tilts; the picture doesn't
+    const { image, people } = frame(90 + jump(), 90);
+    const out = brain.update({ t, people, image, camera, radar: null, tap: t === 0 ? { x: 0.5, y: 0.5 } : null });
+    if (out.aim && told && out.aim.pan !== told.pan) panMoves++;
+    if (out.aim) told = out.aim;
+  }
+  assert.ok(panMoves <= 8, `left/right moved ${panMoves} times in 12 s while you stood still (was over 100)`);
 });

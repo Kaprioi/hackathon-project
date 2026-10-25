@@ -873,19 +873,25 @@ export class Brain {
     // left/right aims at where they've been on average lately instead: the detector's box
     // jumps a little every frame, and chasing each jump made the stand twitch back and forth.
     // (Up/down has its own steadying, tiltHold, and its wrong-way check needs the plain aim.)
-    const walking = Math.hypot(this.vel.pan, this.vel.tilt) > TUNING.stillSpeed;
+    // Left/right only counts as walking when they're moving AND their average spot has left the
+    // dead zone around the aim. A box jumping about (close up, arms moving), or the page's guess
+    // of the tilt moving while the picture doesn't (a tilt motor that doesn't turn), gives
+    // someone standing still a speed, but their average stays put: without this check the pan
+    // aimed at every jump of the box and the stand hunted from side to side.
+    const moving = Math.hypot(this.vel.pan, this.vel.tilt) > TUNING.stillSpeed;
+    const average = this.recent.reduce((a, r) => a + r.w.pan, 0) / this.recent.length;
+    const walking = moving && (!this.aim || Math.abs(average - this.aim.pan) > this.settings.deadZoneDeg);
     const lead: Angles = {
-      pan: walking ? w.pan + (this.vel.pan * TUNING.leadMs) / 1000 : this.recent.reduce((a, r) => a + r.w.pan, 0) / this.recent.length,
+      pan: walking ? w.pan + (this.vel.pan * TUNING.leadMs) / 1000 : average,
       tilt: w.tilt + (this.vel.tilt * TUNING.leadMs) / 1000,
     };
-    const dz = this.settings.deadZoneDeg;
-    if (!this.aim || Math.abs(lead.pan - this.aim.pan) > dz || Math.abs(lead.tilt - this.aim.tilt) > dz) {
-      this.aim = this.clampAim(lead);
-    }
-    // Walking: the page moves the aim on smoothly between camera frames. (Following every
-    // small move each frame, or trusting a sudden change of speed at once, made the stand
-    // hunt back and forth when the real motor is slower than the page thinks.)
-    if (walking) this.aimVel = { ...this.vel };
+    // Walking, left/right follows them every frame: the page moves the aim on from it between
+    // frames, so an aim left behind by the dead zone made the stand step back at each frame.
+    this.aimToward(lead, walking);
+    // Moving: the page moves the aim on smoothly between camera frames (left/right only when
+    // walking). (Following every small move each frame, or trusting a sudden change of speed at
+    // once, made the stand hunt back and forth when the real motor is slower than the page thinks.)
+    if (moving) this.aimVel = { pan: walking ? this.vel.pan : 0, tilt: this.vel.tilt };
     const unsure = d !== null && d > this.settings.matchLimit;
     const note = this.flippedTilt
       ? this.flipNote
@@ -1001,10 +1007,7 @@ export class Brain {
           this.coverEverSeen = true;
           const w = this.toWorld(r.box, f.camera);
           this.bearing = w;
-          const dz = this.settings.deadZoneDeg;
-          if (!this.aim || Math.abs(w.pan - this.aim.pan) > dz || Math.abs(w.tilt - this.aim.tilt) > dz) {
-            this.aim = this.clampAim(w);
-          }
+          this.aimToward(w);
         }
       }
     }
@@ -1468,6 +1471,29 @@ export class Brain {
       pan: clamp(a.pan, LIMITS.panMin, LIMITS.panMax),
       tilt: limitTilt(a.tilt),
     };
+  }
+
+  /**
+   * Moves the aim to `want` (kept within the stand's limits), left/right and up/down each on
+   * its own: an axis only moves when `want` is more than the dead zone away on that axis
+   * (`panAlways`: left/right always moves, for someone walking).
+   *
+   * Both axes used to move together whenever either was past the dead zone. Someone lower
+   * than the tilt can look (or a tilt motor that doesn't turn, so the page's guess keeps
+   * tilting further) left the tilt "past the dead zone" on every frame, stuck at its limit,
+   * which switched the left/right dead zone off: the stand turned at every little jump of the
+   * detector's box while the person stood still.
+   */
+  private aimToward(want: Angles, panAlways = false): void {
+    const a = this.clampAim(want);
+    if (!this.aim) {
+      this.aim = a;
+      return;
+    }
+    const dz = this.settings.deadZoneDeg;
+    const pan = panAlways || Math.abs(want.pan - this.aim.pan) > dz ? a.pan : this.aim.pan;
+    const tilt = Math.abs(want.tilt - this.aim.tilt) > dz ? a.tilt : this.aim.tilt;
+    if (pan !== this.aim.pan || tilt !== this.aim.tilt) this.aim = { pan, tilt };
   }
 
   private setMode(m: Mode, t: number, note: string): void {
