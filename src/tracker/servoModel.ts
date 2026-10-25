@@ -95,8 +95,20 @@ export class ServoModel {
     this.advance(t);
   }
 
+  /**
+   * Moves the guess on to time `t` in the firmware's own 20 ms steps, noting each one. The page
+   * only calls step() once per AI frame (about every 100 ms on a phone); one note per call made
+   * at() answer with where the camera was up to a whole frame earlier, 10-20 degrees off while
+   * the stand turns. The page then thought the person had moved, aimed ahead of them, overshot,
+   * and wobbled back and forth before settling.
+   */
   private advance(t: number): void {
     if (this.lastT < 0) this.lastT = t;
+    while (t - this.lastT > SERVO_TICK_MS) this.advanceBy(this.lastT + SERVO_TICK_MS);
+    this.advanceBy(t);
+  }
+
+  private advanceBy(t: number): void {
     const dt = t - this.lastT;
     if (dt <= 0) return;
     const keep = Math.pow(1 - MOTION.ease, dt / SERVO_TICK_MS);
@@ -113,10 +125,15 @@ export class ServoModel {
     while (this.history.length > 2 && this.history[0].t < t - 1000) this.history.shift();
   }
 
-  /** Where the camera was pointing at time `t` (within the last second). */
+  /** Where the camera was pointing at time `t` (within the last second), between the notes on either side. */
   at(t: number): Angles {
-    for (let i = this.history.length - 1; i >= 0; i--) {
-      if (this.history[i].t <= t) return { pan: this.history[i].pan, tilt: this.history[i].tilt };
+    const h = this.history;
+    for (let i = h.length - 1; i >= 0; i--) {
+      if (h[i].t > t) continue;
+      const next = h[i + 1];
+      if (!next || next.t === h[i].t) return { pan: h[i].pan, tilt: h[i].tilt };
+      const k = (t - h[i].t) / (next.t - h[i].t);
+      return { pan: h[i].pan + (next.pan - h[i].pan) * k, tilt: h[i].tilt + (next.tilt - h[i].tilt) * k };
     }
     const first = this.history[0];
     return first ? { pan: first.pan, tilt: first.tilt } : { ...this.now };
