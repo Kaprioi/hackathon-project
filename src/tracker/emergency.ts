@@ -25,6 +25,8 @@ export class EmergencyWatch {
   private upSince: number | null = null;
   private armed = true;
   private trail: { t: number; v: number[] }[] = [];
+  private lastAim: { pan: number; tilt: number } | null = null;
+  private lastTurn = -Infinity;
   /** What the tracked person seems to be doing, for the screen (null when not seen). */
   posture: "standing" | "sitting" | "lying" | null = null;
 
@@ -40,8 +42,14 @@ export class EmergencyWatch {
   /**
    * Once per frame, with the tracked person's box (null while they're not seen). Returns
    * "fall" or "seizure" once when it happens, then nothing until they've been up again.
+   * `aim` = where the camera points (degrees), if it rides on the stand or is turned by hand.
    */
-  update(t: number, box: Box | null, aspect: number): EmergencyKind | null {
+  update(t: number, box: Box | null, aspect: number, aim?: { pan: number; tilt: number }): EmergencyKind | null {
+    if (aim) {
+      const last = this.lastAim;
+      if (last && Math.abs(aim.pan - last.pan) + Math.abs(aim.tilt - last.tilt) > EMERGENCY.turnDeg) this.lastTurn = t;
+      this.lastAim = aim;
+    }
     if (!box) {
       this.posture = null;
       this.trail = []; // shaking needs an unbroken view; lying time keeps counting
@@ -51,12 +59,18 @@ export class EmergencyWatch {
     // Cut off at the top or bottom only makes a box look shorter, so a tall one is standing for sure.
     if (u >= EMERGENCY.standing) this.lastStanding = t;
     const cut = cutOff(box);
-    // Lying is only judged on a whole box of normal size. Cut off at the top or bottom, or right
-    // up close, the box looks short and wide whatever the person is doing; someone on the floor
-    // is never cut off at the top or this big. Such frames count as "not seen properly": the
-    // lying time and the rest keep going, but nothing new starts.
-    if (cut.top || cut.bottom || box.w * box.h > EMERGENCY.maxLyingArea) {
-      this.posture = u >= EMERGENCY.standing ? "standing" : null;
+    // Lying is only judged on a whole box of normal size. Cut off at the top, or right up close,
+    // the box looks short and wide whatever the person is doing; someone on the floor is never
+    // cut off at the top or this big. Cut off at the bottom it only counts when it's clearly
+    // flat and the camera is holding still: someone who fell close to the stand ends up at the
+    // bottom of the picture, but while the camera turns, the bottom edge cuts anyone short.
+    // Frames that don't count are "not seen properly": the lying time and the rest keep going,
+    // but nothing new starts. A tall box is still standing for sure, so they're up.
+    const turning = t - this.lastTurn < EMERGENCY.stillMs;
+    const flat = u <= 1 / EMERGENCY.cutFlat;
+    const unclear = cut.top || (cut.bottom && (cut.sides || turning || !flat)) || box.w * box.h > EMERGENCY.maxLyingArea;
+    if (unclear && u < EMERGENCY.standing) {
+      this.posture = null;
       this.trail = [];
       return null;
     }
@@ -114,17 +128,12 @@ export class EmergencyWatch {
       let flips = 0;
       let dir = 0; // +1 rising, -1 falling, 0 not started
       let peak = tr[0].v[k];
-      let lo = peak;
-      let hi = peak;
       for (let i = 1; i < tr.length; i++) {
         const x = tr[i].v[k];
         if (dir === 0) {
-          // Not moving yet: start once the size has spanned a full swing (up or down from anywhere
-          // it has been, not only from the first frame, which may be the middle of a shake).
-          lo = Math.min(lo, x);
-          hi = Math.max(hi, x);
-          if (hi - lo >= swing) {
-            dir = x === hi ? 1 : -1;
+          // Not moving yet: start once the size has gone a full swing away from where it began.
+          if (Math.abs(x - peak) >= swing) {
+            dir = Math.sign(x - peak);
             peak = x;
           }
         } else if ((x - peak) * dir > 0) {

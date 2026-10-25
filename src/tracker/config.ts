@@ -415,6 +415,14 @@ export const EMERGENCY = {
   edgeMargin: 0.02,
   /** Someone lying on the floor never takes up this much of the picture; bigger = right up close. */
   maxLyingArea: 0.3,
+  /**
+   * A box cut off at the bottom only counts as lying when it's at least this many times wider
+   * than tall (real pixels), and the camera hasn't turned more than `turnDeg` between two
+   * frames for `stillMs`.
+   */
+  cutFlat: 1.3,
+  turnDeg: 0.3,
+  stillMs: 1000,
   /** After an alert, watch again once the person has been up (not lying) this long. */
   rearmMs: 3000,
   /** "Are you OK?" countdown before the emergency call (seconds). */
