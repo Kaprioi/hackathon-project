@@ -21,6 +21,8 @@ export function cutOff(b: Box): { top: boolean; bottom: boolean; sides: boolean 
 
 export class EmergencyWatch {
   private lastStanding = -Infinity;
+  /** Their box the last time it looked standing, to tell how far the top of it dropped since. */
+  private standBox: Box | null = null;
   private lyingSince: number | null = null;
   private upSince: number | null = null;
   private armed = true;
@@ -31,6 +33,7 @@ export class EmergencyWatch {
   /** Start over (a new person tapped, or the alert switched off and on). */
   reset(): void {
     this.lastStanding = -Infinity;
+    this.standBox = null;
     this.lyingSince = null;
     this.upSince = null;
     this.armed = true;
@@ -49,15 +52,30 @@ export class EmergencyWatch {
     }
     const u = uprightness(box, aspect);
     // Cut off at the top or bottom only makes a box look shorter, so a tall one is standing for sure.
-    if (u >= EMERGENCY.standing) this.lastStanding = t;
+    if (u >= EMERGENCY.standing) {
+      this.lastStanding = t;
+      this.standBox = box;
+    }
     const cut = cutOff(box);
     // Lying is only judged on a whole box of normal size. Cut off at the top or bottom, or right
     // up close, the box looks short and wide whatever the person is doing; someone on the floor
     // is never cut off at the top or this big. Such frames count as "not seen properly": the
     // lying time and the rest keep going, but nothing new starts.
+    // Except after a real drop: a fall usually ends low in the picture, cut off by its bottom edge
+    // (the stand only looks a little down), or close to the camera. So a flat box still counts as
+    // lying when the top of the box (their head) came most of the way down since they last stood,
+    // or when they were already lying. Sitting down close to the camera only drops it about a third.
     if (cut.top || cut.bottom || box.w * box.h > EMERGENCY.maxLyingArea) {
-      this.posture = u >= EMERGENCY.standing ? "standing" : null;
       this.trail = [];
+      const s = this.standBox;
+      const dropped = !!s && (box.y - s.y) / s.h >= EMERGENCY.fallDrop;
+      if (u < EMERGENCY.lying && (dropped || this.lyingSince !== null)) {
+        this.posture = "lying";
+        this.lyingSince ??= t;
+        this.upSince = null;
+        return this.fallen(t);
+      }
+      this.posture = u >= EMERGENCY.standing ? "standing" : null;
       return null;
     }
     this.posture = u >= EMERGENCY.standing ? "standing" : u < EMERGENCY.lying ? "lying" : "sitting";
@@ -86,6 +104,12 @@ export class EmergencyWatch {
       this.armed = false;
       return "seizure";
     }
+    return this.fallen(t);
+  }
+
+  /** A fall: standing a moment before they started lying, and still lying a while later. */
+  private fallen(t: number): EmergencyKind | null {
+    if (!this.armed || this.lyingSince === null) return null;
     const fell = this.lyingSince - this.lastStanding <= EMERGENCY.fallWithinMs;
     if (fell && t - this.lyingSince >= EMERGENCY.lyingMs) {
       this.armed = false;

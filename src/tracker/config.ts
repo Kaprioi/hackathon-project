@@ -409,11 +409,19 @@ export const EMERGENCY = {
    * box isn't the person's real shape or size. Someone right up close (a head and shoulders
    * filling the picture), looking down at the phone, or walking out of view gets a cut-off box
    * that looks short and wide, like someone lying down: those false seizure alarms (Apple's
-   * test, Oct 24) are why lying and shaking are only judged on whole boxes.
+   * test, Oct 24) are why shaking is only judged on whole boxes, and lying too unless their head
+   * clearly dropped (`fallDrop`).
    */
   edgeMargin: 0.02,
   /** Someone lying on the floor never takes up this much of the picture; bigger = right up close. */
   maxLyingArea: 0.3,
+  /**
+   * ...unless the top of the box (their head) dropped by at least this share of their standing
+   * height since they last stood: then a flat box cut off by the edge, or close up, still counts
+   * as lying (a real fall often ends at the bottom of the picture). Sitting down close to the
+   * camera only drops it about a third.
+   */
+  fallDrop: 0.6,
   /** After an alert, watch again once the person has been up (not lying) this long. */
   rearmMs: 3000,
   /** "Are you OK?" countdown before the emergency call (seconds). */
