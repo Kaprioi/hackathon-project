@@ -26,12 +26,13 @@ Finds people with the phone's camera, follows the one you tap, and drives the st
 | `emergency.test.mjs` | Tests for `emergency.ts` with made-up boxes. |
 | `cameraPhone.ts` | Remembers that this phone is watching, so when iOS restarts CareNest on the Home Screen (it opens the family page) it goes back to the camera page instead, with a note to tap Start watching. |
 | `cameraPhone.test.mjs` | Tests for `cameraPhone.ts`. |
-| `savedSettings.ts` | The settings the page starts with: saved ones plus this phone's defaults. Face recognition starts off on iPhones (to save memory), even with older saved settings, until someone switches it in Settings. |
+| `savedSettings.ts` | The settings the page starts with: saved ones plus this phone's defaults. Face recognition starts off on iPhones (to save memory), even with older saved settings, until someone switches it in Settings. Up/down only counts when chosen by hand (Flip up/down): the page's own up/down flips are never saved. |
 | `savedSettings.test.mjs` | Tests for `savedSettings.ts`. |
 | `brain.test.mjs` | Tests with made-up frames, including a simulated room. Run `npm run test:tracker`. |
 | `radar.test.mjs` | Tests for the radar-guided search: a simulated room with a fake radar (walk out left, double back, someone else, radar quiet, Bluetooth drop, a laptop webcam beside the stand). |
 | `stand.test.mjs` | Tests how often aims are sent to the stand, with a fake Bluetooth stand and a fake clock. |
 | `motion.test.mjs` | Tests how smoothly and quickly the stand follows someone walking, stopping and standing still, including with a motor slower than the page thinks. |
+| `tiltFlip.test.mjs` | Tests that the stand never gets stuck looking up or down: the page, brain, a copy of the SightLine firmware's motor loop and a simulated person together, including the stress-test sequences that got stuck before. |
 | `tiltCheck.ts` | Notices when the up/down motor tilts the wrong way for this stand (away from you instead of toward you), so the brain can flip up/down by itself. |
 | `tilt.test.mjs` | Tests following up and down with the iPhone on the stand: standing up, sitting or crouching, coming closer, head kept in the picture, no rocking, the automatic up/down flip, the ±15° limit, going back to level, looking straight at you (not creeping up and staying there), and never looking away from that for more than 4 seconds (left and right unchanged). |
 
@@ -75,6 +76,8 @@ Settings are in `RADAR` in `config.ts`. The switch for one or two radars is `RAD
 | **Bluetooth is gone** | The stand itself, by radar (the firmware's backup steering). |
 
 **Why both matter:** the camera is precise and knows who, but only sees about 65° of the room and nothing in the dark. The radar hears the whole room, through covers, but can't tell people (or a dog) apart. Together, the radar says where to look and the camera says who it is.
+
+**Never stuck looking up or down.** It used to happen ("once it looks up, it stays up"): the page flipped up/down by itself by mistake, then never flipped back, and saved the flip. Now the automatic flip (below) only lasts for this visit and is never saved, so a reload starts from your own Settings choice. A flip that sends the camera to the end of its up/down range within 2 seconds is taken back, unless the stand was seen turning the right way on the way there. There's no check at all once the camera has reached the end of the range, and a stretch the stand says it didn't really tilt doesn't count (the SightLine stand reports its angle 10 times a second). While steering, the page also corrects its guess of the tilt from that report (`servoModel.ts`). And the firmware follows the page's tilt aims whatever its own radar says (it used to ignore them while its radar was still searching, even though the page could see the person); flash the updated `sightline.ino` for that part. **One-time reset:** up/down flips saved before this change can't be told apart from automatic ones, so they're dropped once. If your stand really needs "Flip up/down", press it once more and it stays. `tiltFlip.test.mjs` checks all of this.
 
 **How the motor moves:** every 20 ms the firmware moves each motor a quarter of the remaining way to the page's aim, at most 280°/s left-right and 200°/s up-down, and ignores aims within 0.3° (no twitching). It never swings past the aim. A "speed up, slow down" motor with momentum was tried and made the stand hunt back and forth (the camera always sees a moment late), so `motion.test.mjs` checks for that.
 

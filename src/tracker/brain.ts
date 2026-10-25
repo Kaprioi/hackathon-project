@@ -28,7 +28,7 @@ import { area, centerX, centerY, clamp, contains, iou } from "./geometry.ts";
 import { LumpTracker, toGray } from "./lump.ts";
 import type { RadarEnergy } from "./radarGuide.ts";
 import { ListeningSweep, loudest, louderSide } from "./radarGuide.ts";
-import { TiltCheck } from "./tiltCheck.ts";
+import { TiltCheck, atTiltLimit } from "./tiltCheck.ts";
 
 export type Mode = "idle" | "tracking" | "hidden" | "following" | "searching" | "radar" | "lost";
 
@@ -58,6 +58,13 @@ export interface FrameInput {
   radarEnergy?: RadarEnergy | null;
   /** Where the camera was pointing when this frame was taken. */
   camera: Angles;
+  /**
+   * Where the stand itself says its tilt is (SightLine reports it 10 times a second), or
+   * null/missing if it doesn't. Before flipping up/down, the brain checks the stand really
+   * tilted as far as `camera` (the page's guess) says: the guess is wrong when the stand
+   * didn't tilt where it was told.
+   */
+  standTilt?: number | null;
   /**
    * Where the stand's head points, only when the camera does NOT turn with it (a laptop's
    * webcam beside the stand). Then turning the head can't bring anyone into view, so the
@@ -110,8 +117,9 @@ export interface BrainOutput {
   /** True on the frame a tap locked onto someone (a new target). */
   picked: boolean;
   /**
-   * True on the frame the brain found the up/down motor turning the wrong way for this
-   * stand (tiltCheck.ts) and flipped `tiltSign`. The page saves the flip in the settings.
+   * True on the frame the brain flipped `tiltSign`: it found the up/down motor turning the
+   * wrong way for this stand, or took back such a flip that sent the aim to the end of the
+   * up/down range (tiltCheck.ts). The page keeps it for this visit only (it isn't saved).
    */
   flippedTilt: boolean;
 }
@@ -318,6 +326,10 @@ export class Brain {
   /** Checks that the up/down motor turns the right way; `flippedTilt` says it flipped this frame. */
   private tiltCheck = new TiltCheck();
   private flippedTilt = false;
+  /** The on-screen words for this frame's flip. */
+  private flipNote = "";
+  /** Up/down was flipped and the target hasn't been seen since: start the up/down guesses afresh. */
+  private tiltRestart = false;
   /** How fast the target was moving (degrees per second). */
   private vel: Angles = { pan: 0, tilt: 0 };
   private lastBox: Box | null = null;
@@ -432,6 +444,11 @@ export class Brain {
     const strongCount = frameIn.people.length;
     this.cameraOnHead = !frameIn.head;
     this.flippedTilt = false;
+    // Flipped up/down by itself a moment ago, and now the camera has run to the end of the
+    // up/down range? That flip was wrong (tiltCheck.ts): take it back.
+    if (this.tiltCheck.shouldUndo(frameIn.t, this.aim?.tilt ?? null, frameIn.camera.tilt)) {
+      this.flipTilt("Up and down is back the way it was: flipping it sent the stand as far up or down as it goes.");
+    }
     // After a long pause (page hidden, phone locked) people may have moved: don't carry notes over.
     if (frameIn.t - this.prevT > TUNING.longGapMs) {
       this.faceNotes = [];
@@ -799,16 +816,22 @@ export class Brain {
     const smooth = !!this.lastBox && dt < 0.4 && iou(box, this.lastBox) > 0.3;
     if (!smooth) this.chainTrusted = false;
     // Up/down turning the wrong way for this stand (tilting away from them)? Flip it.
-    // Only when the camera rides on the head: a webcam beside it doesn't tilt.
+    // Only when the camera rides on the head: a webcam beside it doesn't tilt. Not once the
+    // camera has tilted all the way to an aim at the end of the up/down range, and not when
+    // the stand says it didn't really tilt (tiltCheck.ts). (While it's still getting there the
+    // check carries on: that's when a motor mounted the other way round shows.)
     const s = this.settings;
     const y = aimPointY(box, s.aimHeight);
-    if (this.cameraOnHead && this.mode === "tracking" && this.tiltCheck.update(f.t, f.camera.tilt, y, s.tiltSign, s.fovV, smooth)) {
-      this.settings = { ...s, tiltSign: s.tiltSign === 1 ? -1 : 1 };
-      this.flippedTilt = true;
+    const atLimit = !!this.aim && atTiltLimit(this.aim.tilt) && Math.abs(f.camera.tilt - this.aim.tilt) < 1;
+    const standTilt = f.standTilt ?? null;
+    if (this.cameraOnHead && this.mode === "tracking" && !atLimit && !this.flippedTilt && this.tiltCheck.update(f.t, f.camera.tilt, y, s.tiltSign, s.fovV, smooth, standTilt)) {
+      this.flipTilt("Up and down was the wrong way round for this stand, so it's flipped for this visit (Settings: Flip up/down).");
+      this.tiltCheck.flipped(f.t);
     }
     const w = this.toWorld(box, f.camera);
-    if (this.flippedTilt) {
+    if (this.tiltRestart) {
       // Up and down meant the opposite until now: start the up/down guesses afresh.
+      this.tiltRestart = false;
       this.bearing = { ...this.bearing, tilt: w.tilt };
       this.vel = { ...this.vel, tilt: 0 };
     }
@@ -855,13 +878,22 @@ export class Brain {
     if (Math.hypot(this.vel.pan, this.vel.tilt) > TUNING.stillSpeed) this.aimVel = { ...this.vel };
     const unsure = d !== null && d > this.settings.matchLimit;
     const note = this.flippedTilt
-      ? "Up and down was the wrong way round for this stand, so it's flipped now (Settings: Flip up/down)."
+      ? this.flipNote
       : this.faceKnown.has(i)
         ? "Tracking you. Recognised your face."
         : unsure
           ? "Not sure that's you (the colours don't match). Checking..."
           : "Tracking you.";
     this.setMode("tracking", f.t, this.mode === "tracking" ? note : this.note);
+  }
+
+  /** Flips up/down for this stand (the page keeps it for this visit only, see tiltCheck.ts). */
+  private flipTilt(note: string): void {
+    const s = this.settings;
+    this.settings = { ...s, tiltSign: s.tiltSign === 1 ? -1 : 1 };
+    this.flippedTilt = true;
+    this.flipNote = note;
+    this.tiltRestart = true;
   }
 
   /**
