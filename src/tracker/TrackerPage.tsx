@@ -16,6 +16,8 @@ import Highlight from "../components/Highlight";
 import LanguagePicker from "../components/LanguagePicker";
 import { Blobs, LogoMark } from "../components/SiteLayout";
 import { useLanguage } from "../i18n/useLanguage";
+import type { Watcher } from "../lib/live";
+import { LiveHost, fetchIceServers, supabaseSignal } from "../lib/live";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
 import { Brain, MODE_LABEL, predictAim, towardLevel, whereaboutsText } from "./brain.ts";
@@ -35,6 +37,10 @@ import ReminderPopup from "../components/ReminderPopup";
 import { shouldSendInactive, startWatch, watchSaw } from "../family/noMovement.ts";
 import { unlockVoice } from "../family/voice";
 import { rememberWatching, takeReopened } from "./cameraPhone.ts";
+import type { CallOutcome, CallSetup } from "./call.ts";
+import { callSetup, phoneForCall, requestCall, showPhone } from "./call.ts";
+import { checkScene, sceneSetup, snapshot } from "./sceneCheck.ts";
+import type { SceneOutcome, SceneSetup } from "./sceneCheck.ts";
 import { Cloud } from "./cloud.ts";
 import type { Detection, PersonDetector } from "./detector.ts";
 import { createPersonDetector, isIPhone, preferredDelegate } from "./detector.ts";
@@ -82,12 +88,57 @@ interface Snapshot {
 /** Face recognition: not wanted, still loading its AI, ready, or couldn't load. */
 type FaceStatus = "off" | "loading" | "ready" | "failed";
 
-/** The emergency alert on screen: "Are you OK?" until `endsAt`, then a pretend call from `callStart`. */
+/** The emergency alert on screen: "Are you OK?" until `endsAt`, then the call from `callStart`. */
 interface Alarm {
   kind: EmergencyKind;
   phase: "ask" | "calling";
   endsAt: number;
   callStart: number;
+  /** The real call through the server: on its way, how it went, or "pretend" when calling isn't set up. */
+  call: "pretend" | "sending" | "sent" | "failed";
+  /** Why the call failed, in words (from Twilio or the server). */
+  callError?: string;
+  /** Gemini's look at the picture once the countdown ran out: still asking, or its answer. Unset = not asked. */
+  scene?: "checking" | SceneOutcome;
+  /** Gemini's sentence, read out in the call (kept for "Try again"). */
+  note?: string;
+}
+
+/** The alert screen's line about Gemini's look at the picture, or null when there's nothing to say. */
+function sceneLine(scene: Alarm["scene"]): string | null {
+  if (!scene) return null;
+  if (scene === "checking") return "Gemini is looking at the picture…";
+  if (scene.result === "ok") return `Gemini sees: ${scene.summary}`;
+  if (scene.result === "failed") return `Gemini couldn't check the picture: ${scene.error}`;
+  return null; // no Gemini key on the server
+}
+
+/** "just now", "5 min ago", "2 h ago". */
+function agoText(seconds: number): string {
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
+  return `${Math.round(seconds / 3600)} h ago`;
+}
+
+/** The CareNest login token, or null: the call server only lets signed-in accounts call. */
+async function loginToken(): Promise<string | null> {
+  try {
+    return (await supabase?.auth.getSession())?.data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** "Sam is watching live", "Sam and Jo are watching live". */
+function watchingText(watchers: Watcher[]): string {
+  const names = watchers.map((w) => w.name);
+  const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `${list} ${names.length === 1 ? "is" : "are"} watching live`;
+}
+
+/** The emergency contact's name for the screen. */
+function contactLabel(s: Settings): string {
+  return s.contactName.trim() || "your emergency contact";
 }
 
 /** Plays tones (the sound is unlocked by the Start watching tap; without it, it stays silent). */
@@ -142,7 +193,9 @@ const EVENT_WORDS: Record<MovementEvent["kind"], string> = {
 };
 
 function describe(e: MovementEvent): string {
-  return [EVENT_WORDS[e.kind], e.zone && `${e.zone} side`, e.posture && e.posture !== "unknown" && e.posture]
+  // "middle", not "middle side"
+  const where = e.zone && (e.zone === "middle" ? "middle" : `${e.zone} side`);
+  return [EVENT_WORDS[e.kind], where, e.posture && e.posture !== "unknown" && e.posture]
     .filter(Boolean)
     .join(" - ");
 }
@@ -557,9 +610,17 @@ function Choice<T extends string>(props: {
   );
 }
 
-/** The emergency alert: "Are you OK?" with a countdown, then a pretend emergency call. */
-function EmergencyScreen(props: { alarm: Alarm; familyAlerted: boolean; onOk: () => void; onCallNow: () => void; onEnd: () => void }) {
-  const { alarm, familyAlerted, onOk, onCallNow, onEnd } = props;
+/** The emergency alert: "Are you OK?" with a countdown, then a call to the emergency contact. */
+function EmergencyScreen(props: {
+  alarm: Alarm;
+  contact: string;
+  familyAlerted: boolean;
+  onOk: () => void;
+  onCallNow: () => void;
+  onRetry: () => void;
+  onEnd: () => void;
+}) {
+  const { alarm, contact, familyAlerted, onOk, onCallNow, onRetry, onEnd } = props;
   const what = alarm.kind === "fall" ? "Possible fall" : "Possible seizure";
   if (alarm.phase === "ask") {
     const left = Math.max(0, Math.ceil((alarm.endsAt - Date.now()) / 1000));
@@ -574,7 +635,9 @@ function EmergencyScreen(props: { alarm: Alarm; familyAlerted: boolean; onOk: ()
         <p className="text-xl font-extrabold tracking-wide uppercase">{what} detected</p>
         <h2 className="text-4xl font-extrabold">Are you OK?</h2>
         <p className="text-7xl font-extrabold tabular-nums">{left}</p>
-        <p className="px-4 text-lg">Calling emergency services in {left} s unless you press I'm OK.</p>
+        <p className="px-4 text-lg">
+          Calling {contact} in {left} s unless you press I'm OK.
+        </p>
         <button
           onClick={onOk}
           className="min-h-16 w-full max-w-sm rounded-2xl bg-white px-8 text-3xl font-extrabold text-red-700 transition-transform active:scale-95"
@@ -588,25 +651,52 @@ function EmergencyScreen(props: { alarm: Alarm; familyAlerted: boolean; onOk: ()
     );
   }
   const secs = Math.max(0, Math.floor((Date.now() - alarm.callStart) / 1000));
+  const real = alarm.call !== "pretend";
+  const status: Record<Alarm["call"], string> = {
+    pretend: "Demo: no real call (calling isn't set up on the server)",
+    sending: "Starting the call…",
+    sent: "Calling now. Their phone should ring in a few seconds.",
+    failed: `The call didn't go through. ${alarm.callError ?? ""}`,
+  };
   return (
     <div
       role="alertdialog"
       aria-modal="true"
-      aria-label="Calling emergency services"
+      aria-label={`Calling ${contact}`}
       className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 overflow-y-auto bg-black/95 px-4 py-6 text-center text-white"
       style={SAFE_ALL}
     >
-      <p className="rounded-full bg-sun px-4 py-1 text-base font-extrabold text-ink">Demo: no real call is made</p>
-      <h2 className="px-4 text-3xl font-extrabold">Calling emergency services…</h2>
+      <p
+        role="status"
+        className={`rounded-2xl px-4 py-1 text-base font-extrabold ${
+          alarm.call === "failed" ? "bg-red-600 text-white" : alarm.call === "sent" ? "bg-leaf text-white" : "bg-sun text-ink"
+        }`}
+      >
+        {status[alarm.call]}
+      </p>
+      <h2 className="px-4 text-3xl font-extrabold">Calling {contact}…</h2>
       <p className="text-lg text-white/90">
         {what} detected · {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}
       </p>
+      {sceneLine(alarm.scene) && (
+        <p role="status" className="max-w-md rounded-2xl bg-white/10 px-4 py-2 text-lg font-semibold">
+          {sceneLine(alarm.scene)}
+        </p>
+      )}
       {familyAlerted && <p className="text-base text-white/90">The family page has been alerted.</p>}
+      {alarm.call === "failed" && (
+        <button
+          onClick={onRetry}
+          className="min-h-14 w-full max-w-sm rounded-2xl bg-white px-8 text-xl font-extrabold text-ink transition-transform active:scale-95"
+        >
+          Try again
+        </button>
+      )}
       <button
         onClick={onEnd}
         className="min-h-16 w-full max-w-sm rounded-2xl bg-red-600 px-8 text-2xl font-extrabold text-white transition-transform active:scale-95"
       >
-        End call
+        {real ? "Close" : "End call"}
       </button>
     </div>
   );
@@ -684,6 +774,9 @@ export default function TrackerPage() {
   const stillWatchRef = useRef(startWatch(Date.now()));
   const watchingRef = useRef(false); // true from "Start watching" until "Stop watching" (flips don't count)
   const tabsRef = useRef<BroadcastChannel | null>(null);
+  const liveRef = useRef<LiveHost | null>(null); // family watching live (src/lib/live.ts)
+  const liveStartingRef = useRef(false);
+  const micRef = useRef<MediaStreamTrack | null>(null); // the room's sound, for live video
 
   const [running, setRunning] = useState(false);
   const [account, setAccount] = useState<Account>(supabase ? "checking" : "no-database");
@@ -708,6 +801,10 @@ export default function TrackerPage() {
   const [circleId, setCircleId] = useState("");
   /** Why the camera stopped by itself, shown on the start screen (English; translated when shown). */
   const [stopNote, setStopNote] = useState("");
+  /** Who's watching live right now (shown in red at the top), whether family can, and why not. */
+  const [watchers, setWatchers] = useState<Watcher[]>([]);
+  const [liveReady, setLiveReady] = useState(false);
+  const [liveNote, setLiveNote] = useState("");
   const [snap, setSnap] = useState<Snapshot>({
     mode: "idle",
     note: "Tap a person to lock on.",
@@ -813,6 +910,58 @@ export default function TrackerPage() {
     return () => clearInterval(timer);
   }, [running, report]);
 
+  /** Stops live video (the camera stopped, it was switched off, or the account changed). */
+  const stopLive = useCallback(() => {
+    liveRef.current?.stop();
+    liveRef.current = null;
+    micRef.current?.stop();
+    micRef.current = null;
+    setWatchers([]);
+    setLiveReady(false);
+  }, []);
+
+  /**
+   * Lets family watch live: opens the microphone, then waits on this family's private
+   * channel for "Watch live" from the family page. Needs a signed-in account (its care circle).
+   */
+  const startLive = useCallback(async () => {
+    const db = supabase;
+    const cloud = cloudRef.current;
+    if (!db || !cloud || liveRef.current || liveStartingRef.current || !settingsRef.current.liveVideo) return;
+    liveStartingRef.current = true;
+    setLiveNote("");
+    const stillWanted = () => watchingRef.current && cloudRef.current === cloud && settingsRef.current.liveVideo;
+    try {
+      if (!micRef.current) {
+        try {
+          const sound = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          });
+          micRef.current = sound.getAudioTracks()[0] ?? null;
+        } catch {
+          setLiveNote("The microphone is blocked, so family can watch but can't hear the room or talk.");
+        }
+      }
+      const signal = await supabaseSignal(db, cloud.circleId);
+      if (!stillWanted()) {
+        signal.close();
+        return;
+      }
+      const host = new LiveHost({ signal, iceServers: () => loginToken().then(fetchIceServers), onWatchers: setWatchers });
+      host.setTracks(streamRef.current?.getVideoTracks()[0] ?? null, micRef.current);
+      liveRef.current = host;
+      setLiveReady(true);
+    } catch (e) {
+      setLiveNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      liveStartingRef.current = false;
+      if (!stillWanted() && !liveRef.current) {
+        micRef.current?.stop();
+        micRef.current = null;
+      }
+    }
+  }, []);
+
   // Check whether someone is signed in (the family page only works for signed-in people).
   useEffect(() => {
     const db = supabase;
@@ -825,6 +974,7 @@ export default function TrackerPage() {
       if (!cloudRef.current || cloudRef.current.userId === session?.user.id) return;
       cloudRef.current = null;
       setCircleId("");
+      setTimeout(stopLive, 0); // live video belongs to the old family (later: not inside this callback)
       if (!session || !watchingRef.current) return;
       // Later, not inside this callback: Supabase asks not to call it from here.
       setTimeout(() => {
@@ -834,13 +984,14 @@ export default function TrackerPage() {
             cloudRef.current = cloud;
             setCircleId(cloud.circleId);
             report(reporterRef.current.start(performance.now()));
+            void startLive();
           },
           (e: unknown) => setSendError(e instanceof Error ? e.message : String(e)),
         );
       }, 0);
     });
     return () => data.subscription.unsubscribe();
-  }, [report]);
+  }, [report, startLive, stopLive]);
 
   // While this page is open: use the whole screen (under the notch too, with the
   // controls padded clear of it) and a black browser bar on Android.
@@ -875,6 +1026,8 @@ export default function TrackerPage() {
   const alarmRef = useRef<Alarm | null>(null);
   const [alarm, setAlarm] = useState<Alarm | null>(null);
   const [, setTick] = useState(0); // redraws the countdown
+  /** The upright picture the person detector saw last (the main loop's canvas), for Gemini's look. */
+  const frameRef = useRef<HTMLCanvasElement | null>(null);
 
   /** Sound needs a tap before it's allowed: called from Start watching and Test the alert. */
   const unlockSound = useCallback(() => {
@@ -888,25 +1041,83 @@ export default function TrackerPage() {
 
   const raiseAlarm = useCallback((kind: EmergencyKind) => {
     if (alarmRef.current) return;
-    const a: Alarm = { kind, phase: "ask", endsAt: Date.now() + EMERGENCY.countdownS * 1000, callStart: 0 };
+    const a: Alarm = { kind, phase: "ask", endsAt: Date.now() + EMERGENCY.countdownS * 1000, callStart: 0, call: "pretend" };
     alarmRef.current = a;
     setAlarm(a);
     navigator.vibrate?.([400, 200, 400]);
     beep(audioRef.current);
   }, []);
 
-  /** The pretend emergency call (never dials anything), and the alert on the family page. */
+  /** Changes the alert on screen, if it's still the same one (not closed or replaced meanwhile). */
+  const patchAlarm = useCallback((callStart: number, patch: Partial<Alarm>) => {
+    const a = alarmRef.current;
+    if (!a || a.callStart !== callStart) return;
+    const next = { ...a, ...patch };
+    alarmRef.current = next;
+    setAlarm(next);
+  }, []);
+
+  /**
+   * Asks the server to phone the emergency contact (Twilio). If calling isn't set up there,
+   * it becomes a pretend call with a ringing sound.
+   */
+  const placeCall = useCallback(
+    (callStart: number, kind: EmergencyKind, note?: string) => {
+      patchAlarm(callStart, { call: "sending", callError: undefined });
+      const to = settingsRef.current.contactPhone;
+      void loginToken().then((token) => requestCall(kind, token, 15000, note, to)).then((out: CallOutcome) => {
+        if (alarmRef.current?.callStart !== callStart) return; // closed meanwhile
+        if (out.result === "off") {
+          patchAlarm(callStart, { call: "pretend" });
+          ringRef.current?.();
+          ringRef.current = ring(audioRef.current);
+        } else if (out.result === "sent") {
+          patchAlarm(callStart, { call: "sent" });
+        } else {
+          patchAlarm(callStart, { call: "failed", callError: out.error });
+          beep(audioRef.current);
+        }
+      });
+    },
+    [patchAlarm],
+  );
+
+  /**
+   * The call (once per alert), and the alert on the family page. With the Gemini setting on,
+   * one still picture goes to Gemini first (only now, after nobody pressed I'm OK); the call
+   * waits for its description at most `EMERGENCY.geminiWaitMs`, then goes ahead either way.
+   */
   const startCall = useCallback(() => {
     const a = alarmRef.current;
     if (!a || a.phase === "calling") return;
-    const next: Alarm = { ...a, phase: "calling", callStart: Date.now() };
+    const image = settingsRef.current.gemini ? snapshot(frameRef.current) : null;
+    const next: Alarm = { ...a, phase: "calling", callStart: Date.now(), call: "sending", scene: image ? "checking" : undefined };
     alarmRef.current = next;
     setAlarm(next);
     ringRef.current?.();
-    ringRef.current = ring(audioRef.current);
+    ringRef.current = null;
     // The family page only knows "fall" so far; a seizure shows there as "Possible fall".
     report({ kind: "fall", zone: null, posture: "lying" });
-  }, [report]);
+    if (!image) {
+      placeCall(next.callStart, next.kind);
+      return;
+    }
+    const { callStart, kind } = next;
+    void loginToken()
+      .then((token) => checkScene(kind, image, token, EMERGENCY.geminiWaitMs))
+      .then((scene) => {
+        if (alarmRef.current?.callStart !== callStart) return; // closed meanwhile
+        const note = scene.result === "ok" ? scene.summary : undefined;
+        patchAlarm(callStart, { scene, note });
+        placeCall(callStart, kind, note);
+      });
+  }, [report, placeCall, patchAlarm]);
+
+  /** The call didn't go through: try once more (only when asked, so it never calls twice by itself). */
+  const retryCall = useCallback(() => {
+    const a = alarmRef.current;
+    if (a?.phase === "calling" && a.call === "failed") placeCall(a.callStart, a.kind, a.note);
+  }, [placeCall]);
 
   const endAlarm = useCallback(() => {
     ringRef.current?.();
@@ -1016,6 +1227,7 @@ export default function TrackerPage() {
           return;
         }
         streamRef.current = stream;
+        liveRef.current?.setTracks(stream.getVideoTracks()[0] ?? null, micRef.current); // a flip: watchers see the new camera
         const track = stream.getVideoTracks()[0];
         const info = track?.getSettings() ?? {};
         deviceIdRef.current = info.deviceId;
@@ -1089,6 +1301,7 @@ export default function TrackerPage() {
       if (tellFamily) report(reporterRef.current.stop());
       cameraRequestRef.current++; // cancel a camera start that's still under way
       stopCamera();
+      stopLive();
       brainRef.current.release();
       faceWatcher.forget();
       setRunning(false);
@@ -1098,13 +1311,19 @@ export default function TrackerPage() {
       void wakeLockRef.current?.release();
       wakeLockRef.current = null;
     },
-    [stopCamera, report, faceWatcher],
+    [stopCamera, stopLive, report, faceWatcher],
   );
 
   const stopWatching = useCallback(() => {
     rememberWatching(false);
     finishWatching("", true);
   }, [finishWatching]);
+
+  // Family can watch live while the camera is on (and the setting allows it).
+  useEffect(() => {
+    if (running && settings.liveVideo) void startLive();
+    else stopLive();
+  }, [running, settings.liveVideo, startLive, stopLive]);
 
   // Closing the tab (or the browser) doesn't run the clean-up below, so say
   // "stopped" here. The page is going away, so it is sent the keepalive way.
@@ -1114,11 +1333,12 @@ export default function TrackerPage() {
       watchingRef.current = false;
       cloudRef.current?.sendOnClose(reporterRef.current.stop());
       stopCamera();
+      stopLive();
       setRunning(false);
     };
     window.addEventListener("pagehide", onPageHide);
     return () => window.removeEventListener("pagehide", onPageHide);
-  }, [stopCamera]);
+  }, [stopCamera, stopLive]);
 
   // A hidden page (another tab, another app, screen off) is paused by the browser,
   // so it isn't really watching. After a short while, stop and tell the family.
@@ -1194,13 +1414,14 @@ export default function TrackerPage() {
       watchingRef.current = false;
       rememberWatching(false); // left the camera page on purpose
       stopCamera();
+      stopLive();
       detectorRef.current?.close();
       detectorRef.current = null;
       detectorLoadRef.current = null;
       stand.disconnect();
       void wakeLockRef.current?.release();
     };
-  }, [stopCamera, report]);
+  }, [stopCamera, stopLive, report]);
 
   // The main loop: once per new camera frame.
   useEffect(() => {
@@ -1210,6 +1431,7 @@ export default function TrackerPage() {
     const actx = analysis.getContext("2d", { willReadFrequently: true });
     const detectCanvas = document.createElement("canvas");
     const dctx = detectCanvas.getContext("2d");
+    frameRef.current = detectCanvas; // the latest upright picture, for Gemini's look on an alert
     let raf = 0;
     let lastVideoTime = -1;
     let lastDetectT = -Infinity;
@@ -1543,6 +1765,7 @@ export default function TrackerPage() {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         aria-label="Camera view. Tap a person to follow them."
+        aria-hidden={!running}
       />
       {ripple && <span key={ripple.key} className="tracker-tap" style={{ left: ripple.x, top: ripple.y }} aria-hidden="true" />}
 
@@ -1554,13 +1777,21 @@ export default function TrackerPage() {
 
       {/* Top: the privacy sign (always on screen while the camera is on), then what it's
           doing on the left and readings on the right */}
-      <div className="pointer-events-none absolute inset-x-0 top-0">
+      {/* Before the camera starts, the start screen covers these: keep screen readers and the Tab key off them too */}
+      <div className="pointer-events-none absolute inset-x-0 top-0" inert={!running}>
         {running && (
           <div
-            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 bg-leaf px-3 py-1.5 text-center font-extrabold text-white"
+            className={`flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 px-3 py-1.5 text-center font-extrabold text-white ${watchers.length ? "bg-alert" : "bg-leaf"}`}
             style={{ ...SIDES, paddingTop: "max(0.375rem, env(safe-area-inset-top))" }}
           >
-            <span className="text-base">● Camera on - video stays on this phone</span>
+            {/* Whoever is on camera can always see when family are watching or talking */}
+            <span className="text-base" role="status">
+              {watchers.length
+                ? `● LIVE: ${watchingText(watchers)}${watchers.some((w) => w.talking) ? " (talking)" : ""}`
+                : liveReady
+                  ? "● Camera on - family can watch live"
+                  : "● Camera on - video stays on this phone"}
+            </span>
             <span className="text-sm font-bold">
               {sendError
                 ? "Family can't see updates right now"
@@ -1651,7 +1882,11 @@ export default function TrackerPage() {
       </div>
 
       {/* Bottom: messages, then the controls */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2" style={SAFE_BOTTOM}>
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2"
+        style={SAFE_BOTTOM}
+        inert={!running}
+      >
         {snap.portrait && running && connected && (
           <p className="rounded-xl bg-sun px-3 py-1.5 text-center text-sm font-bold text-ink">
             Turn the phone sideways for the stand, and switch off rotation lock.
@@ -1713,6 +1948,7 @@ export default function TrackerPage() {
           mirrored={mirrored}
           fullscreen={canFullscreen ? { on: fullscreen, toggle: toggleFullscreen } : null}
           turnNow={snap.turn}
+          live={{ watchers, ready: liveReady, note: liveNote }}
           testAlarm={() => {
             closeSettings();
             unlockSound();
@@ -1725,33 +1961,35 @@ export default function TrackerPage() {
         <div className="on-light absolute inset-0 z-10 overflow-y-auto bg-cream text-ink select-text" style={SAFE_ALL}>
           <div className="relative isolate flex min-h-full items-center justify-center p-4 sm:p-6">
             <Blobs fixed />
-            <div className="w-full max-w-lg animate-slide-in space-y-5 rounded-[40px] bg-surface p-7 text-center shadow-lift sm:p-10">
-              <div className="text-left">
+            <div className="flex w-full max-w-lg animate-slide-in flex-col items-center gap-2 [@media(max-height:599px)]:max-w-2xl rounded-[32px] bg-surface px-5 py-4 text-center shadow-lift [@media(min-height:600px)]:gap-4 [@media(min-height:600px)]:py-5 [@media(min-height:600px)]:sm:rounded-[40px] [@media(min-height:600px)]:sm:p-10">
+              {/* On a short screen (a phone turned sideways) the back button, logo and language picker
+                  are skipped, so "Start watching" stays in view */}
+              <div className="w-full text-left [@media(max-height:599px)]:hidden">
                 <BackButton />
               </div>
               <Link
                 to="/"
-                className="group mx-auto flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline"
+                className="group flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline [@media(max-height:599px)]:hidden"
               >
                 <LogoMark />
                 CareNest
               </Link>
-              <LanguagePicker className="justify-center" />
-              <h1 className="text-4xl font-extrabold">
+              <LanguagePicker className="justify-center [@media(max-height:599px)]:hidden" />
+              <h1 className="text-2xl font-extrabold [@media(min-height:600px)]:text-4xl">
                 <Highlight text={t("Phone *camera*")} />
               </h1>
-              <p className="text-xl font-bold text-muted">
+              <p className="text-base font-bold text-muted [@media(min-height:600px)]:text-xl">
                 {t(
                   "Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a few words, how things are going.",
                 )}
               </p>
-              <p className="rounded-2xl bg-mint px-4 py-3 text-lg font-bold text-ink">
+              <p className="rounded-2xl bg-mint px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
                 {t(
-                  'Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or pictures ever leave it.',
+                  'Only short notes like "moving around - left side" are sent. Family can also watch live and talk to you, and the bar at the top turns red while they do. Nothing is recorded.',
                 )}
               </p>
               {stopNote && (
-                <p role="status" className="rounded-2xl bg-sun px-4 py-3 text-lg font-bold text-ink">
+                <p role="status" className="rounded-2xl bg-sun px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
                   {t(stopNote)}
                 </p>
               )}
@@ -1772,9 +2010,9 @@ export default function TrackerPage() {
                 </div>
               )}
               {account === "signed-out" ? (
-                <div className="space-y-3">
-                  <p className="text-xl font-bold">{t("Please sign in first, so your family can see the updates.")}</p>
-                  <Link to="/login?next=/tracker" className={`${buttonVariants.primary} min-h-16 w-full text-2xl`}>
+                <div className="w-full space-y-3">
+                  <p className="text-base font-bold [@media(min-height:600px)]:text-xl">{t("Please sign in first, so your family can see the updates.")}</p>
+                  <Link to="/login?next=/tracker" className={`${buttonVariants.primary} w-full text-xl [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}>
                     {t("Sign in")}
                   </Link>
                 </div>
@@ -1782,7 +2020,7 @@ export default function TrackerPage() {
                 <button
                   onClick={() => void startCamera()}
                   disabled={loading || account === "checking"}
-                  className={`${buttonVariants.primary} min-h-16 w-full text-2xl transition-transform active:scale-95 disabled:opacity-60`}
+                  className={`${buttonVariants.primary} w-full text-xl transition-transform active:scale-95 disabled:opacity-60 [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}
                 >
                   {loading ? t("Starting... (the first time takes a little longer)") : t("Start watching")}
                 </button>
@@ -1796,7 +2034,7 @@ export default function TrackerPage() {
                 </p>
               )}
               {account === "no-database" && (
-                <p className="rounded-2xl bg-sun px-4 py-3 text-lg font-bold text-ink">
+                <p className="rounded-2xl bg-sun px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
                   {t(
                     "The database isn't set up on this website yet, so you can try the camera but your family won't see anything.",
                   )}
@@ -1816,9 +2054,11 @@ export default function TrackerPage() {
       {alarm && (
         <EmergencyScreen
           alarm={alarm}
+          contact={contactLabel(settings)}
           familyAlerted={!!cloudRef.current && !sendError}
           onOk={endAlarm}
           onCallNow={startCall}
+          onRetry={retryCall}
           onEnd={endAlarm}
         />
       )}
@@ -1841,8 +2081,30 @@ function SettingsPanel(props: {
   turnNow: Turn;
   /** Shows the emergency alert now, for rehearsing the demo. */
   testAlarm: () => void;
+  /** Live video for family: who's watching, whether family can, and why not. */
+  live: { watchers: Watcher[]; ready: boolean; note: string };
 }) {
-  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow, testAlarm } = props;
+  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow, testAlarm, live } = props;
+  // Real emergency calls: are they set up on the server? (Checked each time the panel opens.)
+  const [setup, setSetup] = useState<CallSetup | null | "checking">("checking");
+  const [callTest, setCallTest] = useState<"idle" | "sending" | CallOutcome>("idle");
+  // Gemini's look at the picture on an alert: does the server have a Gemini key?
+  const [gemini, setGemini] = useState<SceneSetup | null | "checking">("checking");
+  useEffect(() => {
+    let live = true;
+    void loginToken().then(callSetup).then((r) => live && setSetup(r));
+    void loginToken().then(sceneSetup).then((r) => live && setGemini(r));
+    return () => {
+      live = false;
+    };
+  }, []);
+  // The number typed in Settings, tidied for Twilio (null if empty or not a phone number).
+  const typedPhone = s.contactPhone.trim();
+  const phone = phoneForCall(typedPhone);
+  const serverReady = setup !== null && setup !== "checking" && setup.ready && !setup.needsSignIn;
+  // Who a call would ring: the typed number, else the server's own one (if it has one).
+  const serverNumber = serverReady && setup.to ? setup.to : null;
+  const callsReady = serverReady && (phone !== null || (!typedPhone && serverNumber !== null));
   // The test buttons go by the screen. On a mirrored picture the screen's left is the camera's right.
   const side = mirrored ? -1 : 1;
 
@@ -1931,6 +2193,33 @@ function SettingsPanel(props: {
           </fieldset>
 
           <fieldset className="space-y-2">
+            <legend className="font-semibold">Live video for family</legend>
+            <Choice
+              label="Live video for family"
+              options={[
+                ["on", "On"],
+                ["off", "Off"],
+              ]}
+              value={s.liveVideo ? "on" : "off"}
+              onChange={(v) => update({ liveVideo: v === "on" })}
+            />
+            <p role="status" className="text-base font-semibold">
+              {!s.liveVideo
+                ? "Off: family can't watch live."
+                : live.watchers.length
+                  ? `${watchingText(live.watchers)} now.`
+                  : live.ready
+                    ? 'Ready: family can press "Watch live" on the family page.'
+                    : "Starts when the camera is on and this phone is signed in."}
+            </p>
+            {s.liveVideo && live.note && <p className="text-base font-semibold text-amber-200">{live.note}</p>}
+            <p className="text-base text-white/90">
+              Family see and hear the room live and can talk to you through this phone. It goes straight to them,
+              encrypted, and nothing is recorded. The bar at the top turns red while anyone watches.
+            </p>
+          </fieldset>
+
+          <fieldset className="space-y-2">
             <legend className="font-semibold">Emergency alert</legend>
             <Choice
               label="Emergency alert"
@@ -1944,8 +2233,122 @@ function SettingsPanel(props: {
             <Button onClick={testAlarm}>Test the alert</Button>
             <p className="text-base text-white/90">
               Watches the person you follow for a fall (on the floor and not getting up) or a seizure (shaking while lying
-              down). Then it asks "Are you OK?" for {EMERGENCY.countdownS} seconds before a pretend emergency call. No
-              real number is ever dialled. A rough guess from the camera, not a medical device.
+              down). Then it asks "Are you OK?" for {EMERGENCY.countdownS} seconds before calling the emergency contact
+              below. If real calls aren't set up, it's a pretend call. A rough guess from the camera, not a medical device.
+            </p>
+            <label className="block space-y-1">
+              <span className="font-semibold">Emergency contact's name</span>
+              <input
+                type="text"
+                value={s.contactName}
+                maxLength={40}
+                placeholder="Sam"
+                autoComplete="off"
+                onChange={(e) => update({ contactName: e.target.value })}
+                className="min-h-11 w-full rounded-xl bg-white/90 px-3 text-ink"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="font-semibold">Emergency contact's phone number</span>
+              <input
+                type="tel"
+                inputMode="tel"
+                value={s.contactPhone}
+                maxLength={24}
+                placeholder="(555) 123-4567"
+                autoComplete="off"
+                onChange={(e) => update({ contactPhone: e.target.value })}
+                className="min-h-11 w-full rounded-xl bg-white/90 px-3 text-ink"
+              />
+              <span className="block text-base text-white/90">
+                {!typedPhone
+                  ? "US and Canada numbers as usual; other countries start with + and the country code."
+                  : phone
+                    ? `Calls ${showPhone(phone)}.`
+                    : "That doesn't look like a phone number. Use 10 digits, or + and the country code."}
+              </span>
+            </label>
+            <p role="status" className="text-base font-semibold">
+              {setup === "checking"
+                ? "Checking whether real calls are set up…"
+                : setup === null
+                  ? "Couldn't check whether real calls are set up. No internet?"
+                  : setup.needsSignIn
+                    ? "Sign in to CareNest on this phone to use real calls (only signed-in accounts can call)."
+                    : setup.ready
+                      ? phone
+                        ? `Real calls are on: it calls ${s.contactName.trim() || "the number above"}.`
+                        : typedPhone
+                          ? "Real calls are on, but fix the number above first."
+                          : serverNumber
+                            ? `Real calls are on: with no number above, it calls the site's own number, ending ${serverNumber}.`
+                            : "Real calls are on. Type the number to call above."
+                      : setup.problem
+                        ? `Calling is half set up: ${setup.problem}`
+                        : "Real calls aren't set up on this website yet, so the alert makes a pretend call."}
+            </p>
+            {setup !== null && setup !== "checking" && setup.last && (
+              <p className="text-base text-white/90">
+                Last call ({setup.last.kind}, {agoText(setup.last.secondsAgo)}):{" "}
+                {setup.last.ok ? "Twilio placed it." : `didn't go through. ${setup.last.error ?? ""}`}
+              </p>
+            )}
+            <Button
+              disabled={!callsReady || callTest === "sending"}
+              onClick={() => {
+                setCallTest("sending");
+                void loginToken()
+                  .then((token) => requestCall("test", token, 15000, undefined, s.contactPhone))
+                  .then(setCallTest);
+              }}
+            >
+              Test the call (rings them now)
+            </Button>
+            {callTest !== "idle" && (
+              <p role="status" className="text-base font-semibold">
+                {callTest === "sending"
+                  ? "Calling…"
+                  : callTest.result === "sent"
+                    ? "Calling now. Their phone should ring in a few seconds."
+                    : callTest.result === "off"
+                      ? "Real calls aren't set up."
+                      : `Didn't go through: ${callTest.error}`}
+              </p>
+            )}
+            <p className="text-base text-white/90">
+              The number is saved on this phone only. The Twilio keys that make the call are set on the website's server
+              (for the test link: the .env.local file on the PC running it). On a free Twilio trial, the number must be
+              verified in Twilio first. "Test the alert" calls too, once its countdown ends.
+            </p>
+          </fieldset>
+
+          <fieldset className="space-y-2">
+            <legend className="font-semibold">Gemini's look at the picture</legend>
+            <Choice
+              label="Gemini's look at the picture"
+              options={[
+                ["on", "On"],
+                ["off", "Off"],
+              ]}
+              value={s.gemini ? "on" : "off"}
+              onChange={(v) => update({ gemini: v === "on" })}
+            />
+            <p className="text-base text-white/90">
+              Only when an alert's countdown runs out (nobody pressed I'm OK), this phone sends one still picture to Google
+              Gemini, which describes what it sees ("A person is lying on the kitchen floor next to a chair."). The call
+              reads that sentence out and this screen shows it. It never cancels an alert or a call. Nothing is sent
+              otherwise. On Gemini's free tier Google may keep and review what it's sent, so real use needs the paid tier.
+            </p>
+            <p role="status" className="text-base font-semibold">
+              {gemini === "checking"
+                ? "Checking whether Gemini is set up…"
+                : gemini === null
+                  ? "Couldn't check whether Gemini is set up. No internet?"
+                  : gemini.needsSignIn
+                    ? "Sign in to CareNest on this phone to use Gemini."
+                    : gemini.ready
+                      ? "Gemini is set up on the server."
+                      : "Gemini isn't set up: the server needs a GEMINI_API_KEY (for the test link: the .env.local file)."}
             </p>
           </fieldset>
 

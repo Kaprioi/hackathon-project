@@ -118,15 +118,51 @@ const uint32_t FOUND_CONFIRM_MS = 1000;  // must be seen this long to count as "
 #define RADAR_UUID   "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  // we notify "presence,left,right,pan,tilt,radars"
 #define MIST_UUID    "6e400004-b5a3-f393-e0a9-e50e24dcca9e"  // website writes "1" (on) or "0" (off)
 const uint32_t CAMERA_HOLD_MS = 700;     // the website's aims count as "person in view" (for alerts) this long
-// Website steering: every 20 ms move 25% of the remaining way (glides to a stop, never
-// swings past), at most a top speed, and not at all for an aim within MOVE_DEADBAND (no
-// twitching). The website's copy of this assumes exactly these numbers (MOTION in
-// src/tracker/config.ts). The page sends aims up to 40 times a second, so it's smooth.
+// Website steering: the website decides WHERE to point (its own outer loop, from the
+// camera picture) and sends "pan,tilt" up to 40 times a second. This board's inner loop
+// gets each motor there smoothly: every CAMERA_TICK_MS, a small PID controller per motor
+// looks at how far the motor still has to go and picks a speed, then:
+//   - never faster than the top speed (PAN_TOP_SPEED / TILT_TOP_SPEED),
+//   - never speeds up or slows down faster than PAN_ACCEL / TILT_ACCEL,
+//   - always slow enough to stop in time, and never past the aim (no swinging past),
+//   - never away from the aim (a reversed aim stops it at once, then it heads back),
+//   - not at all for an aim within MOVE_DEADBAND (no twitching). It just holds still
+//     that tick but remembers its I part and speed, so while someone walks it carries
+//     on smoothly next tick. After PID_HOLD_TICKS of holding still it forgets them.
+// The motors can't report where they are, so "where the motor is" is where this board
+// last told it to be. The website guesses where the camera points with the old easing
+// (MOTION in src/tracker/config.ts: 25% of the remaining way per 20 ms). The gains below
+// are picked so this board stays close to that guess (see "PID gains").
 const uint32_t CAMERA_TICK_MS = 20;
-const float CAMERA_EASE = 0.25;
 const float PAN_TOP_SPEED = 280;         // degrees/second (HS-422: about 285 unloaded; was 240)
 const float TILT_TOP_SPEED = 200;        // tilt lifts the phone: a little gentler
 const float MOVE_DEADBAND = 0.3;         // degrees
+// PID gains: speed (degrees/second) = KP x distance left + I - KD x speed it's already moving at.
+//   KP (per second): how hard it heads for the aim. 12.5 = 25% of the way per 20 ms.
+//   KI (per second, squared): slowly adds speed while the motor keeps lagging a moving aim.
+//      Only works within PID_I_ZONE of the aim, and never adds more than PID_I_MAX (anti-windup).
+//   KD (no unit): takes off this fraction of the speed it is already moving at, which
+//      smooths out jumpy aims. It looks at the motor's own movement, not at the aim, so a
+//      sudden new aim doesn't cause a kick.
+// These numbers come from the simulation/tuning runs of the whole phone + stand loop
+// (2240 runs). The website guesses where the camera points with the old 25%-per-20-ms
+// easing; with these gains the board stays within about 1 degree (pan) of that guess, so
+// the website doesn't over-correct and the stand doesn't swing back and forth.
+// The I part is 0 on purpose: the motors have no position sensor, so this board's error
+// is only the aim minus its own last command. An I part can't see the motor sagging and
+// would only add lag; the website's outer loop fixes sagging through the camera instead.
+// KI stays here (with its I zone and cap) so it can be turned on later.
+// Tilt carries the phone's weight: it keeps a little D (0.1) and speeds up more gently.
+// It is never ahead of the old easing (0.000 deg in the first 100 ms, at most 0.04 deg at
+// the very end) and doesn't swing past.
+const float PAN_KP = 12.5, PAN_KI = 0, PAN_KD = 0;
+const float TILT_KP = 12.5, TILT_KI = 0, TILT_KD = 0.1;
+const float PAN_ACCEL = 12000;           // degrees/second, per second (full speed in about 0.02 s)
+const float TILT_ACCEL = 3000;           // gentler with the phone on it: about 0.07 s to full speed
+const float PID_I_ZONE = 12;             // degrees: the I part only works this close to the aim
+const float PID_I_MAX = 60;              // degrees/second: the most speed the I part can add
+const float PID_RESET_JUMP = PID_I_ZONE; // degrees: an aim jumping further than this in one tick clears the I part
+const int PID_HOLD_TICKS = 5;            // ticks (100 ms) holding still at the aim before the I part and speed are forgotten
 const uint32_t MIST_TIMEOUT_MS = 3000;   // no "1" from the website for this long: mist off (safety)
 const uint32_t REPORT_MS = 100;          // send radar readings and the head angle 10 times a second
 
@@ -150,6 +186,7 @@ Preferences prefs;
 volatile float cameraPan = PAN_CENTER, cameraTilt = TILT_LEVEL;
 volatile uint32_t lastCameraMove = 0;    // 0 = the website hasn't steered yet
 volatile bool websiteConnected = false;  // true while the website is connected: it's the boss of the motors
+volatile uint32_t connectionChanges = 0;  // counts connects and disconnects: the motors' PIDs start afresh
 volatile bool mistWanted = false;
 volatile uint32_t lastMistCommand = 0;
 BLECharacteristic *radarReport = nullptr;
@@ -164,6 +201,67 @@ const float PAN_TRUE_CENTER = 82;   // pan servo angle where the phone faces str
 const float TILT_TRUE_LEVEL = 103;  // tilt servo angle where the phone stands upright, level
 int panMicros(float angle) { return toMicros(angle + (PAN_TRUE_CENTER - PAN_CENTER)); }
 int tiltMicros(float angle) { return toMicros(angle + (TILT_TRUE_LEVEL - TILT_LEVEL)); }
+
+// ---------- Inner loop: one PID controller per motor (see "Website steering" above) ----------
+// innerPid begin (../inner-pid-sim/run.sh copies the code between these two lines and tests it)
+struct InnerPid {
+  float kp, ki, kd, accel;
+  float integral;  // the I part, degrees/second
+  float speed;     // the speed it moved at last tick, degrees/second
+  float lastPos;   // where it was last tick, degrees
+  float lastTarget;  // the aim it had last tick, degrees
+  int holdTicks;   // how many ticks in a row it has held still at the aim
+
+  // Forget the I part and the last movement. stop = also start from standing still.
+  void reset(float pos, bool stop) {
+    integral = 0;
+    lastPos = pos;
+    lastTarget = pos;
+    holdTicks = 0;
+    if (stop) speed = 0;
+  }
+
+  // One tick: returns where the motor should be next, one dt (seconds) later.
+  float step(float pos, float target, float topSpeed, float dt) {
+    float error = target - pos;
+    float moving = (pos - lastPos) / dt;  // derivative on the motor's movement, not the aim
+    lastPos = pos;
+    // A big jump in the aim (a new person, or a big correction): the old I part is no
+    // use for it, so start it again from 0. The speed stays, so it changes course smoothly.
+    if (fabsf(target - lastTarget) > PID_RESET_JUMP) integral = 0;
+    lastTarget = target;
+    if (fabsf(error) < MOVE_DEADBAND) {   // close enough: hold still this tick
+      // Keep the I part and speed: a walking person's next aim comes in a moment. Only
+      // once it has been still for a while (they stopped) are they forgotten.
+      if (++holdTicks >= PID_HOLD_TICKS) {
+        integral = 0;
+        speed = 0;
+      }
+      return pos;
+    }
+    holdTicks = 0;
+    float want = kp * error + integral - kd * moving;
+    // Fastest it may go: the top speed, and slow enough to stop at the aim in time.
+    float limit = fminf(topSpeed, sqrtf(2 * accel * fabsf(error)));
+    float v = fmaxf(-limit, fminf(limit, want));
+    v = fmaxf(speed - accel * dt, fminf(speed + accel * dt, v));  // speed up / slow down gently
+    v = fmaxf(-topSpeed, fminf(topSpeed, v));
+    if (fabsf(v * dt) > fabsf(error)) v = error / dt;             // never past the aim
+    if (v * error < 0) v = 0;  // never away from the aim (old speed or I part going the other way)
+    // Anti-windup: the I part only grows near the aim and while the speed isn't being
+    // limited (or when growing would shrink it); far from the aim it starts again from 0.
+    bool limited = fabsf(v - want) > 0.01f;
+    if (fabsf(error) >= PID_I_ZONE) integral = 0;
+    else if (!limited || integral * error < 0)
+      integral = fmaxf(-PID_I_MAX, fminf(PID_I_MAX, integral + ki * error * dt));
+    speed = v;
+    return pos + v * dt;
+  }
+};
+// innerPid end
+
+InnerPid panPid = {PAN_KP, PAN_KI, PAN_KD, PAN_ACCEL, 0, 0, PAN_CENTER, PAN_CENTER, 0};
+InnerPid tiltPid = {TILT_KP, TILT_KI, TILT_KD, TILT_ACCEL, 0, 0, TILT_LEVEL, TILT_LEVEL, 0};
 
 // One-radar tracking (from main): look a little to one side, then the other, and
 // move the center toward whichever side heard the person more strongly.
@@ -349,9 +447,11 @@ class ConnectionCallback : public BLEServerCallbacks {
     cameraPan = pan;                   // hold still where we are until the website says otherwise
     cameraTilt = tilt;
     websiteConnected = true;
+    connectionChanges = connectionChanges + 1;
   }
   void onDisconnect(BLEServer *s) override {
     websiteConnected = false;
+    connectionChanges = connectionChanges + 1;
     Serial.println("Bluetooth: website disconnected");
     mistWanted = false;                // phone gone: no mist
     lastCameraMove = 0;                // and the radars steer again right away
@@ -528,9 +628,20 @@ void loop() {
   bool cameraSteering = cameraAt != 0 && (int32_t)(now - cameraAt) < (int32_t)CAMERA_HOLD_MS;
   if (now - lastCameraTick >= CAMERA_TICK_MS) {
     lastCameraTick = now;
+    const float dt = CAMERA_TICK_MS / 1000.0;  // a fixed tick, even if the loop ran late
+    // The PIDs start afresh (standing still, no I part) whenever Bluetooth connects or
+    // drops, and when the website starts steering: the radar may have moved the head.
+    static uint32_t seenChanges = 0;
+    static bool panWasSteered = false;
+    uint32_t changes = connectionChanges;
+    if (changes != seenChanges || websiteSteers != panWasSteered) {
+      seenChanges = changes;
+      panWasSteered = websiteSteers;
+      panPid.reset(pan, true);
+      tiltPid.reset(tilt, true);
+    }
     if (websiteSteers) {
-      const float panStep = PAN_TOP_SPEED * CAMERA_TICK_MS / 1000.0;    // 5.6 degrees a tick
-      if (fabs(cameraPan - pan) >= MOVE_DEADBAND) pan += constrain((cameraPan - pan) * CAMERA_EASE, -panStep, panStep);
+      pan = constrain(panPid.step(pan, cameraPan, PAN_TOP_SPEED, dt), PAN_MIN, PAN_MAX);
       panServo.writeMicroseconds(panMicros(pan));
     } else if (!useRadar) {
       // No radar and no phone: glide back to straight ahead and wait there.
@@ -544,9 +655,17 @@ void loop() {
     // while the website thought it had tilted, which tricked its up/down check.
     bool freshTiltAim = websiteSteers && cameraAt != 0 &&
                         (int32_t)(now - cameraAt) < (int32_t)TILT_RETURN_MS;
+    // Up/down runs its PID toward the website's aim, or gently back to level (at
+    // TILT_RETURN_SPEED). Switching between the two clears the I part but keeps the
+    // current speed, so it changes course smoothly.
+    static bool tiltWasAiming = false;
+    if (freshTiltAim != tiltWasAiming) {
+      tiltWasAiming = freshTiltAim;
+      tiltPid.reset(tilt, false);
+    }
     float tiltGoal = freshTiltAim ? cameraTilt : TILT_LEVEL;
-    const float tiltStep = (freshTiltAim ? TILT_TOP_SPEED : TILT_RETURN_SPEED) * CAMERA_TICK_MS / 1000.0;
-    if (fabs(tiltGoal - tilt) >= MOVE_DEADBAND) tilt += constrain((tiltGoal - tilt) * CAMERA_EASE, -tiltStep, tiltStep);
+    float tiltSpeed = freshTiltAim ? TILT_TOP_SPEED : TILT_RETURN_SPEED;
+    tilt = constrain(tiltPid.step(tilt, tiltGoal, tiltSpeed, dt), TILT_MIN, TILT_MAX);
     tiltServo.writeMicroseconds(tiltMicros(tilt));
   }
 

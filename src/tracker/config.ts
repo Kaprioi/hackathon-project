@@ -3,6 +3,8 @@
 // Keep the Bluetooth part in sync with the stand's firmware:
 // phone-tracker/firmware/PhoneTracker_ESP32/PhoneTracker_ESP32.ino
 
+import type { PidGains } from "./pid.ts";
+
 /** Bluetooth IDs. They must match the firmware exactly. */
 export const BLE = {
   name: "PhoneTracker",
@@ -53,7 +55,9 @@ export const TILT = {
  * How the firmware moves each motor toward the page's aim, every 20 ms: `ease` of the
  * remaining way (so it glides to a stop and never swings past), never faster than the top
  * speed, and not at all when the aim is within `deadband` (no twitching). Keep these the
- * same as in the firmware (CAMERA_EASE, PAN_TOP_SPEED, TILT_TOP_SPEED, MOVE_DEADBAND).
+ * same as in the firmware (PAN_TOP_SPEED, TILT_TOP_SPEED, MOVE_DEADBAND). Whatever the
+ * firmware's inner loop is (its CAMERA_EASE step, or a PID per motor tuned to stay within about
+ * 1° of it), it must stay close to this 25%-per-20-ms easing, so the page's guess (servoModel.ts) still fits.
  *
  * Why no "speed up gently, slow down gently" profile: a motor that carries momentum, in a
  * loop where the camera always sees a moment late, swung back and forth in the tests (the
@@ -70,6 +74,31 @@ export const MOTION = {
   deadband: 0.3,
 };
 export const SERVO_TICK_MS = 20;
+
+/**
+ * The phone's steering (pid.ts), one PID per motor: while following someone in view, where to
+ * point = where the camera points + PID(how far they are from the middle, in degrees). The
+ * stand's firmware then gets the motor there (its own, inner loop). P = 1 with I and D at 0 is
+ * exactly how the stand steered before the PID. Starting points, to tune on the real stand.
+ */
+export const PAN_PID: PidGains = {
+  kp: 1,
+  /** Small: left and right already work well, and nothing pulls the pan motor off its aim. */
+  ki: 0.5,
+  kd: 0.02,
+  smoothMs: 100,
+  iMax: 3,
+  maxRate: 400,
+};
+/** Up and down carries the phone against gravity: more I, so a motor that sags still ends up looking straight at them. */
+export const TILT_PID: PidGains = {
+  kp: 1,
+  ki: 1.5,
+  kd: 0.02,
+  smoothMs: 100,
+  iMax: 6,
+  maxRate: 300,
+};
 
 /** Settings you can change on the page (they're saved in the browser). */
 export interface Settings {
@@ -105,6 +134,27 @@ export interface Settings {
    * picture turns when the motor does. "auto" is from older saved settings and counts as yes.
    */
   cameraOnStand: "auto" | "yes" | "no";
+  /**
+   * Who the emergency alert calls, shown on screen (like "Sam"). Empty = "your emergency
+   * contact".
+   */
+  contactName: string;
+  /**
+   * Their phone number, as typed (call.ts phoneForCall tidies it). Sent to the server with each
+   * call. Empty = the server's own number (ALERT_CALL_TO), if it has one.
+   */
+  contactPhone: string;
+  /**
+   * Family can press "Watch live" on the family page to see and hear this camera and talk
+   * back (src/lib/live.ts). Nothing is recorded. Off = the phone turns every request down.
+   */
+  liveVideo: boolean;
+  /**
+   * When an alert's countdown runs out, send one still picture to Google Gemini (through the
+   * server, api/scene-check.ts) and read its description out in the call. Off = no picture is
+   * ever sent. Only works where the server has a Gemini key.
+   */
+  gemini: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -120,6 +170,10 @@ export const DEFAULT_SETTINGS: Settings = {
   faces: true, // the page starts with false on iPhones (see TrackerPage loadSettings)
   emergency: true,
   cameraOnStand: "yes",
+  contactName: "",
+  contactPhone: "",
+  liveVideo: true,
+  gemini: true,
 };
 
 /** True if the camera turns with the stand (the phone on it), false for a computer's webcam beside it. */
@@ -362,10 +416,27 @@ export const EMERGENCY = {
   shakeWindowMs: 3000,
   shakeSwing: 0.1,
   shakeFlips: 5,
+  /**
+   * Shaking happens in one place: if the middle of the box wanders more than this share of the
+   * person's size during the shaking window, they're moving about (or leaving), not shaking.
+   */
+  shakeMaxDrift: 0.5,
+  /**
+   * A box edge this close to the edge of the picture (share of the picture) is cut off, so the
+   * box isn't the person's real shape or size. Someone right up close (a head and shoulders
+   * filling the picture), looking down at the phone, or walking out of view gets a cut-off box
+   * that looks short and wide, like someone lying down: those false seizure alarms (Apple's
+   * test, Oct 24) are why lying and shaking are only judged on whole boxes.
+   */
+  edgeMargin: 0.02,
+  /** Someone lying on the floor never takes up this much of the picture; bigger = right up close. */
+  maxLyingArea: 0.3,
   /** After an alert, watch again once the person has been up (not lying) this long. */
   rearmMs: 3000,
-  /** "Are you OK?" countdown before the pretend emergency call (seconds). */
+  /** "Are you OK?" countdown before the emergency call (seconds). */
   countdownS: 15,
+  /** Once the countdown runs out, the call waits at most this long for Gemini's description (sceneCheck.ts). */
+  geminiWaitMs: 6000,
 };
 
 /** Long side of the small copy of each frame used for colours and the cover tracker. */

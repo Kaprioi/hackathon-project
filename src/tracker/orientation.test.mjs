@@ -43,6 +43,22 @@ test("the front camera's sideways picture lies on its other side, so it gets the
   assert.ok(up(0.1, 0.5, pictureTurn(90, 0, true)).y < 0.2, "front camera: the left edge ends up on top");
 });
 
+test("the front camera's sideways picture is turned the opposite way", () => {
+  // The front camera looks back at the phone's owner, so the phone's raised right edge
+  // shows on the LEFT of its picture: upright needs the opposite turn to the back camera.
+  assert.equal(pictureTurn(90, 0, true), 270, "phone turned left, auto-rotate off");
+  assert.equal(pictureTurn(270, 0, true), 90, "phone turned right, auto-rotate off");
+  for (const [device, screen] of [[90, 0], [270, 0], [0, 0], [90, 90], [270, 90], [null, 0]]) {
+    const back = pictureTurn(device, screen);
+    assert.equal(pictureTurn(device, screen, true), (360 - back) % 360, `phone ${device}, screen ${screen}`);
+  }
+
+  // Phone turned left: its right edge is up, which the front camera shows on the left.
+  const head = toUpright(0.12, 0.47, pictureTurn(90, 0, true));
+  const feet = toUpright(0.48, 0.47, pictureTurn(90, 0, true));
+  assert.ok(head.y < feet.y, "the head should be above the feet");
+});
+
 test("points survive the trip to the upright picture and back", () => {
   for (const turn of [0, 90, 180, 270]) {
     for (const [x, y] of [[0.1, 0.2], [0.9, 0.3], [0.5, 0.5], [0, 1]]) {

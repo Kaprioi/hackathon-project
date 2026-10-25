@@ -22,10 +22,12 @@
 import type { Look, RgbaImage } from "./appearance.ts";
 import { blendLook, lookDistance, lookOf } from "./appearance.ts";
 import type { Settings } from "./config.ts";
-import { LIMITS, RADAR, TILT, TUNING } from "./config.ts";
+import { LIMITS, PAN_PID, RADAR, TILT, TILT_PID, TUNING } from "./config.ts";
 import type { Angles, Box } from "./geometry.ts";
 import { area, centerX, centerY, clamp, contains, iou } from "./geometry.ts";
 import { LumpTracker, toGray } from "./lump.ts";
+import type { PidGains } from "./pid.ts";
+import { Pid } from "./pid.ts";
 import type { RadarEnergy } from "./radarGuide.ts";
 import { ListeningSweep, loudest, louderSide } from "./radarGuide.ts";
 import { TiltCheck, atTiltLimit } from "./tiltCheck.ts";
@@ -279,6 +281,9 @@ export function predictAim(aim: Angles, vel: Angles, ms: number): Angles {
   };
 }
 
+/** The motor counts as having got where it was told once it's this close (degrees): then the PID's I part may add up. */
+const PID_ARRIVED_DEG = 1;
+
 /** The person whose box overlaps `box` the most, if more than `min`; else -1. */
 function bestOverlap(people: Box[], box: Box, min: number): number {
   let best = -1;
@@ -405,9 +410,14 @@ export class Brain {
   private radarRounds = 0;
   /** Where the target hid under the cover (to tell which way the cover went). */
   private coverStartPan = LIMITS.center;
+  /** The phone's steering while tracking (pid.ts): one PID per motor. */
+  private panPid: Pid;
+  private tiltPid: Pid;
 
-  constructor(settings: Settings) {
+  constructor(settings: Settings, gains: { pan: PidGains; tilt: PidGains } = { pan: PAN_PID, tilt: TILT_PID }) {
     this.settings = settings;
+    this.panPid = new Pid(gains.pan);
+    this.tiltPid = new Pid(gains.tilt);
   }
 
   /** The states whose aims move steadily enough to move on between frames. */
@@ -415,6 +425,11 @@ export class Brain {
 
   get currentMode(): Mode {
     return this.mode;
+  }
+
+  /** What the steering PIDs' I parts have added up (degrees), for tests and tuning. */
+  get pidIntegral(): Angles {
+    return { pan: this.panPid.integral, tilt: this.tiltPid.integral };
   }
 
   /** Face recognition switched off: drop what face checks said. */
@@ -440,6 +455,8 @@ export class Brain {
     this.tiltCheck.reset();
     this.tiltHold.reset();
     this.facingTilt = null;
+    this.panPid.reset();
+    this.tiltPid.reset();
   }
 
   update(frameIn: FrameInput): BrainOutput {
@@ -737,6 +754,9 @@ export class Brain {
     this.chainTrusted = false; // until a clear colour match confirms it's them
     this.cleanSinceClear = false;
     this.viewCandidate = null;
+    // Tracking starts (or they're found again): the PIDs start afresh, nothing added up from before.
+    this.panPid.reset();
+    this.tiltPid.reset();
     this.setMode("tracking", f.t, note);
   }
 
@@ -837,6 +857,7 @@ export class Brain {
       this.tiltRestart = false;
       this.bearing = { ...this.bearing, tilt: w.tilt };
       this.vel = { ...this.vel, tilt: 0 };
+      this.tiltPid.reset();
       this.recent = [];
     }
     if (dt > 0 && dt < 0.5) {
@@ -869,23 +890,37 @@ export class Brain {
     if (!this.isAlone(f, i)) this.cleanSinceClear = false;
     this.learnView(f.t, look, d);
 
-    // Aim a little ahead to make up for the delay between camera and motor. Standing still,
-    // left/right aims at where they've been on average lately instead: the detector's box
-    // jumps a little every frame, and chasing each jump made the stand twitch back and forth.
-    // (Up/down has its own steadying, tiltHold, and its wrong-way check needs the plain aim.)
-    const walking = Math.hypot(this.vel.pan, this.vel.tilt) > TUNING.stillSpeed;
-    const lead: Angles = {
-      pan: walking ? w.pan + (this.vel.pan * TUNING.leadMs) / 1000 : this.recent.reduce((a, r) => a + r.w.pan, 0) / this.recent.length,
-      tilt: w.tilt + (this.vel.tilt * TUNING.leadMs) / 1000,
-    };
+    // Where to point: where the camera points (the page's guess of where the stand was told
+    // to go, as of this picture) + PID(how far they are from the middle), one PID per motor
+    // (pid.ts, PAN_PID and TILT_PID in config.ts). The I part only adds up an error that
+    // stays: while they hold still, once the motor has got where it was told (not while it's
+    // still turning there), and not while the stand can't go any further that way.
+    // Standing still, left/right goes by where they've been on average lately (the last
+    // TUNING.stillAverageMs), not the latest box: the detector's box jumps a little every
+    // frame, and chasing each jump made the stand twitch back and forth. (Up/down has its own
+    // steadying, tiltHold, and its wrong-way check needs the plain error.)
     const dz = this.settings.deadZoneDeg;
+    const moving = Math.hypot(this.vel.pan, this.vel.tilt) > TUNING.stillSpeed;
+    const panAt = moving ? w.pan : this.recent.reduce((a, r) => a + r.w.pan, 0) / this.recent.length;
+    const err = { pan: panAt - f.camera.pan, tilt: w.tilt - f.camera.tilt };
+    const arrived = (camera: number, told: number | undefined) => told !== undefined && Math.abs(camera - told) < PID_ARRIVED_DEG;
+    const ms = dt * 1000;
+    const panFreeze = moving || !arrived(f.camera.pan, this.aim?.pan) || this.panPinned(err.pan);
+    const tiltFreeze = moving || !arrived(f.camera.tilt, this.outTilt) || this.tiltPinned(w.tilt, err.tilt);
+    const pan = this.panPid.update(err.pan, ms, { freeze: panFreeze, quiet: dz });
+    const tilt = this.tiltPid.update(err.tilt, ms, { freeze: tiltFreeze, quiet: dz });
+    // ...and a little ahead of someone walking, to make up for the delay between camera and motor.
+    const lead: Angles = {
+      pan: f.camera.pan + pan + (this.vel.pan * TUNING.leadMs) / 1000,
+      tilt: f.camera.tilt + tilt + (this.vel.tilt * TUNING.leadMs) / 1000,
+    };
     if (!this.aim || Math.abs(lead.pan - this.aim.pan) > dz || Math.abs(lead.tilt - this.aim.tilt) > dz) {
       this.aim = this.clampAim(lead);
     }
     // Walking: the page moves the aim on smoothly between camera frames. (Following every
     // small move each frame, or trusting a sudden change of speed at once, made the stand
     // hunt back and forth when the real motor is slower than the page thinks.)
-    if (walking) this.aimVel = { ...this.vel };
+    if (moving) this.aimVel = { ...this.vel };
     const unsure = d !== null && d > this.settings.matchLimit;
     const note = this.flippedTilt
       ? this.flipNote
@@ -895,6 +930,25 @@ export class Brain {
           ? "Not sure that's you (the colours don't match). Checking..."
           : "Tracking you.";
     this.setMode("tracking", f.t, this.mode === "tracking" ? note : this.note);
+  }
+
+  /** The pan aim is at a turning limit and the person is further that way: the stand can't turn any further. */
+  private panPinned(err: number): boolean {
+    const pan = this.aim?.pan;
+    if (pan === undefined) return false;
+    return (pan >= LIMITS.panMax && err > 0) || (pan <= LIMITS.panMin && err < 0);
+  }
+
+  /**
+   * The tilt can't follow the person further: its aim is at the end of the up/down range
+   * with them further that way, they're close enough to level that the stand stays level on
+   * purpose, or TiltHold is holding the tilt away from the brain's aim.
+   */
+  private tiltPinned(bearing: number, err: number): boolean {
+    if (this.tiltHold.holding) return true;
+    if (Math.abs(bearing - TILT.level) <= TILT.levelBand) return true;
+    const off = (this.aim?.tilt ?? TILT.level) - TILT.level;
+    return (off >= TILT.range && err > 0) || (off <= -TILT.range && err < 0);
   }
 
   /** Flips up/down for this stand (the page keeps it for this visit only, see tiltCheck.ts). */

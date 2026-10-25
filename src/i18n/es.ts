@@ -54,7 +54,7 @@ const es: Record<string, string> = {
   "Why families choose CareNest": "Por qué las familias eligen CareNest",
   "Just a phone on a table": "Solo un teléfono sobre una mesa",
   "Nothing to wear": "Nada que llevar puesto",
-  "Video stays on the phone": "El vídeo se queda en el teléfono",
+  "Live video only for family": "Vídeo en directo solo para la familia",
   "Only invited family can see": "Solo la familia invitada puede verlo",
   "Updates by itself": "Se actualiza sola",
   "Fall & quiet alerts": "Avisos de caídas y de silencio",
@@ -76,8 +76,8 @@ const es: Record<string, string> = {
   "Made to be simple for everyone — grandparents included.": "Pensado para que sea fácil para todos, abuelos incluidos.",
   "If the phone thinks someone may have fallen, or it stops checking in, the family page says so in big letters.":
     "Si el teléfono cree que alguien puede haberse caído, o deja de dar señales, la página familiar lo dice en letra grande.",
-  "The camera picture never leaves the phone. Only short notes like “moving around, left side” are sent.":
-    "La imagen de la cámara nunca sale del teléfono. Solo se envían notas cortas como «moviéndose, lado izquierdo».",
+  "Family get short notes like “moving around, left side”, and can press Watch live to see and talk. Nothing is recorded.":
+    "La familia recibe notas cortas como «moviéndose, lado izquierdo», y puede pulsar «Ver en directo» para ver y hablar. No se graba nada.",
   "One simple page shows what is happening right now and a short list of today’s news.":
     "Una página sencilla muestra lo que pasa ahora mismo y una lista corta con las novedades de hoy.",
   "The family page changes the moment something happens. No need to reload or ring round.":
@@ -123,9 +123,9 @@ const es: Record<string, string> = {
   "We are a small hackathon team. Many of us have parents and grandparents who live alone, and we wanted a simple, kind way to stay close without cameras sending pictures anywhere or gadgets to wear.":
     "Somos un pequeño equipo de un hackatón. Muchos tenemos padres y abuelos que viven solos, y queríamos una forma sencilla y amable de estar cerca, sin cámaras que envíen imágenes a ningún sitio ni aparatos que llevar puestos.",
   "Good questions": "Preguntas frecuentes",
-  "Does any video leave the phone?": "¿Sale algún vídeo del teléfono?",
-  "No. The camera picture never leaves the phone. Only short notes like “moving around, left side” are sent to your family page.":
-    "No. La imagen de la cámara nunca sale del teléfono. Solo se envían notas cortas como «moviéndose, lado izquierdo» a su página familiar.",
+  "Can family see video?": "¿Puede la familia ver vídeo?",
+  "Only live, and only when someone in your family presses Watch live. The phone then shows a red LIVE sign. The video goes straight to them, encrypted, and is never recorded or saved. The rest of the time only short notes like “moving around, left side” are sent.":
+    "Solo en directo, y solo cuando alguien de su familia pulsa «Ver en directo». Entonces el teléfono muestra un aviso rojo «LIVE». El vídeo va directo a ellos, cifrado, y nunca se graba ni se guarda. El resto del tiempo solo se envían notas cortas como «moviéndose, lado izquierdo».",
   "What do I need to get started?": "¿Qué necesito para empezar?",
   "Just a spare phone standing on a table where it can see the room. Nothing to wear, nothing to charge on the wrist.":
     "Solo un teléfono que no use, de pie sobre una mesa desde donde vea la habitación. Nada que llevar puesto ni que cargar en la muñeca.",
@@ -577,8 +577,8 @@ const es: Record<string, string> = {
   "Phone *camera*": "Cámara *del teléfono*",
   "Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a few words, how things are going.":
     "Ponga este teléfono de pie sobre una mesa, mirando hacia la habitación. Se fija en el movimiento y le cuenta a su familia, en pocas palabras, cómo van las cosas.",
-  'Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or pictures ever leave it.':
-    "El vídeo se queda en este teléfono. Solo se envían notas cortas como «moviéndose - lado izquierdo». Ningún vídeo ni foto sale nunca de él.",
+  'Only short notes like "moving around - left side" are sent. Family can also watch live and talk to you, and the bar at the top turns red while they do. Nothing is recorded.':
+    "Solo se envían notas cortas como «moviéndose - lado izquierdo». La familia también puede ver en directo y hablarle, y la barra de arriba se vuelve roja mientras tanto. No se graba nada.",
   "Please sign in first, so your family can see the updates.":
     "Primero inicie sesión, para que su familia pueda ver los avisos.",
   "Start watching": "Empezar a vigilar",
@@ -615,12 +615,12 @@ const es: Record<string, string> = {
   "Green means all is well, like \"Moving around\". Red means the phone thinks someone may have fallen: please call or visit. A white box means the phone hasn't checked in for a few minutes — check it is on and charging.":
     "Verde quiere decir que todo va bien, por ejemplo «Moviéndose». Rojo quiere decir que el teléfono cree que alguien puede haberse caído: llame o vaya a verle, por favor. Un recuadro blanco quiere decir que el teléfono no ha dado noticias desde hace unos minutos: compruebe que está encendido y cargando.",
   "Your privacy": "Su privacidad",
-  "Video and pictures never leave the phone. Family only get short notes in words, like \"Sitting still - left side\". Only the people you add can see them.":
-    "El vídeo y las fotos nunca salen del teléfono. La familia solo recibe notas cortas con palabras, como «Sentado, sin moverse - lado izquierdo». Solo las personas que usted añada pueden verlas.",
+  "Family get short notes in words, like \"Sitting still - left side\". They can also watch live and talk through the phone, and the phone shows a red LIVE sign while they do. Nothing is recorded. Only the people you add can see or watch.":
+    "La familia recibe notas cortas con palabras, como «Sentado, sin moverse - lado izquierdo». También puede ver en directo y hablar a través del teléfono, que muestra un aviso rojo «LIVE» mientras tanto. No se graba nada. Solo las personas que usted añada pueden ver las notas o el vídeo.",
   "Common questions": "Preguntas frecuentes",
   "Does CareNest record video?": "¿CareNest graba vídeo?",
-  "No. The phone looks at the room itself and only sends short words, like \"Moving around\". No video or pictures are sent or saved anywhere.":
-    "No. El propio teléfono mira la habitación y solo envía unas pocas palabras, como «Moviéndose». No se envía ni se guarda ningún vídeo ni ninguna foto.",
+  "No. The phone looks at the room itself and sends short words, like \"Moving around\". Family can also watch live, which shows a red LIVE sign on the phone, but nothing is ever recorded or saved.":
+    "No. El propio teléfono mira la habitación y envía unas pocas palabras, como «Moviéndose». La familia también puede ver en directo, y entonces el teléfono muestra un aviso rojo «LIVE», pero nunca se graba ni se guarda nada.",
   "Which phone can I use?": "¿Qué teléfono puedo usar?",
   "Most smartphones from the last few years work. It needs a working camera, Wi-Fi or mobile data, and a charger.":
     "Sirven la mayoría de los teléfonos inteligentes de los últimos años. Necesita una cámara que funcione, wifi o datos móviles, y un cargador.",
@@ -718,7 +718,7 @@ const es: Record<string, string> = {
   "Don't Allow": "No permitir",
   "Stand it *on a table*": "Póngalo *sobre una mesa*",
   "Stand the iPhone up where it can see most of the room, and leave it plugged in.": "Ponga el iPhone de pie donde pueda ver casi toda la habitación, y déjelo enchufado.",
-  "A green \"Camera on\" sign means it's working. Video never leaves the phone.": "Un aviso verde de \"Cámara encendida\" significa que funciona. El video nunca sale del teléfono.",
+  "A green \"Camera on\" sign means it's working. It turns red while family watch live. Nothing is recorded.": "Un aviso verde de \"Cámara encendida\" significa que funciona. Se vuelve rojo mientras la familia mira en directo. No se graba nada.",
   "The iPhone on the table, showing the green \"Camera on\" sign": "El iPhone sobre la mesa, con el aviso verde de \"Cámara encendida\"",
   "Camera on": "Cámara encendida",
   "You're *all set!*": "¡Todo *listo!*",
@@ -854,6 +854,48 @@ const es: Record<string, string> = {
   "Please type a name for the home.": "Escriba un nombre para el hogar.",
   "Saved. Everyone in the family sees the new name.": "Guardado. Toda la familia ve el nuevo nombre.",
   "My care circle": "Mi círculo de cuidado",
+  // Watch live (src/components/LiveView.tsx)
+  "Watch live": "Ver en directo",
+  "Watch live now": "Ver en directo ahora",
+  "Connecting to the phone…": "Conectando con el teléfono…",
+  "Talk": "Hablar",
+  "Stop talking": "Dejar de hablar",
+  "Mute sound": "Silenciar",
+  "Sound on": "Activar sonido",
+  "Stop watching": "Dejar de mirar",
+  "Try again": "Intentar de nuevo",
+  "They can hear you now through the phone.": "Ahora pueden oírle a través del teléfono.",
+  "The phone shows a red LIVE sign while you watch. Nothing is recorded.": "El teléfono muestra un aviso rojo «LIVE» mientras usted mira. No se graba nada.",
+  "See and hear the room through the phone camera, and talk to them. Nothing is recorded.": "Vea y oiga la habitación a través de la cámara del teléfono, y hable con ellos. No se graba nada.",
+  "The phone camera seems to be off right now.": "Parece que la cámara del teléfono está apagada ahora mismo.",
+  "The phone camera isn't on right now. Ask them to open Phone camera and press \"Start watching\".": "La cámara del teléfono no está encendida ahora. Pídales que abran Cámara del teléfono y pulsen «Empezar a vigilar».",
+  "Live video is switched off on the phone (Settings, Live video for family).": "El vídeo en directo está desactivado en el teléfono (Settings, Live video for family).",
+  "3 family members are already watching. Try again in a little while.": "Ya están mirando 3 familiares. Inténtelo de nuevo dentro de un rato.",
+  "Couldn't connect to the phone. The network may be blocking video. Try again, or try another Wi-Fi.": "No se pudo conectar con el teléfono. Puede que la red esté bloqueando el vídeo. Inténtelo de nuevo o pruebe con otra red Wi-Fi.",
+  "The live video ended (the phone stopped watching).": "El vídeo en directo terminó (el teléfono dejó de vigilar).",
+  "Your microphone is blocked. Allow it for this site in the browser to talk.": "Su micrófono está bloqueado. Permítalo para este sitio en el navegador para poder hablar.",
+  "Couldn't start live video. Check the internet and try again.": "No se pudo iniciar el vídeo en directo. Revise la conexión a internet e inténtelo de nuevo.",
+  "Live video isn't switched on in the database yet (see README: Live video).": "El vídeo en directo aún no está activado en la base de datos (vea el README: Live video).",
+  "Couldn't connect for live video. Check the internet and try again.": "No se pudo conectar para el vídeo en directo. Revise la conexión a internet e inténtelo de nuevo.",
+  // Family page dashboard (src/components/DayPanels.tsx)
+  "Today at a glance": "Hoy de un vistazo",
+  "Moving today": "En movimiento hoy",
+  "Last moved": "Último movimiento",
+  "Moving now": "Moviéndose ahora",
+  "Not yet today": "Aún no hoy",
+  "Spent most time": "Donde más estuvo",
+  "Alerts today": "Alertas hoy",
+  "None": "Ninguna",
+  "1 possible fall": "1 posible caída",
+  "{n} possible falls": "{n} posibles caídas",
+  "Today: moving {moving}, still {still}, nobody in view {nobody}, camera off {off}.": "Hoy: en movimiento {moving}, quieto {still}, nadie a la vista {nobody}, cámara apagada {off}.",
+  "Moving": "En movimiento",
+  "Still": "Quieto",
+  "Now": "Ahora",
+  "under a minute": "menos de un minuto",
+  "{m} min": "{m} min",
+  "The phone camera is on.": "La cámara del teléfono está encendida.",
+  "Nothing yet. News from the phone camera will appear here, newest first.": "Todavía nada. Las novedades de la cámara del teléfono aparecerán aquí, primero las más recientes.",
 };
 
 export default es;
