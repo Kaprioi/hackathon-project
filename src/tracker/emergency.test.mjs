@@ -97,3 +97,42 @@ test("not seen for a moment while lying: the lying time keeps counting", () => {
   const alerts = run(w, 3500, 2000, () => lying);
   assert.equal(alerts.length, 1, "the fall still counts");
 });
+
+// Apple's phone test (Oct 24): close up to the screen, looking down, or moving out of the
+// picture kept setting off the seizure alert. A box cut off by the picture's edges looks short
+// and wide (like lying down), and its size jumps as you move.
+let seed2 = 11;
+const rand2 = () => ((seed2 = (seed2 * 16807) % 2147483647) / 2147483647) * 2 - 1;
+
+test("right up close (head and shoulders filling the picture, wobbling): no alert", () => {
+  const close = () => ({ x: 0.05 + 0.03 * rand2(), y: 0.2, w: 0.9 * (1 + 0.12 * rand2()), h: 0.8 });
+  assert.deepEqual(run(new EmergencyWatch(), 0, 15000, close), []);
+});
+
+test("close up and looking down at the phone (box at the bottom edge, bobbing): no alert", () => {
+  const down = (t) => {
+    const h = 0.55 + 0.2 * Math.sin(t / 250);
+    return { x: 0.15, y: 1 - h, w: 0.7 * (1 + 0.08 * rand2()), h };
+  };
+  assert.deepEqual(run(new EmergencyWatch(), 0, 15000, down), []);
+});
+
+test("leaning forward and back again and again (crossing the lying line): no alert", () => {
+  const lean = (t) => (Math.floor(t / 300) % 2 ? { x: 0.3, y: 0.45, w: 0.4, h: 0.2 } : { x: 0.35, y: 0.3, w: 0.3, h: 0.4 });
+  assert.deepEqual(run(new EmergencyWatch(), 0, 15000, lean), []);
+});
+
+test("moving out of the picture (a wide box sliding off the side, shrinking): no alert", () => {
+  const leave = (t) => {
+    const x = 0.2 + t / 4000;
+    return { x, y: 0.5, w: Math.max(0.05, Math.min(0.45, 1 - x)) * (1 + 0.1 * Math.sin(t / 90)), h: 0.2 };
+  };
+  assert.deepEqual(run(new EmergencyWatch(), 0, 3000, leave), []);
+});
+
+test("lying but moving across the floor (more than half its size in a few seconds): not a seizure", () => {
+  // Shaking happens in one place; a box that travels while its shape changes is someone moving.
+  const w = new EmergencyWatch();
+  const across = (t) => ({ ...lying, w: 0.4 * (1 + 0.1 * Math.sin(t / 80)), x: 0.05 + (t / 4000) * 0.5 });
+  assert.ok(!run(w, 0, 4000, across).some((x) => x.a === "seizure"));
+});
