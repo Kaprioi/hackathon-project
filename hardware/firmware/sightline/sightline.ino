@@ -125,7 +125,10 @@ const uint32_t CAMERA_HOLD_MS = 700;     // the website's aims count as "person 
 //   - never faster than the top speed (PAN_TOP_SPEED / TILT_TOP_SPEED),
 //   - never speeds up or slows down faster than PAN_ACCEL / TILT_ACCEL,
 //   - always slow enough to stop in time, and never past the aim (no swinging past),
-//   - not at all for an aim within MOVE_DEADBAND (no twitching).
+//   - never away from the aim (a reversed aim stops it at once, then it heads back),
+//   - not at all for an aim within MOVE_DEADBAND (no twitching). It just holds still
+//     that tick but remembers its I part and speed, so while someone walks it carries
+//     on smoothly next tick. After PID_HOLD_TICKS of holding still it forgets them.
 // The motors can't report where they are, so "where the motor is" is where this board
 // last told it to be. The website's copy of the motion (MOTION in src/tracker/config.ts)
 // assumes 25% of the remaining way per 20 ms: KP 12.5 x 0.02 s is exactly that, so with
@@ -151,6 +154,8 @@ const float PAN_ACCEL = 3000;            // degrees/second, per second (full spe
 const float TILT_ACCEL = 1500;           // gentler: about 0.13 s to full speed with the phone on it
 const float PID_I_ZONE = 12;             // degrees: the I part only works this close to the aim
 const float PID_I_MAX = 60;              // degrees/second: the most speed the I part can add
+const float PID_RESET_JUMP = PID_I_ZONE; // degrees: an aim jumping further than this in one tick clears the I part
+const int PID_HOLD_TICKS = 5;            // ticks (100 ms) holding still at the aim before the I part and speed are forgotten
 const uint32_t MIST_TIMEOUT_MS = 3000;   // no "1" from the website for this long: mist off (safety)
 const uint32_t REPORT_MS = 100;          // send radar readings and the head angle 10 times a second
 
@@ -191,17 +196,21 @@ int panMicros(float angle) { return toMicros(angle + (PAN_TRUE_CENTER - PAN_CENT
 int tiltMicros(float angle) { return toMicros(angle + (TILT_TRUE_LEVEL - TILT_LEVEL)); }
 
 // ---------- Inner loop: one PID controller per motor (see "Website steering" above) ----------
-// innerPid begin (a host-side simulation copies the code between these two lines)
+// innerPid begin (../inner-pid-sim/run.sh copies the code between these two lines and tests it)
 struct InnerPid {
   float kp, ki, kd, accel;
   float integral;  // the I part, degrees/second
   float speed;     // the speed it moved at last tick, degrees/second
   float lastPos;   // where it was last tick, degrees
+  float lastTarget;  // the aim it had last tick, degrees
+  int holdTicks;   // how many ticks in a row it has held still at the aim
 
   // Forget the I part and the last movement. stop = also start from standing still.
   void reset(float pos, bool stop) {
     integral = 0;
     lastPos = pos;
+    lastTarget = pos;
+    holdTicks = 0;
     if (stop) speed = 0;
   }
 
@@ -210,10 +219,20 @@ struct InnerPid {
     float error = target - pos;
     float moving = (pos - lastPos) / dt;  // derivative on the motor's movement, not the aim
     lastPos = pos;
-    if (fabsf(error) < MOVE_DEADBAND) {   // close enough: hold still
-      reset(pos, true);
+    // A big jump in the aim (a new person, or a big correction): the old I part is no
+    // use for it, so start it again from 0. The speed stays, so it changes course smoothly.
+    if (fabsf(target - lastTarget) > PID_RESET_JUMP) integral = 0;
+    lastTarget = target;
+    if (fabsf(error) < MOVE_DEADBAND) {   // close enough: hold still this tick
+      // Keep the I part and speed: a walking person's next aim comes in a moment. Only
+      // once it has been still for a while (they stopped) are they forgotten.
+      if (++holdTicks >= PID_HOLD_TICKS) {
+        integral = 0;
+        speed = 0;
+      }
       return pos;
     }
+    holdTicks = 0;
     float want = kp * error + integral - kd * moving;
     // Fastest it may go: the top speed, and slow enough to stop at the aim in time.
     float limit = fminf(topSpeed, sqrtf(2 * accel * fabsf(error)));
@@ -221,6 +240,7 @@ struct InnerPid {
     v = fmaxf(speed - accel * dt, fminf(speed + accel * dt, v));  // speed up / slow down gently
     v = fmaxf(-topSpeed, fminf(topSpeed, v));
     if (fabsf(v * dt) > fabsf(error)) v = error / dt;             // never past the aim
+    if (v * error < 0) v = 0;  // never away from the aim (old speed or I part going the other way)
     // Anti-windup: the I part only grows near the aim and while the speed isn't being
     // limited (or when growing would shrink it); far from the aim it starts again from 0.
     bool limited = fabsf(v - want) > 0.01f;
@@ -233,8 +253,8 @@ struct InnerPid {
 };
 // innerPid end
 
-InnerPid panPid = {PAN_KP, PAN_KI, PAN_KD, PAN_ACCEL, 0, 0, PAN_CENTER};
-InnerPid tiltPid = {TILT_KP, TILT_KI, TILT_KD, TILT_ACCEL, 0, 0, TILT_LEVEL};
+InnerPid panPid = {PAN_KP, PAN_KI, PAN_KD, PAN_ACCEL, 0, 0, PAN_CENTER, PAN_CENTER, 0};
+InnerPid tiltPid = {TILT_KP, TILT_KI, TILT_KD, TILT_ACCEL, 0, 0, TILT_LEVEL, TILT_LEVEL, 0};
 
 // One-radar tracking (from main): look a little to one side, then the other, and
 // move the center toward whichever side heard the person more strongly.
