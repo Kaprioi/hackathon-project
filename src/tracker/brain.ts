@@ -182,7 +182,10 @@ export function towardTilt(tilt: number, goal: number, ms: number): number {
  * Once the stand has been told a tilt more than TILT.levelBand away from neutral for more
  * than TILT.holdMs in a row, it eases back to neutral, then stays at neutral for
  * TILT.cooldownMs so it doesn't bounce straight back (easing along with it if neutral moves,
- * say to level when the person leaves). Only the tilt: left and right never change.
+ * say to level when the person leaves). After that it stays at neutral until the tilt the
+ * brain wants changes, so it never goes back to the same out-of-date aim (with a big dead
+ * zone, the brain's aim can stay put while the person sits a little off it).
+ * Only the tilt: left and right never change.
  */
 export class TiltHold {
   /** Since when the stand has been told a tilt away from neutral (null = at neutral). */
@@ -191,6 +194,8 @@ export class TiltHold {
   private returning = false;
   /** Back at neutral after a hold: since when (null = no cooldown). */
   private backAt: number | null = null;
+  /** The tilt the brain wanted when it was away too long: not followed again until it changes (null = none). */
+  private staleWant: number | null = null;
   /** True when this frame's tilt isn't the wanted one (easing back, or waiting out the cooldown). */
   holding = false;
 
@@ -200,7 +205,11 @@ export class TiltHold {
    * (or level); `t`: now; `ms`: since the last frame. Returns the tilt to tell the stand now.
    */
   update(want: number, told: number, neutral: number, t: number, ms: number): number {
-    if (!this.returning && this.awaySince !== null && t - this.awaySince > TILT.holdMs) this.returning = true;
+    if (!this.returning && this.awaySince !== null && t - this.awaySince > TILT.holdMs) {
+      this.returning = true;
+      this.staleWant = want;
+    }
+    if (this.staleWant !== null && want !== this.staleWant) this.staleWant = null;
     let out = want;
     if (this.returning) {
       out = towardTilt(told, neutral, ms);
@@ -212,6 +221,7 @@ export class TiltHold {
       if (t - this.backAt >= TILT.cooldownMs) this.backAt = null;
       else out = towardTilt(told, neutral, ms);
     }
+    if (!this.returning && this.backAt === null && this.staleWant !== null) out = towardTilt(told, neutral, ms);
     this.holding = out !== want;
     if (Math.abs(out - neutral) <= TILT.levelBand) this.awaySince = null;
     else this.awaySince ??= t;
@@ -222,6 +232,7 @@ export class TiltHold {
     this.awaySince = null;
     this.returning = false;
     this.backAt = null;
+    this.staleWant = null;
     this.holding = false;
   }
 }
