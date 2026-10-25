@@ -41,8 +41,11 @@ export interface SceneReply {
   body: Record<string, unknown>;
 }
 
-/** Fast, and good at describing pictures (from Google's model list, Oct 2026). */
-export const DEFAULT_MODEL = "gemini-3.8-flash";
+/**
+ * Google's fastest current model, and plenty for describing one picture. Its free tier allows
+ * 500 requests a day (15 a minute); gemini-3.8-flash allows only 20 a day (AI Studio, Oct 2026).
+ */
+export const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 export const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 /** At most one check this often, and this many a day, so a public page can't run up the bill. */
 export const CHECK_GAP_MS = 10_000;

@@ -84,9 +84,9 @@ test("asks Gemini with the picture, a fixed answer form, and storing turned off"
 
 test("GEMINI_MODEL picks another model; a data: prefix on the picture is removed", async () => {
   const s = fakeServers();
-  await handleSceneCheck(post({ kind: "seizure", image: `data:image/jpeg;base64,${IMAGE}` }), { GEMINI_API_KEY: KEY, GEMINI_MODEL: "gemini-3.5-flash-lite" }, { fetch: s.fetch });
+  await handleSceneCheck(post({ kind: "seizure", image: `data:image/jpeg;base64,${IMAGE}` }), { GEMINI_API_KEY: KEY, GEMINI_MODEL: "gemini-3.8-flash" }, { fetch: s.fetch });
   const [req] = s.gemini();
-  assert.equal(req.json.model, "gemini-3.5-flash-lite");
+  assert.equal(req.json.model, "gemini-3.8-flash");
   assert.equal(req.json.input[1].data, IMAGE);
   assert.match(req.json.input[0].text, /seizure/);
 });
