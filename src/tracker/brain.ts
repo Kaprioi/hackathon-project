@@ -332,6 +332,8 @@ export class Brain {
   private tiltRestart = false;
   /** How fast the target was moving (degrees per second). */
   private vel: Angles = { pan: 0, tilt: 0 };
+  /** Where the target was over the last TUNING.stillAverageMs, to aim (left/right) at their average spot while they stand still. */
+  private recent: { t: number; w: Angles }[] = [];
   private lastBox: Box | null = null;
   private lastSeenT = 0;
   private aim: Angles | null = null;
@@ -724,6 +726,7 @@ export class Brain {
   private lockOn(f: FrameInput, i: number, note: string): void {
     const box = f.people[i];
     this.bearing = this.toWorld(box, f.camera);
+    this.recent = [];
     this.facingTilt = limitTilt(this.bearing.tilt);
     this.lastBox = box;
     this.lastSeenT = f.t;
@@ -834,6 +837,7 @@ export class Brain {
       this.tiltRestart = false;
       this.bearing = { ...this.bearing, tilt: w.tilt };
       this.vel = { ...this.vel, tilt: 0 };
+      this.recent = [];
     }
     if (dt > 0 && dt < 0.5) {
       const vp = clamp((w.pan - this.bearing.pan) / dt, -TUNING.maxSpeed, TUNING.maxSpeed);
@@ -844,6 +848,8 @@ export class Brain {
       this.vel = { pan: 0, tilt: 0 };
     }
     this.bearing = w;
+    this.recent.push({ t: f.t, w });
+    while (f.t - this.recent[0].t > TUNING.stillAverageMs) this.recent.shift();
     this.facingTilt = limitTilt(w.tilt);
     this.lastBox = box;
     this.lastSeenT = f.t;
@@ -863,9 +869,13 @@ export class Brain {
     if (!this.isAlone(f, i)) this.cleanSinceClear = false;
     this.learnView(f.t, look, d);
 
-    // Aim a little ahead to make up for the delay between camera and motor.
+    // Aim a little ahead to make up for the delay between camera and motor. Standing still,
+    // left/right aims at where they've been on average lately instead: the detector's box
+    // jumps a little every frame, and chasing each jump made the stand twitch back and forth.
+    // (Up/down has its own steadying, tiltHold, and its wrong-way check needs the plain aim.)
+    const walking = Math.hypot(this.vel.pan, this.vel.tilt) > TUNING.stillSpeed;
     const lead: Angles = {
-      pan: w.pan + (this.vel.pan * TUNING.leadMs) / 1000,
+      pan: walking ? w.pan + (this.vel.pan * TUNING.leadMs) / 1000 : this.recent.reduce((a, r) => a + r.w.pan, 0) / this.recent.length,
       tilt: w.tilt + (this.vel.tilt * TUNING.leadMs) / 1000,
     };
     const dz = this.settings.deadZoneDeg;
@@ -875,7 +885,7 @@ export class Brain {
     // Walking: the page moves the aim on smoothly between camera frames. (Following every
     // small move each frame, or trusting a sudden change of speed at once, made the stand
     // hunt back and forth when the real motor is slower than the page thinks.)
-    if (Math.hypot(this.vel.pan, this.vel.tilt) > TUNING.stillSpeed) this.aimVel = { ...this.vel };
+    if (walking) this.aimVel = { ...this.vel };
     const unsure = d !== null && d > this.settings.matchLimit;
     const note = this.flippedTilt
       ? this.flipNote

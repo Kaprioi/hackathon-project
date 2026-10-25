@@ -231,6 +231,12 @@ export const TUNING = {
    * moves the aim on smoothly between camera frames (predictAim in brain.ts).
    */
   stillSpeed: 6,
+  /**
+   * Standing still, aim left/right at where they've been on average over this long (ms), not
+   * at the latest box: the detector's box jumps a little every frame, and chasing each jump made the
+   * stand twitch back and forth.
+   */
+  stillAverageMs: 500,
   /** Between camera frames, move the aim on by the person's speed for at most this long. */
   predictMaxMs: 150,
   /** How sure the cover tracker must be (0-1) before the stand follows a moving blanket. */
@@ -275,8 +281,12 @@ export const RADAR = {
    * 65° wide, so each stop still overlaps the last)...
    */
   stepDeg: 40,
-  /** ...wait this long once there (the radar hears its own motion while the head turns; was 250)... */
-  settleMs: 200,
+  /**
+   * ...wait this long once there (the radar hears its own motion while the head turns). It was
+   * 250, then 200; back to 250 since the page's guess of where the head points stopped lagging
+   * behind (servoModel.ts): a motor slower than the page thinks needs the extra moment to arrive.
+   */
+  settleMs: 250,
   /** ...then listen this long, averaging the loudness (was 350). */
   listenMs: 300,
   /** Stop waiting for the head to reach a stop after this long (it may be stuck at an end). */

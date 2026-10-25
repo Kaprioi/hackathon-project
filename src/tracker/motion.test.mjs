@@ -264,3 +264,101 @@ test("a phone's real delays (the AI, then Bluetooth): the stand follows you with
   assert.ok(now.off < 2.5, `on average ${now.off.toFixed(1)}° off you after you stopped`);
   assert.ok(before.swings >= 3 * Math.max(1, now.swings), `the old guess swung ${before.swings} times, the new one ${now.swings}`);
 });
+
+test("where the camera points is known between camera frames, not just at them", () => {
+  // The page only moves its guess on once per AI frame (about every 100 ms on a phone). Asking
+  // where the camera was in between used to answer with the last frame's angle, 10-20 degrees
+  // off while the stand turned, so the page thought you'd moved and overshot.
+  const rare = new ServoModel();
+  const often = new ServoModel();
+  rare.step(0);
+  often.step(0);
+  rare.setTarget({ pan: 150, tilt: 90 });
+  often.setTarget({ pan: 150, tilt: 90 });
+  for (let t = 5; t <= 300; t += 5) often.step(t);
+  rare.step(110);
+  rare.step(220);
+  rare.step(300);
+  for (const t of [60, 130, 200, 260]) {
+    assert.ok(Math.abs(rare.at(t).pan - often.at(t).pan) < 1, `at ${t} ms: ${rare.at(t).pan.toFixed(1)} vs ${often.at(t).pan.toFixed(1)}`);
+  }
+});
+
+/**
+ * The phone's real timing (as in the test above: the AI takes 95 ms, the page looks every
+ * 110 ms, Bluetooth adds 30 ms), with the detector's box jumping by `wobble` of the picture each
+ * frame. You stand at `you` degrees; tap at the start. Returns the stand's angle every 16 ms.
+ */
+function phoneStand(you, wobble, ms) {
+  const AI_MS = 95;
+  const LOOK_MS = 110;
+  const real = new ServoModel();
+  const guess = new ServoModel();
+  real.step(0);
+  guess.step(0);
+  const brain = new Brain({ ...DEFAULT_SETTINGS });
+  let seed = 9;
+  const jump = () => (((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1) * wobble;
+  const toStand = [];
+  let outbox = null;
+  let last = null;
+  let nextLook = 0;
+  const log = [];
+  const send = (now, aim) => {
+    toStand.push({ at: now + TUNING.bluetoothMs, aim });
+    guess.setTarget(aim, now + TUNING.bluetoothMs);
+  };
+  for (let t = 0; t <= ms; t += SCREEN_MS) {
+    while (toStand.length && toStand[0].at <= t) real.setTarget(toStand.shift().aim);
+    real.step(t);
+    if (outbox && t >= outbox.at) {
+      if (outbox.out.aim) send(t, outbox.out.aim);
+      last = outbox;
+      outbox = null;
+    } else if (last?.out.aim && last.out.aimVel) {
+      send(t, predictAim(last.out.aim, last.out.aimVel, t - last.t));
+    }
+    if (t >= nextLook) {
+      nextLook = t + LOOK_MS;
+      guess.step(t); // once per frame, like the page
+      const seen = t - TUNING.latencyMs;
+      const { image, people } = frame(you + jump() * FOV, real.at(seen).pan);
+      const tap = t === 0 ? { x: 0.5 + (you - 90) / FOV, y: 0.5 } : null;
+      const out = brain.update({ t, people, image, camera: guess.at(seen), radar: null, tap });
+      outbox = { at: t + AI_MS, out, t };
+    }
+    log.push({ t, pan: real.current.pan });
+  }
+  return log;
+}
+
+/** How many times the stand changes direction (moves of at least half a degree). */
+function backAndForths(log) {
+  let n = 0;
+  let dir = 0;
+  let from = log[0].pan;
+  for (const l of log) {
+    const d = l.pan - from;
+    if (Math.abs(d) < 0.5) continue;
+    if (dir && Math.sign(d) !== dir) n++;
+    dir = Math.sign(d);
+    from = l.pan;
+  }
+  return n;
+}
+
+test("tapping someone off to the side: the stand turns to them without overshooting or wobbling", () => {
+  const log = phoneStand(112, 0, 3000);
+  const overshoot = Math.max(...log.map((l) => l.pan - 112));
+  assert.ok(overshoot < 1.5, `overshot by ${overshoot.toFixed(1)}° (the old guess of the camera overshot by 3-5°)`);
+  const settled = log.filter((l) => l.t > 800);
+  assert.ok(settled.every((l) => Math.abs(l.pan - 112) < 2), "on you, and staying there, within a second");
+  assert.ok(backAndForths(log) <= 3, `swung back and forth ${backAndForths(log)} times`);
+});
+
+test("standing still while the box jumps about a little: the stand holds still, it doesn't twitch", () => {
+  const log = phoneStand(112, 0.02, 10000).filter((l) => l.t > 2000);
+  const spread = Math.max(...log.map((l) => l.pan)) - Math.min(...log.map((l) => l.pan));
+  assert.ok(backAndForths(log) <= 6, `twitched back and forth ${backAndForths(log)} times in 8 s (was over 20)`);
+  assert.ok(spread < 3, `wandered over ${spread.toFixed(1)}°`);
+});
