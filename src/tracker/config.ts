@@ -26,8 +26,10 @@ export const LIMITS = {
 };
 
 /**
- * Up and down (the tilt motor). The stand only looks a little up or down from level, and
- * goes back to level whenever it isn't following someone it can see.
+ * Up and down (the tilt motor). The stand only looks a little up or down from level. Its
+ * "neutral" is looking straight at the person it follows (brain.ts Brain, facing tilt), and
+ * level (straight ahead) when it isn't following someone it can see. It never stays looking
+ * up or down away from neutral for long.
  */
 export const TILT = {
   /** Level: straight ahead. The firmware's TILT_LEVEL. */
@@ -38,6 +40,13 @@ export const TILT = {
   levelBand: 3,
   /** Going back to level, at this speed (degrees/second): from all the way up or down in about 0.75 s. */
   returnSpeed: 20,
+  /**
+   * Looking up or down away from neutral (more than levelBand) for longer than this (ms) in a
+   * row: ease back to neutral at returnSpeed (asked for: after 3 to 5 seconds).
+   */
+  holdMs: 4000,
+  /** Then stay at neutral for this long (ms), so it doesn't bounce straight back. */
+  cooldownMs: 1500,
 };
 
 /**

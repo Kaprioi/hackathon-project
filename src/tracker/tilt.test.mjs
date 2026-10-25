@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Brain, aimPointY, limitTilt, predictAim, towardLevel } from "./brain.ts";
+import { Brain, TiltHold, aimPointY, limitTilt, predictAim, towardLevel, towardTilt } from "./brain.ts";
 import { CAMERA_STEERS_IN, DEFAULT_SETTINGS, LIMITS, TILT, TUNING, cameraTurnsWithStand } from "./config.ts";
 import { ServoModel } from "./servoModel.ts";
 
@@ -126,14 +126,14 @@ function iphoneOnStand({ head, feet, pan = 90, settings = {}, motorSign = 1, por
 
   return {
     log,
-    /** Runs for `ms`, moving you by `change` (degrees per second for head and feet) meanwhile. */
+    /** Runs for `ms`, moving you by `change` (degrees per second for head and feet, and left/right) meanwhile. */
     run(ms, change = { head: 0, feet: 0 }) {
       for (let k = 0; k < ms; k += SCREEN_MS) {
         t += SCREEN_MS;
         const p = youAt(t);
         timeline.push({
           t,
-          pan: p.pan,
+          pan: p.pan + ((change.pan ?? 0) * SCREEN_MS) / 1000,
           head: p.head + (change.head * SCREEN_MS) / 1000,
           feet: p.feet + (change.feet * SCREEN_MS) / 1000,
         });
@@ -143,7 +143,7 @@ function iphoneOnStand({ head, feet, pan = 90, settings = {}, motorSign = 1, por
         else if (last.out.aim && last.out.aimVel && CAMERA_STEERS_IN.includes(last.out.mode))
           for (const m of [real, guess]) m.setTarget(predictAim(last.out.aim, last.out.aimVel, t - last.t));
         const view = picture(youAt(t), real.current);
-        log.push({ t, tilt: real.current.tilt, mode: last.out.mode, headY: view.top });
+        log.push({ t, tilt: real.current.tilt, pan: real.current.pan, mode: last.out.mode, headY: view.top });
       }
     },
     get t() {
@@ -445,6 +445,415 @@ test("tilt pieces: limited to a small look around level, and easing back to leve
     }
     assert.ok(ms >= 500, `from ${from}°: eases back (took ${ms} ms), doesn't snap`);
   }
+});
+
+// ---------- neutral: looking straight at you, and never looking away from it for long ----------
+
+const UP = { x: 0.45, y: 0.02, w: 0.12, h: 0.5 }; // high in the picture: the stand looks up 15°
+const UP_A_LITTLE = { x: 0.45, y: 0.2, w: 0.12, h: 0.3 }; // about 8° up
+const HIGHER = { x: 0.45, y: 0.1, w: 0.12, h: 0.3 }; // about 12° up: 4° above UP_A_LITTLE
+const LEVEL = { x: 0.45, y: 0.35, w: 0.12, h: 0.4 }; // about level
+const DOWN = { x: 0.45, y: 0.7, w: 0.12, h: 0.3 }; // low in the picture: the stand looks down 12°
+
+/**
+ * Runs `fn` without the "back to neutral after looking away from it for TILT.holdMs" timer,
+ * to compare with it on.
+ */
+function withoutHold(fn) {
+  const holdMs = TILT.holdMs;
+  TILT.holdMs = Infinity;
+  try {
+    return fn();
+  } finally {
+    TILT.holdMs = holdMs;
+  }
+}
+
+/**
+ * A brain locked onto someone in a fixed camera's picture, 15 frames a second. `show(box, ms)`
+ * shows them at `box` (null: nobody in view) for `ms`; `glide(from, to, ms)` moves them
+ * smoothly from one box to another. `outs` holds each frame's answer, with its time.
+ */
+function fixedCamera(first, settings = {}) {
+  const brain = new Brain({ ...DEFAULT_SETTINGS, ...settings });
+  const camera = { pan: LIMITS.center, tilt: LIMITS.center };
+  let t = 1000;
+  const outs = [];
+  const frame = (box, tap = null) => {
+    const seen = box ? still(box) : { people: [], image: still({ x: 0, y: 0, w: 0, h: 0 }).image };
+    outs.push({ t, ...brain.update({ t, ...seen, camera, radar: null, tap }) });
+  };
+  frame(first, { x: first.x + first.w / 2, y: first.y + first.h / 2 });
+  assert.equal(outs[0].mode, "tracking", "the tap should lock on");
+  return {
+    outs,
+    show(box, ms) {
+      for (let k = 0; k < ms; k += FRAME_MS) {
+        t += FRAME_MS;
+        frame(box);
+      }
+    },
+    glide(from, to, ms) {
+      for (let k = FRAME_MS; k <= ms; k += FRAME_MS) {
+        t += FRAME_MS;
+        const f = k / ms;
+        const mix = (key) => from[key] + (to[key] - from[key]) * f;
+        frame({ x: mix("x"), y: mix("y"), w: mix("w"), h: mix("h") });
+      }
+    },
+  };
+}
+
+/** The same story told twice, with and without the hold timer: each frame's answers. */
+function withAndWithoutHold(story) {
+  return { withHold: story(), without: withoutHold(story) };
+}
+
+/** Left and right (and everything but up/down) came out exactly the same, frame by frame. */
+function assertPanUnchanged(a, b, what) {
+  assert.equal(a.length, b.length);
+  for (let i = 0; i < a.length; i++) {
+    const at = `${what}, frame ${i}`;
+    assert.equal(a[i].mode, b[i].mode, `${at}: mode`);
+    assert.deepEqual(a[i].target, b[i].target, `${at}: who it follows`);
+    assert.equal(a[i].aim?.pan, b[i].aim?.pan, `${at}: left/right aim`);
+    assert.equal(a[i].aimVel?.pan, b[i].aimVel?.pan, `${at}: left/right speed`);
+    assert.equal(a[i].note, b[i].note, `${at}: note`);
+  }
+}
+
+for (const [way, box, sign] of [
+  ["up", UP, -1],
+  ["down", DOWN, 1],
+]) {
+  test(`you stay ${way} in the picture: the stand keeps looking straight at you (that's neutral), not at level`, () => {
+    const { withHold, without } = withAndWithoutHold(() => {
+      const sim = fixedCamera(box);
+      sim.show(box, 9000);
+      return sim.outs;
+    });
+    assert.ok(withHold.every((o) => o.mode === "tracking"), "kept following you the whole time");
+    const at = withHold[0].aim.tilt;
+    assert.ok(sign * (at - TILT.level) > 10, `looks ${way} at you: ${at}°`);
+    assert.ok(withHold.every((o) => o.aim.tilt === at), `kept looking ${way} at you for 9 s`);
+    assertPanUnchanged(withHold, without, `staying ${way}`);
+  });
+}
+
+/** Where in the picture (0 = top, 1 = bottom) a body point at `deg` shows, with the camera at `tilt`. */
+const inPicture = (deg, tilt) => 0.5 + (deg - tilt) / DEFAULT_SETTINGS.fovV;
+
+test("wherever you are, it settles looking straight at you (your upper body in the middle), and doesn't creep up and stay there", () => {
+  // Head and feet in motor degrees (bigger = lower), from far away to too close to fit in the picture.
+  for (const [what, head, feet] of [
+    ["far away", 82, 100],
+    ["sitting 2 m away", 85, 112],
+    ["standing 2 m away", 70, 112],
+    ["crouching", 95, 112],
+    ["standing close", 60, 118],
+    ["very close", 50, 125],
+    ["close, sitting low", 70, 140],
+    ["close, body low in the picture", 55, 135],
+  ]) {
+    const sim = iphoneOnStand({ head, feet });
+    sim.run(12000);
+    assert.ok(sim.log.every((l) => l.mode === "tracking"), `${what}: kept following you`);
+    // Settled: holding still over the last 5 s (no creeping, no going back and forth).
+    const late = sim.log.filter((l) => l.t > sim.t - 5000).map((l) => l.tilt);
+    assert.ok(Math.max(...late) - Math.min(...late) < 0.3, `${what}: still moving (${Math.min(...late).toFixed(1)}-${Math.max(...late).toFixed(1)}°)`);
+    // Looking at your upper body: the middle of the picture is between the top of your head and
+    // your waist. Or, if that's out of reach, as far toward it as the stand may look.
+    const tilt = sim.tilt;
+    const waist = (head + feet) / 2;
+    const onUpperBody = inPicture(head, tilt) <= 0.5 && inPicture(waist, tilt) >= 0.5;
+    const atLimit = Math.abs(Math.abs(tilt - TILT.level) - TILT.range) < 0.5;
+    assert.ok(onUpperBody || atLimit, `${what}: looking at ${tilt.toFixed(1)}° (head ${head}°, waist ${waist}°)`);
+    if (atLimit) {
+      const toward = Math.sign(tilt - TILT.level);
+      assert.ok(toward * (head - tilt) > 0 || toward * (waist - tilt) > 0, `${what}: at the limit, but not toward you`);
+    }
+  }
+});
+
+test("after looking up at you close by: you sit down, step back or leave, and it comes back down (never stays up)", () => {
+  const sim = iphoneOnStand({ head: 60, feet: 118 }); // standing close: it looks up at you
+  sim.run(3000);
+  assert.ok(sim.tilt < TILT.level - 10, `looks up at you: ${sim.tilt.toFixed(1)}°`);
+  sim.run(2000, { head: 11, feet: -3 }); // step back to about 3 m (head 82°, feet 112°)
+  sim.run(3000);
+  assert.ok(sim.tilt > TILT.level - 5, `came back down: ${sim.tilt.toFixed(1)}°`);
+  assertHeadInView(sim, "stepped back");
+});
+
+test(`looking away from you for more than ${TILT.holdMs / 1000} s (a big dead zone): back to looking straight at you, not level`, () => {
+  // "Ignore moves smaller than" 8°: when you go 4° higher, the aim alone wouldn't follow.
+  const story = () => {
+    const sim = fixedCamera(UP_A_LITTLE, { deadZoneDeg: 8 });
+    sim.show(UP_A_LITTLE, 1000);
+    sim.glide(UP_A_LITTLE, HIGHER, 300);
+    sim.show(HIGHER, 12000); // sitting still up there
+    sim.glide(HIGHER, DOWN, 600); // then crouching right down: a clear move
+    sim.show(DOWN, 2000);
+    return sim.outs;
+  };
+  const { withHold, without } = withAndWithoutHold(story);
+  // Straight at you up there: where a brain with no dead zone looks.
+  const straight = fixedCamera(HIGHER);
+  straight.show(HIGHER, 200);
+  const you = straight.outs.at(-1).aim.tilt;
+  const before = withHold[0].aim.tilt;
+  assert.ok(before - you > TILT.levelBand, `you went clearly higher: ${before}° -> ${you}°`);
+  const t0 = withHold[0].t;
+  const sitting = (o) => o.t <= t0 + 13300; // still sitting up there
+  assert.ok(without.filter(sitting).every((o) => o.aim.tilt === before), "without the hold it would have stayed looking below you");
+  assert.ok(withHold.every((o) => o.mode === "tracking"));
+  const movedAt = withHold.find((o) => o.t >= withHold[0].t + 1300).t; // you're up there from here
+  const back = withHold.find((o) => o.aim.tilt === you);
+  assert.ok(back, "came back to looking straight at you");
+  assert.ok(back.t - movedAt > TILT.holdMs - 2 * FRAME_MS, `not before the hold time: ${back.t - movedAt} ms`);
+  assert.ok(back.t - movedAt <= TILT.holdMs + 1000, `within a second of it: ${back.t - movedAt} ms`);
+  // On the way: smooth steps toward you, never past you or toward level.
+  const easing = withHold.filter((o) => o.t > movedAt && o.t <= back.t && o.aim.tilt !== before);
+  let prev = before;
+  for (const o of easing) {
+    assert.ok(o.aim.tilt <= prev && o.aim.tilt >= you, `eases toward you: ${prev} -> ${o.aim.tilt}`);
+    assert.ok(prev - o.aim.tilt <= (TILT.returnSpeed * FRAME_MS) / 1000 + 0.01, `too big a step: ${prev} -> ${o.aim.tilt}`);
+    prev = o.aim.tilt;
+  }
+  // Then stays on you while you sit still: through the cooldown and after it, with no jump
+  // back to the old aim and no going round again (8 s more).
+  const stayed = withHold.filter((o) => o.t >= back.t && sitting(o));
+  assert.ok(stayed.at(-1).t - back.t > TILT.cooldownMs + 6000, "watched long enough after the cooldown");
+  for (const o of stayed) assert.equal(o.aim.tilt, you, `still looking at you ${o.t - back.t} ms after getting back`);
+  // When you then move clearly, it follows you again, exactly as without the hold.
+  assert.ok(withHold.at(-1).aim.tilt > TILT.level + 10, `followed you down: ${withHold.at(-1).aim.tilt}°`);
+  assert.equal(withHold.at(-1).aim.tilt, without.at(-1).aim.tilt);
+  assertPanUnchanged(withHold, without, "big dead zone");
+});
+
+test("after a hold, sitting still for a minute with a jittery picture: the tilt holds still, no nodding", () => {
+  // Real detector boxes wobble a little from frame to frame (here up to about 0.7°).
+  const jitter = (k) => 0.012 * Math.sin(k * 1.7) + 0.006 * Math.sin(k * 0.37);
+  const story = () => {
+    const sim = fixedCamera(UP_A_LITTLE, { deadZoneDeg: 8 });
+    sim.show(UP_A_LITTLE, 1000);
+    sim.glide(UP_A_LITTLE, HIGHER, 300);
+    for (let k = 0; k < 1000; k++) sim.show({ ...HIGHER, y: HIGHER.y + jitter(k) }, FRAME_MS); // 66 s
+    return sim.outs;
+  };
+  const { withHold, without } = withAndWithoutHold(story);
+  assert.ok(withHold.every((o) => o.mode === "tracking"), "kept following you");
+  const before = withHold[0].aim.tilt;
+  const back = withHold.findIndex((o, i) => i > 0 && o.aim.tilt < before - TILT.levelBand && o.aim.tilt === withHold[i - 1].aim.tilt);
+  assert.ok(back > 0, "eased back toward you after the hold");
+  const after = withHold.slice(back).map((o) => o.aim.tilt);
+  assert.ok(withHold.at(-1).t - withHold[back].t > 60000, "watched for over a minute after it");
+  assert.ok(Math.max(...after) - Math.min(...after) < 0.01, `the tilt fidgeted after the hold: ${Math.min(...after)}-${Math.max(...after)}°`);
+  assert.ok(Math.abs(after.at(-1) - before) > TILT.levelBand, "and it's still looking at you, not back at the old aim");
+  assertPanUnchanged(withHold, without, "jittery picture");
+});
+
+for (const [where, from, to] of [
+  ["up", UP_A_LITTLE, HIGHER],
+  ["just below level", { ...UP_A_LITTLE, y: 0.595 }, { ...UP_A_LITTLE, y: 0.495 }], // about 98° -> 94°
+]) {
+  test(`you leave during the cooldown (${where}): the tilt eases back to level within a second, it doesn't jump`, () => {
+    // A big dead zone leaves the stand looking off you; after the hold it eases back to you...
+    const you = (() => {
+      const straight = fixedCamera(to);
+      straight.show(to, 200);
+      return straight.outs.at(-1).aim.tilt;
+    })();
+    const sim = fixedCamera(from, { deadZoneDeg: 8 });
+    assert.ok(Math.abs(sim.outs[0].aim.tilt - you) > TILT.levelBand, `you move clearly: ${sim.outs[0].aim.tilt}° -> ${you}°`);
+    sim.show(from, 1000);
+    sim.glide(from, to, 300);
+    while (sim.outs.at(-1).aim.tilt !== you) {
+      sim.show(to, FRAME_MS);
+      assert.ok(sim.outs.length < 200, "never eased back to you");
+    }
+    // ...and right then, at the start of the cooldown, you leave.
+    const backT = sim.outs.at(-1).t;
+    sim.show(null, 3000);
+    const after = sim.outs.filter((o) => o.t > backT);
+    const goneAt = after.find((o) => o.mode !== "tracking")?.t;
+    assert.ok(goneAt && goneAt - backT < TILT.cooldownMs, `noticed you're gone during the cooldown (${goneAt && goneAt - backT} ms)`);
+    let prev = you;
+    for (const o of after) {
+      const tilt = o.aim?.tilt ?? TILT.level;
+      assert.ok(Math.abs(tilt - prev) <= (TILT.returnSpeed * FRAME_MS) / 1000 + TILT.levelBand + 0.01, `jumped ${prev} -> ${tilt} at ${o.t - backT} ms (${o.mode})`);
+      prev = tilt;
+    }
+    // From the moment it notices, every frame is a step toward level (no waiting out the cooldown).
+    let last = null;
+    for (const o of after.filter((o) => o.t >= goneAt)) {
+      const off = Math.abs((o.aim?.tilt ?? TILT.level) - TILT.level);
+      if (last !== null && last > 0) assert.ok(off < last, `stalled ${off.toFixed(2)}° off level at ${o.t - goneAt} ms after noticing`);
+      last = off;
+    }
+    const level = after.find((o) => o.t >= goneAt && (o.aim?.tilt ?? TILT.level) === TILT.level);
+    assert.ok(level && level.t - goneAt <= 1000, `level within a second of noticing (${level && level.t - goneAt} ms)`);
+    assert.equal(after.at(-1).aim?.tilt ?? TILT.level, TILT.level, "ends level");
+  });
+}
+
+test("short looks up or down are followed exactly as before (the hold never steps in)", () => {
+  const { withHold, without } = withAndWithoutHold(() => {
+    const sim = fixedCamera(LEVEL);
+    sim.show(LEVEL, 1000);
+    sim.glide(LEVEL, UP, 300);
+    sim.show(UP, 2500);
+    sim.glide(UP, LEVEL, 300);
+    sim.show(LEVEL, 1000);
+    sim.glide(LEVEL, UP, 300);
+    sim.show(UP, 5000);
+    sim.glide(UP, LEVEL, 300);
+    sim.show(LEVEL, 1000);
+    sim.glide(LEVEL, DOWN, 300);
+    sim.show(DOWN, 5000);
+    sim.glide(DOWN, LEVEL, 300);
+    sim.show(LEVEL, 1000);
+    return sim.outs;
+  });
+  assert.ok(withHold.every((o) => o.mode === "tracking"), "kept following you the whole time");
+  assert.ok(Math.min(...withHold.map((o) => o.aim.tilt)) <= TILT.level - TILT.range, "looked up");
+  assert.ok(Math.max(...withHold.map((o) => o.aim.tilt)) > TILT.level + 10, "looked down");
+  for (let i = 0; i < withHold.length; i++) {
+    assert.deepEqual(withHold[i].aim, without[i].aim, `frame ${i}`);
+    assert.deepEqual(withHold[i].aimVel, without[i].aimVel, `frame ${i}`);
+  }
+});
+
+test("while it eases back or waits out the cooldown, the page isn't told to move up or down between camera frames", () => {
+  // A big dead zone, and you sway left and right while going a little higher (so the brain
+  // has a speed for the page to move on with).
+  const RIGHT = { ...HIGHER, x: 0.53 }; // about 5° to the right: inside the dead zone too
+  const { withHold, without } = withAndWithoutHold(() => {
+    const sim = fixedCamera(UP_A_LITTLE, { deadZoneDeg: 8 });
+    sim.glide(UP_A_LITTLE, HIGHER, 1000);
+    for (let k = 0; k < 4; k++) {
+      sim.glide(HIGHER, RIGHT, 700);
+      sim.glide(RIGHT, HIGHER, 700);
+    }
+    return sim.outs;
+  });
+  assert.ok(without.some((o) => o.aimVel && o.aimVel.tilt !== 0), "the brain did see you moving up");
+  // The frames where the hold changed the tilt: no up/down speed there.
+  const held = withHold.filter((o, i) => o.aim.tilt !== without[i].aim.tilt);
+  assert.ok(held.length > 5, "eased back to you for a while");
+  for (const o of held) {
+    assert.ok(o.aimVel === null || o.aimVel.tilt === 0, `up/down speed while holding at ${o.t} ms`);
+    for (const ms of [16, 33, 50]) assert.equal(predictAim(o.aim, o.aimVel ?? { pan: 0, tilt: 0 }, ms).tilt, o.aim.tilt);
+  }
+  assert.ok(held.some((o) => o.aimVel !== null), "the page still moves left/right on between frames");
+  assertPanUnchanged(withHold, without, "swaying");
+  assert.ok(withHold.every((o) => o.mode === "tracking"));
+});
+
+test("nobody in view: neutral is level, so the tilt goes back to level and stays there", () => {
+  const sim = fixedCamera(UP);
+  sim.show(UP, 5000);
+  assert.ok(sim.outs.at(-1).aim.tilt < TILT.level - 10, "looked up at you");
+  sim.show(null, 6000);
+  const goneAt = sim.outs.find((o) => o.mode !== "tracking").t;
+  const level = sim.outs.find((o) => o.t > goneAt && o.aim?.tilt === TILT.level);
+  assert.ok(level && level.t - goneAt <= 1000, `back to level within a second (${level && level.t - goneAt} ms)`);
+  assert.ok(sim.outs.filter((o) => o.t >= level.t).every((o) => o.aim === null || o.aim.tilt === TILT.level), "stays level");
+});
+
+test("with the iPhone on the stand, walking left and right: exactly the same as without the hold", () => {
+  const story = () => {
+    const sim = iphoneOnStand({ head: 60, feet: 118 }); // standing close: it looks up at you
+    sim.run(2000);
+    sim.run(3000, { head: 0, feet: 0, pan: 8 });
+    sim.run(3000, { head: 0, feet: 0, pan: -12 });
+    sim.run(3000);
+    return sim.log;
+  };
+  const { withHold, without } = withAndWithoutHold(story);
+  assert.ok(withHold.every((l) => l.mode === "tracking"), "kept following you the whole time");
+  assert.ok(Math.max(...withHold.map((l) => l.pan)) > 100, "walked across");
+  assert.deepEqual(withHold, without);
+});
+
+test("tilt hold piece: back to neutral (not level) after holdMs away from it, then a plain cooldown at neutral", () => {
+  assert.ok(TILT.holdMs >= 3000 && TILT.holdMs <= 5000, `asked for 3 to 5 seconds: ${TILT.holdMs} ms`);
+  const hold = new TiltHold();
+  let told = TILT.level;
+  let t = 0;
+  const step = (want, neutral) => {
+    t += FRAME_MS;
+    told = hold.update(want, told, neutral, t, FRAME_MS);
+    return told;
+  };
+  // At neutral, or within levelBand of it, never counts, however long.
+  for (let k = 0; k < 200; k++) assert.equal(step(80 + (k % 2) * TILT.levelBand, 80), 80 + (k % 2) * TILT.levelBand);
+  // Away just under the hold time, then back at neutral for one frame: the count starts over.
+  for (let k = 0; k * FRAME_MS < TILT.holdMs - FRAME_MS; k++) assert.equal(step(75, 85), 75);
+  assert.equal(step(85, 85), 85);
+  const start = t + FRAME_MS;
+  while (step(75, 85) === 75) assert.ok(t - start <= TILT.holdMs + FRAME_MS, `stayed away too long: ${t - start} ms`);
+  assert.ok(t - start > TILT.holdMs, `went back after ${t - start} ms, not earlier`);
+  assert.equal(hold.holding, true);
+  // Eases toward neutral at returnSpeed, following it if it moves, and ends exactly on it.
+  let prev = told;
+  while (told !== 86) {
+    step(75, 86);
+    assert.ok(told > prev && told - prev <= (TILT.returnSpeed * FRAME_MS) / 1000 + 1e-9, `step ${prev} -> ${told}`);
+    prev = told;
+    assert.ok(t - start < TILT.holdMs + 2000, "took too long to get back");
+  }
+  // Plain cooldown: stays on neutral for cooldownMs, whatever the brain wants, easing along
+  // with it when it moves (never jumping, say to level when the person leaves).
+  const backAt = t;
+  assert.equal(step(75, 87), 87, "follows neutral moving a little");
+  assert.equal(step(75, 90), 87 + (TILT.returnSpeed * FRAME_MS) / 1000, "eases, doesn't jump, when neutral moves a lot");
+  while (step(75, 90) !== 90) assert.ok(t - backAt < TILT.cooldownMs, "should have reached neutral in the cooldown");
+  while (t + FRAME_MS - backAt < TILT.cooldownMs) assert.equal(step(75, 90), 90, `cooldown at ${t - backAt} ms`);
+  // After the cooldown: still on neutral while the brain wants the same old tilt...
+  for (let k = 0; k < 100; k++) assert.equal(step(75, 90), 90, "doesn't go back to the old aim");
+  assert.equal(hold.holding, true);
+  // ...and follows the brain again as soon as that changes, easing over to it (no jump).
+  assert.equal(step(74, 90), 90 - (TILT.returnSpeed * FRAME_MS) / 1000, "eases over to the brain's tilt");
+  while (told !== 74) {
+    const was = told;
+    step(74, 90);
+    assert.ok(was - told > 0 && was - told <= (TILT.returnSpeed * FRAME_MS) / 1000 + 1e-9, `step ${was} -> ${told}`);
+  }
+  assert.equal(step(73, 90), 73, "then follows the brain again");
+  assert.equal(hold.holding, false);
+  hold.reset();
+  assert.equal(step(70, 90), 70, "after reset it follows straight away");
+  // After a hold, neutral is followed through the dead zone, as long as it takes, until the
+  // brain's aim agrees with where the stand looks; then it eases over to the brain's tilt.
+  const after = (deadZone) => {
+    const h = new TiltHold();
+    let out = TILT.level;
+    let now = 0;
+    const go = (want, neutral) => {
+      now += FRAME_MS;
+      out = h.update(want, out, neutral, now, FRAME_MS, deadZone);
+      return out;
+    };
+    while (go(75, 80) === 75);
+    while (out !== 80) go(75, 80);
+    return { go, get now() { return now; } };
+  };
+  const dz = after(5);
+  assert.equal(dz.go(75, 83), 80, "neutral moving less than the dead zone: holds still");
+  assert.equal(dz.go(75, 77), 80, "either way");
+  assert.equal(dz.go(75, 86), 80 + (TILT.returnSpeed * FRAME_MS) / 1000, "more than the dead zone: eases after it");
+  const waits = after(5);
+  for (let k = 0; k * FRAME_MS < 60000; k++) assert.equal(waits.go(75, 80), 80, "waits for the brain as long as it takes (60 s here)");
+  const agrees = after(0);
+  for (let k = 0; k < 40; k++) agrees.go(75, 80);
+  // Neutral comes to within levelBand of the brain's aim: hand back, easing (no jump).
+  assert.equal(agrees.go(75, 77), 80 - (TILT.returnSpeed * FRAME_MS) / 1000, "agrees: eases over to the brain's tilt");
+  let guard = 0;
+  while (agrees.go(75, 77) !== 75) assert.ok(guard++ < 10, "should reach the brain's tilt");
+  assert.equal(agrees.go(74, 77), 74, "then follows the brain again");
+  assert.equal(towardTilt(80, 90, 100), 82);
+  assert.equal(towardTilt(80, 81, 100), 81);
 });
 
 // ---------- the pieces ----------
