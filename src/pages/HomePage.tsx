@@ -89,7 +89,7 @@ function Hero() {
             </p>
           </Reveal>
           <Reveal delay={100}>
-            <h1 id="hero-title" className="mt-5 text-4xl font-extrabold leading-tight">
+            <h1 id="hero-title" className="mt-6 text-5xl font-black leading-[1.05] tracking-tight md:text-6xl">
               <Highlight
                 text={t("Stay close to the people you love, *even from far away*.")}
                 wrap={(part) => <mark className="highlight-sweep bg-transparent px-1 text-inherit">{part}</mark>}
@@ -97,7 +97,7 @@ function Hero() {
             </h1>
           </Reveal>
           <Reveal delay={200}>
-            <p className="mt-6 max-w-[36ch] text-xl text-muted">
+            <p className="mt-6 max-w-[42ch] text-xl leading-relaxed text-muted">
               {t(
                 "CareNest turns a spare phone on the table into a gentle helper. It notices movement in the room, and family can see on their own phone that all is well — so Grandma can stay independent at home.",
               )}
