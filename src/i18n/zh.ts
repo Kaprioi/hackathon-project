@@ -555,6 +555,8 @@ const zh: Record<string, string> = {
   "The camera stopped because this page was hidden or the screen turned off. Keep this page open on the screen while it watches.":
     "因为这个页面被切到后台或屏幕关闭了，摄像头已停止。看护时请让这个页面一直显示在屏幕上。",
   "The camera is now watching in another tab, so it stopped here.": "摄像头已在另一个标签页中看护，所以这里已停止。",
+  "The iPhone restarted CareNest, so the camera stopped. Tap Start watching to carry on.":
+    "iPhone 重新启动了 CareNest，所以摄像头已停止。点“开始看护”继续。",
   "Starting... (the first time takes a little longer)": "正在启动……（第一次会慢一点）",
   "The database isn't set up on this website yet, so you can try the camera but your family won't see anything.":
     "这个网站的数据库还没设置好，所以您可以试用摄像头，但家人看不到任何内容。",

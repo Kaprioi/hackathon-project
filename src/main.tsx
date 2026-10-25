@@ -12,6 +12,7 @@ import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import { reopenCameraIfNeeded } from "./tracker/cameraPhone";
 
 // Phone Tracker: loaded only when someone opens /tracker, so the homepage stays fast.
 const TrackerPage = lazy(() => import("./tracker/TrackerPage.tsx"));
@@ -36,6 +37,8 @@ function PageLoading() {
 
 // Text size, motion and contrast, as this browser asked for them, before anything is drawn.
 startDisplaySettings();
+// The iPhone restarted CareNest on the Home Screen while it was watching: back to the camera.
+reopenCameraIfNeeded();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
