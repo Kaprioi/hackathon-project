@@ -1,5 +1,6 @@
 // Sends the small text events from events.ts to Supabase, so the family page can
-// show them. Nothing else is sent: no video, no pictures, no boxes.
+// show them. Nothing else goes to the database: no video, no pictures, no boxes. (Live
+// video, when family press "Watch live", goes straight to them: see src/lib/live.ts.)
 //
 // The tables are in supabase/migrations/. Each signed-in person has a care circle;
 // this phone registers itself once as a `devices` row in it (the id is kept in
@@ -25,7 +26,7 @@ export class Cloud {
     private db: SupabaseClient,
     /** Who was signed in when this connected. */
     readonly userId: string,
-    /** The care circle this phone sends to (also used for its daily reminders). */
+    /** The care circle this phone sends to (also used for its daily reminders and live video). */
     readonly circleId: string,
     private deviceId: string,
   ) {}
