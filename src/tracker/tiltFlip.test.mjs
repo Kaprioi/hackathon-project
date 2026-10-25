@@ -580,7 +580,7 @@ test("the stand's report only counts while fresh (it comes 10 times a second)", 
   assert.equal(stand.freshReport(1600), null, "too old");
 });
 
-test("up/down check: taken back only when, at the end of the range, the person is clearly further from the middle for a third of a second in a row", () => {
+test("up/down check: taken back only when, at the end of the range, the person is clearly further from the middle for 1 s in a row", () => {
   assert.ok(atTiltLimit(TILT.level - TILT.range) && atTiltLimit(TILT.level + TILT.range));
   assert.ok(!atTiltLimit(TILT.level + TILT.range - 1));
 
@@ -592,26 +592,26 @@ test("up/down check: taken back only when, at the end of the range, the person i
     return null;
   };
   const frames = (n, y) => Array(n).fill(y);
-  // A wrong flip ran away from them: they're 0.3 from the middle now, and stay there. Taken back after 330 ms (5 frames).
-  assert.equal(undoneAt(frames(30, 0.8)), 1066 + 5 * 66);
+  // A wrong flip ran away from them: they're 0.3 from the middle now, and stay there. Taken back after 1 s.
+  assert.equal(undoneAt(frames(30, 0.8)), 1066 + 16 * 66);
   // Further, but only a little (within the margin): not enough to say, the flip stays.
   assert.equal(undoneAt(frames(30, 0.62)), null);
   // Closer to the middle (a motor mounted the other way round, aiming as far as it goes): the flip stays.
   assert.equal(undoneAt(frames(30, 0.52)), null);
-  // Further for a moment, then back toward the middle: not long enough in a row, the flip stays.
-  assert.equal(undoneAt([...frames(4, 0.8), 0.55, ...frames(4, 0.8), 0.55, ...frames(4, 0.8)]), null);
+  // Further for a moment, then back toward the middle: not 1 s in a row, the flip stays.
+  assert.equal(undoneAt([...frames(10, 0.8), 0.55, ...frames(10, 0.8)]), null);
   // Further, then a gap with the camera off the end of the range, then further again: the gap starts the evidence over.
   const gappy = new TiltCheck();
   gappy.flipped(1000, 0.6);
   assert.equal(gappy.pinned(1400, 0.85), false);
   gappy.notPinned();
   assert.equal(gappy.pinned(2466, 0.85), false, "the gap starts the evidence over");
-  for (let t = 2532; t < 2796; t += 66) assert.equal(gappy.pinned(t, 0.85), false);
-  assert.equal(gappy.pinned(2796, 0.85), true, "330 ms in a row after the gap");
+  for (let t = 2532; t < 3466; t += 66) assert.equal(gappy.pinned(t, 0.85), false);
+  assert.equal(gappy.pinned(3466, 0.85), true, "1 s in a row after the gap");
   // Further up instead of down counts the same.
-  assert.equal(undoneAt(frames(30, 0.2)), 1066 + 5 * 66);
+  assert.equal(undoneAt(frames(30, 0.2)), 1066 + 16 * 66);
   // Too late: after 3 s the flip stays.
-  assert.equal(undoneAt(frames(30, 0.8), 3800), null);
+  assert.equal(undoneAt(frames(30, 0.8), 3500), null);
   // Only once.
   const check = new TiltCheck();
   check.flipped(0, 0.5);

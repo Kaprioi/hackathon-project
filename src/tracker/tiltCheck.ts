@@ -42,7 +42,7 @@ const STAND_AGREE = 1 / 3;
 /** A flip can only be taken back within this long (ms) after it. */
 const UNDO_MS = 3000;
 /** Taken back after this long (ms) at the end of the range with you further from the middle all along. */
-const UNDO_EVIDENCE_MS = 330;
+const UNDO_EVIDENCE_MS = 1000;
 /** "Further from the middle": by at least this much of the picture's height. */
 const UNDO_MARGIN = 0.05;
 
