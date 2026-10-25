@@ -95,7 +95,7 @@ On a phone, held in your hand (a quick test before the stand):
 - Either way up works, also sideways with auto-rotate off on Android: the page reads the motion sensor and turns the picture upright for the AI (Settings → "Keep people upright for the AI" shows what it's doing; pick a turn by hand if Auto gets it wrong). On an iPhone, turn auto-rotate on instead. Pick **Front** or **Back** on the start screen; while it runs, **Flip** in the bottom bar switches cameras (and lets go of the person, since the picture changes).
 - Tap a person with a quick tap. A thumb resting on the screen or a drag is ignored. Android phones buzz briefly when it locks on.
 - **Release** sits next to the state at the top left. **Show log** there lists the last decisions.
-- **Emergency alert:** Settings → **Test the alert** shows the "Are you OK?" countdown and then the pretend emergency call (no real number is dialled). For the real thing, tap the person, then have them fall and stay down (about 3 s), or lie down and shake. Press **I'm OK** to cancel.
+- **Emergency alert:** Settings → **Test the alert** shows the "Are you OK?" countdown and then the pretend emergency call (no real number is dialled). For the real thing, tap the person, then have them fall a few steps from the camera, whole body in view, and stay down (about 3 s), or lie down and shake. A fall right next to the stand that ends cut off at the bottom of the picture isn't caught (on purpose, to avoid false alarms). Press **I'm OK** to cancel.
 - **Full screen** (Android and PCs) hides the browser bars. iPhones don't allow it from a web page.
 20. To check the tracking logic without a camera: `npm run test:tracker`.
 
