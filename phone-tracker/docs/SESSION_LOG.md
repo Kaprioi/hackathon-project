@@ -2,6 +2,13 @@
 
 Newest entry at the top. Add one entry at the end of every session.
 
+## 2026-10-24 (late night) — Everything rebuilt on top of main as `tracker-live`
+
+- **Kris's stand moves with the website, left and right** (from his PR #42, merged 8:33 PM): he combined our Bluetooth link with his one-radar program and tested it on the real board. Up/down didn't follow; PR #42 adds an automatic tilt flip, not yet tried. Not yet run with the S22 riding on the stand. PR #7 is no longer needed.
+- **Main took our tracker as one squashed commit (PR #42)**, so merging main into `live-video` gave 18 conflicting files. Instead: new branch `tracker-live` from `origin/main`, with our 8 newer commits replayed one by one (PR #23's two iPhone fixes, Twilio call, sign-in lock, live video, family dashboard, seizure fix, handoff), keeping both sides in every conflict. Main's new family cards (notes, reminders, alerts on this device, everyone in the loop) sit in the dashboard layout. 309 tests pass; type check and build clean; Chrome check on the test link clean; no keys or phone numbers in the commits.
+- The long Oct 24 session crashed on every resume (its log reached 41 MB). A fresh session re-ran the checks, updated the handoff, pushed `tracker-live` and opened its PR into `main`.
+- Next: Kris merges the PR and closes #13, #23 and #7; Apple runs the live-video migration and retests on the S22; test the stand with the S22 on it.
+
 ## 2026-10-24 — Wall fix pushed, phone-friendly page
 
 - **Pushed** the wall-hiding fix to PR #6 with Apple's OK (commit `be55d86`).
