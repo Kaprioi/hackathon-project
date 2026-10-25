@@ -451,7 +451,7 @@ test("stress-test sequences that got stuck on main: never stuck now, and up/down
   }
 });
 
-test("a mistaken flip that sends the camera to the end of the range is taken back within 2 s", () => {
+test("a mistaken flip that sends the camera to the end of the range, away from the person, is taken back within 3 s", () => {
   // Seeds where the page still flips by mistake (camera noise, misses), with a normal motor.
   for (const seed of [233, 388]) {
     const res = simulate(randomRun(seed));
@@ -462,7 +462,7 @@ test("a mistaken flip that sends the camera to the end of the range is taken bac
       prev = x.tiltSign;
     }
     assert.ok(changes.length >= 2 && changes.length % 2 === 0, `seed ${seed}: expected a flip and its undo, got ${changes.length} changes`);
-    for (let i = 0; i < changes.length; i += 2) assert.ok(changes[i + 1] - changes[i] <= 2100, `seed ${seed}: undo took ${changes[i + 1] - changes[i]} ms`);
+    for (let i = 0; i < changes.length; i += 2) assert.ok(changes[i + 1] - changes[i] <= 3100, `seed ${seed}: undo took ${changes[i + 1] - changes[i]} ms`);
     assert.equal(res.settings.tiltSign, 1);
     assert.deepEqual(stuckSteps(res), [], `seed ${seed} got stuck`);
   }
@@ -500,6 +500,44 @@ test("a tilt motor that really is mounted the other way round is still noticed, 
       assert.equal(res.settings.tiltSign, -1);
       assert.deepEqual(stuckSteps(res), []);
     }
+});
+
+test("a tilt motor mounted the other way round, with someone close or tall (aiming as far up as it goes): the flip stays", () => {
+  // Right up at the stand, or tall: the page aims at the end of the up/down range to keep their
+  // head in, so the camera runs there straight after the (right) flip. They don't get further
+  // from the middle of the picture there, so the flip isn't taken back.
+  for (const pose of ["close", "tall"]) {
+    const steps = [
+      { kind: "pose", pose: "stand", ms: 1500 },
+      { kind: "pose", pose: "crouch", ms: 4000 },
+      { kind: "pose", pose, ms: 6000 },
+      { kind: "pose", pose: "stand", ms: 6000 },
+      { kind: "pose", pose, ms: 6000 },
+    ];
+    for (const oldFirmware of [false, true]) {
+      const res = simulate(steady(steps, { motorSign: -1 }), { oldFirmware });
+      const fw = oldFirmware ? "old" : "new";
+      assert.equal(res.flips, 1, `${pose}: flipped up/down once, and kept it (${fw} firmware)`);
+      assert.equal(res.settings.tiltSign, -1);
+      assert.deepEqual(stuckSteps(res), [], `${pose} (${fw} firmware)`);
+    }
+  }
+  // Stress-test runs with the motor mounted the other way round, where the (right) flip sends
+  // the camera straight to the end of the range: it used to be taken back 0.3 s later, then the
+  // camera looked the wrong way at someone close (183, 43) or tall (135).
+  for (const seed of [183, 43, 135]) {
+    const run = randomRun(seed);
+    assert.equal(run.motorSign, -1);
+    for (const oldFirmware of [false, true]) {
+      const res = simulate(run, { oldFirmware });
+      const fw = oldFirmware ? "old" : "new";
+      assert.equal(res.flips, 1, `seed ${seed}: flipped up/down once, and kept it (${fw} firmware)`);
+      assert.equal(res.settings.tiltSign, -1);
+      // (Before the flip, the first move ran to the end of the range the wrong way: that's how it noticed.)
+      const flipAt = res.samples.find((x) => x.tiltSign === -1).t;
+      assert.deepEqual(stuckSteps({ ...res, timeline: res.timeline.filter((st) => st.t0 >= flipAt) }), [], `seed ${seed} (${fw} firmware)`);
+    }
+  }
 });
 
 // ---------- the pieces ----------
@@ -542,27 +580,42 @@ test("the stand's report only counts while fresh (it comes 10 times a second)", 
   assert.equal(stand.freshReport(1600), null, "too old");
 });
 
-test("up/down check: taken back when the aim ends at the end of the range within 2 s, unless the stand was seen turning the right way", () => {
+test("up/down check: taken back only when, at the end of the range, the person is clearly further from the middle for 1 s", () => {
   assert.ok(atTiltLimit(TILT.level - TILT.range) && atTiltLimit(TILT.level + TILT.range));
   assert.ok(!atTiltLimit(TILT.level + TILT.range - 1));
 
-  const top = TILT.level - TILT.range;
+  // Flipped with the person 0.1 below the middle; then, at the end of the range, `y` each frame.
+  const undoneAt = (ys, from = 1066) => {
+    const check = new TiltCheck();
+    check.flipped(1000, 0.6);
+    for (let k = 0; k < ys.length; k++) if (check.pinned(from + k * 66, ys[k])) return from + k * 66;
+    return null;
+  };
+  const frames = (n, y) => Array(n).fill(y);
+  // A wrong flip ran away from them: they're 0.3 from the middle now, and stay there. Taken back after 1 s.
+  assert.equal(undoneAt(frames(30, 0.8)), 1066 + 16 * 66);
+  // Further, but only a little (within the margin): not enough to say, the flip stays.
+  assert.equal(undoneAt(frames(30, 0.62)), null);
+  // Closer to the middle (a motor mounted the other way round, aiming as far as it goes): the flip stays.
+  assert.equal(undoneAt(frames(30, 0.52)), null);
+  // Further for a moment, then back toward the middle: not 1 s in a row, the flip stays.
+  assert.equal(undoneAt([...frames(10, 0.8), 0.55, ...frames(10, 0.8)]), null);
+  // Further, with frames in between where they aren't seen at the end of the range: still 1 s of evidence.
+  const gappy = new TiltCheck();
+  gappy.flipped(1000, 0.6);
+  assert.equal(gappy.pinned(1400, 0.85), false);
+  assert.equal(gappy.pinned(2350, 0.85), false, "not quite 1 s yet");
+  assert.equal(gappy.pinned(2466, 0.85), true);
+  // Further up instead of down counts the same.
+  assert.equal(undoneAt(frames(30, 0.2)), 1066 + 16 * 66);
+  // Too late: after 3 s the flip stays.
+  assert.equal(undoneAt(frames(30, 0.8), 3500), null);
+  // Only once.
   const check = new TiltCheck();
-  check.flipped(1000);
-  assert.equal(check.shouldUndo(1500, TILT.level + 5, TILT.level + 5), false, "not at the end");
-  assert.equal(check.shouldUndo(1600, top, TILT.level), false, "the camera isn't there yet");
-  assert.equal(check.shouldUndo(2000, top, top + 0.3), true, "at the end within 2 s");
-  assert.equal(check.shouldUndo(2100, top, top), false, "only once");
-
-  check.flipped(5000);
-  assert.equal(check.shouldUndo(7200, top, top), false, "too late: after 2 s the flip stays");
-
-  // After a flip, the camera tilts 6° down toward someone who moves toward the middle: the right way.
-  const bottom = TILT.level + TILT.range;
-  check.flipped(10000);
-  check.update(10066, 90, 0.7, 1, 40, true);
-  check.update(10400, 96, 0.55, 1, 40, true);
-  assert.equal(check.shouldUndo(10500, bottom, bottom), false, "the flip was right: they really are down there");
+  check.flipped(0, 0.5);
+  let undos = 0;
+  for (let t = 66; t < 2900; t += 66) if (check.pinned(t, 0.9)) undos++;
+  assert.equal(undos, 1);
 });
 
 test("up/down check: a stretch the stand says it never tilted (the guess was wrong) doesn't count", () => {
