@@ -29,11 +29,12 @@ globalThis.window = {
 Object.defineProperty(globalThis, "performance", { value: { now: () => now }, configurable: true });
 
 const sent = []; // every aim the stand received: { t, text }
+let radarText = "1,40,0,90.0,90.0,1"; // what the stand's radar report says when the page connects
 const characteristic = (uuid) => ({
   uuid,
   addEventListener() {},
   startNotifications: async () => {},
-  readValue: async () => new DataView(new TextEncoder().encode("1,40,0,90.0,90.0,1").buffer),
+  readValue: async () => new DataView(new TextEncoder().encode(radarText).buffer),
   writeValue: async (data) => {
     if (uuid.startsWith("6e400002")) sent.push({ t: now, text: new TextDecoder().decode(data) });
   },
@@ -109,4 +110,24 @@ test("holding one aim (the radar search listening at a stop): the stand still he
   await advance(2000);
   assert.equal(sent.filter((s) => s.t > quiet).length, 0, "no aims after letting go");
   stand.disconnect();
+});
+
+test("a stand whose radar isn't working says so: the radar reads as unknown, not as nobody", async () => {
+  // Radar unplugged or switched off: the firmware reports 0 radars (and still says where it points).
+  radarText = "0,0,0,82.5,103.0,0";
+  const off = new Stand();
+  await off.connect();
+  assert.equal(off.radar, null, "unknown, like a stand without a radar");
+  assert.equal(off.energy, null, "no loudness to steer by");
+  assert.deepEqual(off.reported, { pan: 82.5, tilt: 103 }, "still knows where the head points");
+  off.disconnect();
+
+  // A working radar that hears nobody still means nobody.
+  radarText = "0,0,0,90.0,90.0,1";
+  const quiet = new Stand();
+  await quiet.connect();
+  assert.equal(quiet.radar, false);
+  assert.deepEqual(quiet.energy, { left: 0, right: 0, radars: 1 });
+  quiet.disconnect();
+  radarText = "1,40,0,90.0,90.0,1";
 });

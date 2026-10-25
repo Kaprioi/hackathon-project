@@ -167,11 +167,15 @@ export class Stand {
   /**
    * Reads "1" or "0" (old one-radar Phone Tracker stand), or
    * "1,42,13,95.0,90.0" = presence, left and right radar loudness, pan, tilt (SightLine stand),
-   * maybe followed by ",1" or ",2": how many radars it has (else RADAR.count in config.ts).
+   * maybe followed by ",1" or ",2": how many radars it has (else RADAR.count in config.ts),
+   * or ",0": no radar working right now (unplugged, broken or switched off). Then the stand
+   * can't tell whether anyone's there, so the radar reads as unknown (null), the same as a
+   * stand without one, instead of "nobody" (which made the page give up on a hidden person).
    */
   private readRadar(v: DataView): void {
     const parts = new TextDecoder().decode(v).trim().split(",");
-    const present = parts[0] === "1";
+    const noRadar = parts[5] === "0";
+    const present = noRadar ? null : parts[0] === "1";
     if (parts.length >= 5) {
       const pan = Number(parts[3]);
       const tilt = Number(parts[4]);
@@ -182,7 +186,7 @@ export class Stand {
       const left = Number(parts[1]);
       const right = Number(parts[2]);
       const radars = parts[5] === "1" || parts[5] === "2" ? (Number(parts[5]) as 1 | 2) : RADAR.count;
-      this.energy = Number.isFinite(left) && Number.isFinite(right) ? { left, right, radars } : null;
+      this.energy = !noRadar && Number.isFinite(left) && Number.isFinite(right) ? { left, right, radars } : null;
     }
     // Tell the page when presence changes, or the loudness changes enough to show.
     const e = this.energy;

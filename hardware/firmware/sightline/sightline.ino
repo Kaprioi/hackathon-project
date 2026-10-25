@@ -43,6 +43,7 @@
 #include <BLEServer.h>
 #include <BLE2902.h>
 #include "secrets.h"
+#include <Preferences.h>
 #ifndef FACETIME_TO   // older secrets.h files don't have this setting
 #define FACETIME_TO ""
 #endif
@@ -65,6 +66,19 @@ const int MIST_PIN = 26;    // Feather "A0"      -> MOSFET module signal: HIGH =
 // 0 = decide at startup: two if the right radar answers, otherwise one.
 // The website learns the count from the Bluetooth report, so it needs no change.
 const int RADAR_COUNT = 1;
+
+// ---------- Radar switch ----------
+// The stand steers by radar only while the radar is switched on AND sending data, so it
+// also works with the radar unplugged: then it faces straight ahead and waits for the
+// phone. Switch the radar off or on with the board's user button (the small button
+// marked 38), or type "radar off" / "radar on" over USB. The choice is kept across
+// restarts. The board's colored light shows it:
+//   green  = radar on and working
+//   yellow = radar on but no data (unplugged or a wiring problem): acts as if it had none
+//   blue   = radar switched off (phone only)
+const int BUTTON_PIN = 38;               // the Feather's user button (reads LOW when pressed)
+const uint32_t RADAR_LIVE_MS = 1500;     // no radar data for this long: treat it as unplugged
+const float HOME_SPEED = 40;             // degrees/second when gliding back to straight ahead
 
 // ---------- Tuning ----------
 // Widened from 20-160 to 10-170 to match the website (160 degrees of pan).
@@ -101,7 +115,7 @@ const uint32_t FOUND_CONFIRM_MS = 1000;  // must be seen this long to count as "
 // ---------- Bluetooth link to the Phone Tracker website ----------
 #define SERVICE_UUID "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 #define MOVE_UUID    "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  // website writes "pan,tilt"
-#define RADAR_UUID   "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  // we notify "presence,left,right,pan,tilt"
+#define RADAR_UUID   "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  // we notify "presence,left,right,pan,tilt,radars"
 #define MIST_UUID    "6e400004-b5a3-f393-e0a9-e50e24dcca9e"  // website writes "1" (on) or "0" (off)
 const uint32_t CAMERA_HOLD_MS = 700;     // the website's aims count as "person in view" (for alerts) this long
 // Website steering: every 20 ms move 25% of the remaining way (glides to a stop, never
@@ -127,6 +141,10 @@ float tilt = TILT_LEVEL;
 float sweepDir = 1;
 uint32_t lastSeenAt = 0, seenSince = 0, lastTick = 0, lastLog = 0;
 uint32_t lastCameraTick = 0, lastReport = 0;
+bool radarOn = true;          // the radar switch (saved in flash)
+uint32_t lastRadarData = 0;   // last time a valid radar frame arrived (0 = never)
+int usingRadar = -1;          // 1 = steering by radar, 0 = no radar in use, -1 = not decided yet
+Preferences prefs;
 
 // Written by the Bluetooth callbacks, read by loop().
 volatile float cameraPan = PAN_CENTER, cameraTilt = TILT_LEVEL;
@@ -137,7 +155,15 @@ volatile uint32_t lastMistCommand = 0;
 BLECharacteristic *radarReport = nullptr;
 
 // Angles in, microseconds out (HS-422: about 600-2400 us for 0-180 degrees).
-int toMicros(float angle) { return 600 + angle * 10.0; }
+int toMicros(float angle) { return 600 + constrain(angle, 0, 180) * 10.0; }
+
+// Calibration for this stand (measured by hand, Oct 25). The motors' own 90 isn't where
+// the phone faces straight ahead and stands level, so the output is shifted. Everything
+// else, including the website, still works in degrees around 90 / 90.
+const float PAN_TRUE_CENTER = 82;   // pan servo angle where the phone faces straight ahead
+const float TILT_TRUE_LEVEL = 103;  // tilt servo angle where the phone stands upright, level
+int panMicros(float angle) { return toMicros(angle + (PAN_TRUE_CENTER - PAN_CENTER)); }
+int tiltMicros(float angle) { return toMicros(angle + (TILT_TRUE_LEVEL - TILT_LEVEL)); }
 
 // One-radar tracking (from main): look a little to one side, then the other, and
 // move the center toward whichever side heard the person more strongly.
@@ -157,7 +183,7 @@ void wiggleTo(int side, uint32_t now) {
   wig.sum = 0;
   wig.count = 0;
   pan = constrain(wig.center + side * WIGGLE_DEG, PAN_MIN, PAN_MAX);
-  panServo.writeMicroseconds(toMicros(pan));
+  panServo.writeMicroseconds(panMicros(pan));
 }
 
 void wiggleStep(uint32_t now, int energy) {
@@ -196,7 +222,7 @@ int radarScore(ld2410 &r) {
 
 void movePan(float delta) {
   pan = constrain(pan + delta * PAN_DIRECTION, PAN_MIN, PAN_MAX);
-  panServo.writeMicroseconds(toMicros(pan));
+  panServo.writeMicroseconds(panMicros(pan));
 }
 
 const char *wifiReasonText(uint8_t r) {
@@ -365,12 +391,52 @@ void selfTest() {
   int poses[][2] = {{PAN_CENTER, TILT_LEVEL}, {PAN_MIN, TILT_LEVEL}, {PAN_MAX, TILT_LEVEL},
                     {PAN_CENTER, TILT_LEVEL - 20}, {PAN_CENTER, TILT_LEVEL}};
   for (auto &p : poses) {
-    panServo.write(p[0]);
-    tiltServo.write(p[1]);
+    panServo.writeMicroseconds(panMicros(p[0]));
+    tiltServo.writeMicroseconds(tiltMicros(p[1]));
     delay(600);
   }
   pan = PAN_CENTER;
   tilt = TILT_LEVEL;
+}
+
+// The colored light (NeoPixel) shows the radar switch; see "Radar switch" above.
+void showRadarMode(bool live) {
+  if (!radarOn) rgbLedWrite(PIN_NEOPIXEL, 0, 0, 24);   // blue: radar off, phone only
+  else if (live) rgbLedWrite(PIN_NEOPIXEL, 0, 24, 0);  // green: radar on and working
+  else rgbLedWrite(PIN_NEOPIXEL, 24, 12, 0);           // yellow: radar on, no data
+}
+
+void setRadarOn(bool on) {
+  radarOn = on;
+  prefs.putBool("radar", on);
+  Serial.printf("Radar switched %s\n", on ? "ON" : "OFF (phone only)");
+}
+
+// User button: each press flips the radar switch.
+void checkButton(uint32_t now) {
+  static bool wasDown = false;
+  static uint32_t downSince = 0;
+  bool down = digitalRead(BUTTON_PIN) == LOW;
+  if (down && !wasDown) downSince = now;
+  if (!down && wasDown && now - downSince >= 50) setRadarOn(!radarOn);  // ignore blips under 50 ms
+  wasDown = down;
+}
+
+// USB commands: "radar on", "radar off".
+void checkSerial() {
+  static String line;
+  while (Serial.available()) {
+    char ch = Serial.read();
+    if (ch == '\n' || ch == '\r') {
+      line.trim();
+      if (line == "radar on") setRadarOn(true);
+      else if (line == "radar off") setRadarOn(false);
+      else if (line.length()) Serial.println("Commands: radar on, radar off");
+      line = "";
+    } else if (line.length() < 20) {
+      line += ch;
+    }
+  }
 }
 
 void setup() {
@@ -380,6 +446,12 @@ void setup() {
 
   Serial.begin(115200);
   pinMode(LED_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT);              // 38 has a pull-up on the board (no internal one)
+  pinMode(NEOPIXEL_I2C_POWER, OUTPUT);
+  digitalWrite(NEOPIXEL_I2C_POWER, HIGH);  // powers the colored light
+  prefs.begin("sightline", false);
+  radarOn = prefs.getBool("radar", true);
+  Serial.printf("Radar switch: %s (button 38, or type \"radar on\" / \"radar off\")\n", radarOn ? "ON" : "OFF");
 
   Serial1.begin(256000, SERIAL_8N1, RADAR_L_RX, RADAR_L_TX);
   if (RADAR_COUNT != 1) Serial2.begin(256000, SERIAL_8N1, RADAR_R_RX, RADAR_R_TX);
@@ -422,6 +494,27 @@ void loop() {
 
   uint32_t now = millis();
 
+  // Radar switch: use the radar only while it's switched on and sending data.
+  checkButton(now);
+  checkSerial();
+  if (radarL.isConnected() || (radarCount == 2 && radarR.isConnected())) lastRadarData = now;
+  bool radarLive = lastRadarData != 0 && now - lastRadarData < RADAR_LIVE_MS;
+  bool useRadar = radarOn && radarLive;
+  if ((int)useRadar != usingRadar) {
+    usingRadar = useRadar;
+    state = TRACKING;  // start fresh: a short grace period, then search if nobody's there
+    lastSeenAt = now;
+    seenSince = 0;
+    wig.active = false;
+    Serial.println(useRadar ? "-> using the radar" : "-> no radar: facing straight ahead, waiting for the phone");
+  }
+  static int shownMode = -1;
+  int mode = !radarOn ? 0 : radarLive ? 1 : 2;
+  if (mode != shownMode) {
+    shownMode = mode;
+    showRadarMode(radarLive);
+  }
+
   // Mist: on only while the website keeps asking for it.
   bool mistOn = mistWanted && (int32_t)(now - lastMistCommand) < (int32_t)MIST_TIMEOUT_MS;
   digitalWrite(MIST_PIN, mistOn ? HIGH : LOW);
@@ -438,7 +531,12 @@ void loop() {
     if (websiteSteers) {
       const float panStep = PAN_TOP_SPEED * CAMERA_TICK_MS / 1000.0;    // 5.6 degrees a tick
       if (fabs(cameraPan - pan) >= MOVE_DEADBAND) pan += constrain((cameraPan - pan) * CAMERA_EASE, -panStep, panStep);
-      panServo.writeMicroseconds(toMicros(pan));
+      panServo.writeMicroseconds(panMicros(pan));
+    } else if (!useRadar) {
+      // No radar and no phone: glide back to straight ahead and wait there.
+      const float homeStep = HOME_SPEED * CAMERA_TICK_MS / 1000.0;
+      if (fabs(PAN_CENTER - pan) >= MOVE_DEADBAND) pan += constrain(PAN_CENTER - pan, -homeStep, homeStep);
+      panServo.writeMicroseconds(panMicros(pan));
     }
     // Fresh aims count whatever this stand's own radar state is: the radar can still say
     // SEARCHING for a while after the person comes back, and the website (which can see
@@ -449,7 +547,7 @@ void loop() {
     float tiltGoal = freshTiltAim ? cameraTilt : TILT_LEVEL;
     const float tiltStep = (freshTiltAim ? TILT_TOP_SPEED : TILT_RETURN_SPEED) * CAMERA_TICK_MS / 1000.0;
     if (fabs(tiltGoal - tilt) >= MOVE_DEADBAND) tilt += constrain((tiltGoal - tilt) * CAMERA_EASE, -tiltStep, tiltStep);
-    tiltServo.writeMicroseconds(toMicros(tilt));
+    tiltServo.writeMicroseconds(tiltMicros(tilt));
   }
 
   if (now - lastTick < TICK_MS) return;
@@ -457,23 +555,35 @@ void loop() {
 
   if (pendingType && WiFi.status() == WL_CONNECTED) sendAlert(pendingType, pendingMessage);
 
-  int l = radarScore(radarL);
-  int r = radarCount == 2 ? radarScore(radarR) : 0;  // one radar: the website always gets right = 0
+  // No radar in use: report "nobody heard", so the website steers by camera alone.
+  int l = useRadar ? radarScore(radarL) : 0;
+  int r = useRadar && radarCount == 2 ? radarScore(radarR) : 0;  // one radar: the website always gets right = 0
   bool seenL = l >= MIN_ENERGY, seenR = r >= MIN_ENERGY;
   // The website's camera steering counts as "in view" too, for the alerts.
   bool seen = seenL || seenR || cameraSteering;
 
   // Tell the website what the radars sense, where the head points, and how many
-  // radars there are: "presence,left,right,pan,tilt,radars".
+  // radars there are: "presence,left,right,pan,tilt,radars". With no radar in use
+  // (unplugged or switched off) it says 0 radars: the website then treats the radar as
+  // unknown instead of "nobody there", and steers by the camera alone.
   if (radarReport && now - lastReport >= REPORT_MS) {
     lastReport = now;
     char text[48];
-    snprintf(text, sizeof(text), "%d,%d,%d,%.1f,%.1f,%d", (seenL || seenR) ? 1 : 0, l, r, pan, tilt, radarCount);
+    snprintf(text, sizeof(text), "%d,%d,%d,%.1f,%.1f,%d", (seenL || seenR) ? 1 : 0, l, r, pan, tilt,
+             useRadar ? radarCount : 0);
     radarReport->setValue(text);
     radarReport->notify();
   }
 
-  if (seen) {
+  if (!useRadar && !websiteSteers) {
+    // No radar and no phone: nothing to watch with, so no searching and no alerts.
+    // (The 20 ms tick above keeps the head straight ahead until the phone steers.)
+    // With the phone connected, "seen" comes from its camera and alerts work as usual;
+    // the sweep below never runs then, because the phone is steering.
+    state = TRACKING;
+    lastSeenAt = now;
+    seenSince = 0;
+  } else if (seen) {
     lastSeenAt = now;
     if (seenSince == 0) seenSince = now;
     // Two radars: turn toward the one that hears the person better. Radar L
@@ -506,7 +616,7 @@ void loop() {
       if (pan >= PAN_MAX) sweepDir = -1;
       if (pan <= PAN_MIN) sweepDir = 1;
       pan = constrain(pan + sweepDir * SWEEP_STEP, PAN_MIN, PAN_MAX);
-      panServo.writeMicroseconds(toMicros(pan));
+      panServo.writeMicroseconds(panMicros(pan));
     }
     if (state == SEARCHING && unseen >= ALERT_AFTER_MS) {
       state = ALERTED;
@@ -518,18 +628,25 @@ void loop() {
   // period after a brief miss, so the head keeps homing in on the person. While
   // the website is connected, stop, and start afresh from wherever it left the head.
   if (websiteSteers) wig.active = false;
-  else if (radarCount == 1 && state == TRACKING) wiggleStep(now, l);
+  else if (useRadar && radarCount == 1 && state == TRACKING) wiggleStep(now, l);
 
   // LED: solid = tracking, slow blink = searching, fast blink = alert sent.
   if (state == TRACKING) digitalWrite(LED_PIN, HIGH);
   else digitalWrite(LED_PIN, (now / (state == ALERTED ? 150 : 500)) % 2);
 
-  if (now - lastLog >= 500) {
+  // Log: 5 times a second while the website steers (to debug tracking), else twice.
+  // pan/tilt = where the head is now; aim = the website's last "pan,tilt" and its age.
+  if (now - lastLog >= (websiteSteers ? 200u : 500u)) {
     lastLog = now;
     const char *names[] = {"TRACKING", "SEARCHING", "ALERTED"};
-    Serial.printf("L=%3d R=%3d pan=%3d dist=%3dcm %s WiFi=%s steer=%s mist=%s\n", l, r, (int)pan,
+    char aimAge[16];
+    if (!cameraAt) strcpy(aimAge, "never");
+    else snprintf(aimAge, sizeof(aimAge), "%dms ago", max(0, (int)(int32_t)(now - cameraAt)));
+    Serial.printf("pan=%5.1f tilt=%5.1f aim=%5.1f,%5.1f (%s) L=%3d R=%3d dist=%3dcm %s steer=%s radar=%s WiFi=%s mist=%s\n",
+                  pan, tilt, (float)cameraPan, (float)cameraTilt, aimAge, l, r,
                   (radarCount == 1 || radarL.presenceDetected()) ? radarL.detectionDistance() : radarR.detectionDistance(),
-                  names[state], WiFi.status() == WL_CONNECTED ? "on" : "off",
-                  websiteSteers ? "website" : "radar", mistOn ? "on" : "off");
+                  names[state], websiteSteers ? "website" : useRadar ? "radar" : "none",
+                  !radarOn ? "off" : radarLive ? "on" : "no-data", WiFi.status() == WL_CONNECTED ? "on" : "off",
+                  mistOn ? "on" : "off");
   }
 }

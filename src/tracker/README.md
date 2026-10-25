@@ -52,7 +52,7 @@ When you walk out of the camera's view, the phone turns the stand to look for yo
 6. **Only one boss.** While the page is connected over Bluetooth, the stand only moves when the page says so, and holds still otherwise (before you tap someone, or in LOST). Only when Bluetooth drops (page closed, phone out of range) does the stand's own radar steering take over (`hardware/firmware/sightline/sightline.ino`).
 7. **Testing with a laptop's webcam** next to the stand: set "Camera turns with the stand" to No (it's Yes by default on every device, because the page assumes it's the iPhone on the stand). Then the motor turns toward you, and when you step out of the webcam's view it points where the radar hears you and stays there, without sweeping the room (the webcam can't see where the motor points).
 
-Settings are in `RADAR` in `config.ts`. The switch for one or two radars is `RADAR.count`, but a stand running the SightLine firmware in this repo says how many it has, and that wins. Set the firmware's `RADAR_COUNT` to match the head.
+Settings are in `RADAR` in `config.ts`. The switch for one or two radars is `RADAR.count`, but a stand running the SightLine firmware in this repo says how many it has, and that wins. Set the firmware's `RADAR_COUNT` to match the head. When its radar isn't working (unplugged, broken, or switched off with the board's button 38), the stand says 0 radars, and the page treats the radar as unknown, like a stand without one, instead of "nobody there".
 
 **Firmware:** the page needs the SightLine sketch in `hardware/firmware/sightline/` (Bluetooth link plus radar). It compiles but has **never been flashed or tested on the real head**. Bench checks before trusting it:
 
