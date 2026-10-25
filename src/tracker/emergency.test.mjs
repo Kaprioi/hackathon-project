@@ -136,3 +136,46 @@ test("lying but moving across the floor (more than half its size in a few second
   const across = (t) => ({ ...lying, w: 0.4 * (1 + 0.1 * Math.sin(t / 80)), x: 0.05 + (t / 4000) * 0.5 });
   assert.ok(!run(w, 0, 4000, across).some((x) => x.a === "seizure"));
 });
+
+// ---- Falls that end low in the picture (the stand only looks a little down) ----
+
+const tall = { x: 0.43, y: 0.12, w: 0.14, h: 0.76 }; // standing, head to toe
+
+test("a fall that ends at the bottom edge of the picture (cut off there): still a fall", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => tall);
+  // On the floor at the bottom of the picture: the box stops at the edge. The top of the box
+  // (their head) came down from 0.12 to 0.8, nearly all of their standing height.
+  const alerts = run(w, 3000, 6000, () => ({ x: 0.25, y: 0.8, w: 0.5, h: 0.2 }));
+  assert.deepEqual(alerts.map((x) => x.a), ["fall"]);
+});
+
+test("a fall that ends partly below the picture: still a fall", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => tall);
+  const alerts = run(w, 3000, 6000, () => ({ x: 0.2, y: 0.86, w: 0.55, h: 0.14 }));
+  assert.deepEqual(alerts.map((x) => x.a), ["fall"]);
+});
+
+test("a fall near the stand, standing with head and feet cut off: still a fall", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => ({ x: 0.4, y: 0, w: 0.2, h: 1 })); // close: taller than the picture
+  const alerts = run(w, 3000, 6000, () => ({ x: 0.1, y: 0.7, w: 0.8, h: 0.3 }));
+  assert.deepEqual(alerts.map((x) => x.a), ["fall"]);
+});
+
+test("sitting down close to the stand (cut off at the bottom, the head only drops a little): no alert", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => ({ x: 0.4, y: 0, w: 0.2, h: 1 }));
+  // Seated close: head and shoulders, wide, cut off at the bottom; the top came down a third.
+  const seated = (t) => ({ x: 0.2, y: 0.33 + 0.02 * Math.sin(t / 300), w: 0.6, h: 0.67 - 0.02 * Math.sin(t / 300) });
+  assert.deepEqual(run(w, 3000, 20000, seated), []);
+});
+
+test("bending down to pick something up, then standing again: no alert", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 3000, () => tall);
+  // Bent over for 2 seconds: low and wide, near the bottom of the picture, then back up.
+  assert.deepEqual(run(w, 3000, 2000, () => ({ x: 0.3, y: 0.62, w: 0.4, h: 0.38 })), []);
+  assert.deepEqual(run(w, 5000, 5000, () => tall), []);
+});
