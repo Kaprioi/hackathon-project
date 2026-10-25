@@ -781,9 +781,9 @@ export class Brain {
     }
 
     // Not in this frame. Did they run out of the picture, or vanish in the middle of it?
-    const side = this.edgeExit();
     const predictedBox = this.toImageBox(predicted, f.camera);
     const predictedOutside = centerX(predictedBox) < 0 || centerX(predictedBox) > 1;
+    const side = this.edgeExit() || this.walkingOut(sinceSeen);
     if (side !== 0 && (predictedOutside || sinceSeen > TUNING.coastMs / 2)) {
       this.startFollowing(f, side);
       return null;
@@ -952,6 +952,23 @@ export class Brain {
     const inward = -imageSide * this.vel.pan * this.settings.panSign;
     if (inward > 15) return 0;
     return imageSide * this.settings.panSign;
+  }
+
+  /**
+   * -1/+1 (servo degrees) if they were walking out of that side of the picture when the camera
+   * lost them before the edge, else 0. The detector often drops someone early (motion blur, or
+   * half of them already out of view). Without this they "vanished where they stood" and the
+   * stand watched the empty spot instead of turning after them.
+   */
+  private walkingOut(sinceSeen: number): number {
+    const b = this.lastBox;
+    const s = this.settings;
+    if (!b || Math.abs(this.vel.pan) < TUNING.exitSpeed) return 0;
+    const way = Math.sign(this.vel.pan);
+    // Where they'd be by now, still walking, in the last picture they were seen in.
+    const x = centerX(b) + (this.vel.pan * Math.min(sinceSeen, TUNING.coastMs)) / 1000 / (s.panSign * s.fovH);
+    const imageSide = way * s.panSign; // -1 = toward the left edge, 1 = the right
+    return (imageSide < 0 ? x < TUNING.exitZone : x > 1 - TUNING.exitZone) ? way : 0;
   }
 
   // ---------- HIDDEN ----------
