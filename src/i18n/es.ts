@@ -862,6 +862,26 @@ const es: Record<string, string> = {
   "Couldn't start live video. Check the internet and try again.": "No se pudo iniciar el vídeo en directo. Revise la conexión a internet e inténtelo de nuevo.",
   "Live video isn't switched on in the database yet (see README: Live video).": "El vídeo en directo aún no está activado en la base de datos (vea el README: Live video).",
   "Couldn't connect for live video. Check the internet and try again.": "No se pudo conectar para el vídeo en directo. Revise la conexión a internet e inténtelo de nuevo.",
+  // Family page dashboard (src/components/DayPanels.tsx)
+  "Your Account": "Su cuenta",
+  "Today at a glance": "Hoy de un vistazo",
+  "Moving today": "En movimiento hoy",
+  "Last moved": "Último movimiento",
+  "Moving now": "Moviéndose ahora",
+  "Not yet today": "Aún no hoy",
+  "Spent most time": "Donde más estuvo",
+  "Alerts today": "Alertas hoy",
+  "None": "Ninguna",
+  "1 possible fall": "1 posible caída",
+  "{n} possible falls": "{n} posibles caídas",
+  "Today: moving {moving}, still {still}, nobody in view {nobody}, camera off {off}.": "Hoy: en movimiento {moving}, quieto {still}, nadie a la vista {nobody}, cámara apagada {off}.",
+  "Moving": "En movimiento",
+  "Still": "Quieto",
+  "Now": "Ahora",
+  "under a minute": "menos de un minuto",
+  "{m} min": "{m} min",
+  "The phone camera is on.": "La cámara del teléfono está encendida.",
+  "Nothing yet. News from the phone camera will appear here, newest first.": "Todavía nada. Las novedades de la cámara del teléfono aparecerán aquí, primero las más recientes.",
 };
 
 export default es;

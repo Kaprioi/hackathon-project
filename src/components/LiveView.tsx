@@ -25,6 +25,17 @@ const STATE_NOTES: Partial<Record<ViewerState, string>> = {
   ended: "The live video ended (the phone stopped watching).",
 };
 
+function CameraIcon() {
+  return (
+    <svg width="56" height="56" viewBox="0 0 24 24" aria-hidden="true" className="opacity-80">
+      <path
+        d="M4 6h11a2 2 0 0 1 2 2v1.5l3.4-2.3A1 1 0 0 1 22 8v8a1 1 0 0 1-1.6.8L17 14.5V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export default function LiveView({
   circleId,
   userId,
@@ -138,51 +149,56 @@ export default function LiveView({
         )}
       </div>
 
-      {watching ? (
-        <div className="mt-4 space-y-4">
-          <div className="relative overflow-hidden rounded-2xl bg-black">
-            {/* Sound comes with the video; family can mute it here. */}
-            <video ref={videoRef} playsInline autoPlay muted={!soundOn} className="aspect-video w-full object-contain" />
-            {state !== "live" && (
-              <p role="status" className="absolute inset-0 flex items-center justify-center p-4 text-center text-xl font-bold text-white">
-                {t("Connecting to the phone…")}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => void toggleTalk()}
-              disabled={state !== "live"}
-              aria-pressed={talking}
-              className={talking ? talkingButton : smallButton}
-            >
-              {talking ? t("Stop talking") : t("Talk")}
-            </button>
-            <button type="button" onClick={() => setSoundOn(!soundOn)} aria-pressed={!soundOn} className={smallButton}>
-              {soundOn ? t("Mute sound") : t("Sound on")}
-            </button>
-            <button type="button" onClick={stop} className={smallButton}>
-              {t("Stop watching")}
+      {/* A screen-shaped panel: the video once watching, otherwise the button to start. */}
+      <div className="relative mt-4 aspect-video overflow-hidden rounded-2xl bg-neutral-900">
+        {watching && (
+          // Sound comes with the video; family can mute it below.
+          <video ref={videoRef} playsInline autoPlay muted={!soundOn} className="absolute inset-0 h-full w-full object-contain" />
+        )}
+        {watching && state !== "live" && (
+          <p role="status" className="absolute inset-0 flex items-center justify-center p-4 text-center text-xl font-bold text-white">
+            {t("Connecting to the phone…")}
+          </p>
+        )}
+        {!watching && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center text-white">
+            <CameraIcon />
+            <p className={`${text} font-bold`}>
+              {cameraOn ? t("The phone camera is on.") : t("The phone camera seems to be off right now.")}
+            </p>
+            <button type="button" onClick={() => void start()} className={buttonVariants.primary}>
+              {state === "idle" ? t("Watch live") : t("Try again")}
             </button>
           </div>
-          <p className={`${text} font-bold text-muted`}>
-            {talking
-              ? t("They can hear you now through the phone.")
-              : t("The phone shows a red LIVE sign while you watch. Nothing is recorded.")}
-          </p>
-        </div>
-      ) : (
-        <div className="mt-4 space-y-4">
-          <p className={`${text} font-bold text-muted`}>
-            {t("See and hear the room through the phone camera, and talk to them. Nothing is recorded.")}
-          </p>
-          {!cameraOn && <p className={`${text} font-bold`}>{t("The phone camera seems to be off right now.")}</p>}
-          <button type="button" onClick={() => void start()} className={`${buttonVariants.primary} w-full sm:w-auto`}>
-            {state === "idle" ? t("Watch live") : t("Try again")}
+        )}
+      </div>
+
+      {watching && (
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => void toggleTalk()}
+            disabled={state !== "live"}
+            aria-pressed={talking}
+            className={talking ? talkingButton : smallButton}
+          >
+            {talking ? t("Stop talking") : t("Talk")}
+          </button>
+          <button type="button" onClick={() => setSoundOn(!soundOn)} aria-pressed={!soundOn} className={smallButton}>
+            {soundOn ? t("Mute sound") : t("Sound on")}
+          </button>
+          <button type="button" onClick={stop} className={smallButton}>
+            {t("Stop watching")}
           </button>
         </div>
       )}
+      <p className={`mt-4 ${text} font-bold text-muted`}>
+        {talking
+          ? t("They can hear you now through the phone.")
+          : watching
+            ? t("The phone shows a red LIVE sign while you watch. Nothing is recorded.")
+            : t("See and hear the room through the phone camera, and talk to them. Nothing is recorded.")}
+      </p>
 
       {(note || problem) && (
         <p role="alert" className={`mt-4 rounded-2xl bg-sun px-4 py-3 ${text} font-bold text-ink`}>
