@@ -47,15 +47,18 @@ export async function callSetup(token?: string | null): Promise<CallSetup | null
   }
 }
 
-/** Asks the server to make the call, with the login token (if signed in). Gives up after `timeoutMs`. */
-export async function requestCall(kind: CallKind, token?: string | null, timeoutMs = 15000): Promise<CallOutcome> {
+/**
+ * Asks the server to make the call, with the login token (if signed in). `note` is what Gemini
+ * saw in the picture (sceneCheck.ts), read out in the call. Gives up after `timeoutMs`.
+ */
+export async function requestCall(kind: CallKind, token?: string | null, timeoutMs = 15000, note?: string): Promise<CallOutcome> {
   const stop = new AbortController();
   const timer = setTimeout(() => stop.abort(), timeoutMs);
   try {
     const res = await fetch(URL_PATH, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...signedIn(token) },
-      body: JSON.stringify({ kind }),
+      body: JSON.stringify(note ? { kind, note } : { kind }),
       signal: stop.signal,
     });
     if (res.status === 404) return { result: "off" }; // this server has no calling at all

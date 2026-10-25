@@ -24,6 +24,8 @@ Finds people with the phone's camera, follows the one you tap, and drives the st
 | `faces.test.mjs` | Tests for the face-checking rules, with made-up fingerprints. |
 | `emergency.ts` | Spots a likely fall or seizure of the tracked person from their box (shape and shaking), for the "Are you OK?" countdown and the pretend emergency call. Not a medical device. |
 | `emergency.test.mjs` | Tests for `emergency.ts` with made-up boxes. |
+| `sceneCheck.ts` | Gemini's look at the picture: when an alert's countdown runs out, sends one still picture to the server (`api/scene-check.ts`), which asks Google Gemini to describe it in one sentence for the call and the alert screen. Never cancels an alert or call. |
+| `sceneCheck.test.mjs` | Tests for `api/scene-check.ts` and the call reading Gemini's sentence out, with a stand-in Gemini and Twilio. |
 | `brain.test.mjs` | Tests with made-up frames, including a simulated room. Run `npm run test:tracker`. |
 | `radar.test.mjs` | Tests for the radar-guided search: a simulated room with a fake radar (walk out left, double back, someone else, radar quiet, Bluetooth drop, a laptop webcam beside the stand). |
 | `stand.test.mjs` | Tests how often aims are sent to the stand, with a fake Bluetooth stand and a fake clock. |
