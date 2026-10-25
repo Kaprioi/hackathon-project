@@ -7,8 +7,8 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Brain, aimPointY, predictAim } from "./brain.ts";
-import { CAMERA_STEERS_IN, DEFAULT_SETTINGS, LIMITS, TUNING, cameraTurnsWithStand } from "./config.ts";
+import { Brain, aimPointY, limitTilt, predictAim, towardLevel } from "./brain.ts";
+import { CAMERA_STEERS_IN, DEFAULT_SETTINGS, LIMITS, TILT, TUNING, cameraTurnsWithStand } from "./config.ts";
 import { ServoModel } from "./servoModel.ts";
 
 const W = 320;
@@ -312,6 +312,138 @@ test("quick moves the right way round (sitting down hard, a fall, jumping up) ne
     sim.run(500, { head: 70, feet: 20 }); // fall to the floor
     sim.run(3000);
     assert.equal(sim.flips, 0, `flipped up/down by mistake (${motor ? "slow" : "normal"} motor)`);
+  }
+});
+
+// ---------- only small looks up and down, and back to level ----------
+
+/** The tilt stays within TILT.range of level for the whole run. */
+function assertWithinRange(sim, what) {
+  for (const l of sim.log) {
+    assert.ok(
+      Math.abs(l.tilt - TILT.level) <= TILT.range + 0.01,
+      `${what}: tilted to ${l.tilt.toFixed(1)}° at ${l.t} ms (level ${TILT.level}, at most ±${TILT.range})`,
+    );
+  }
+}
+
+test("someone very tall, close up, or down on the floor: the stand only looks a little up or down", () => {
+  // Walking right up to the stand (the box fills the picture): before, it tilted up until the end stop.
+  const close = iphoneOnStand({ head: 82, feet: 100 });
+  close.run(2000);
+  close.run(2000, { head: -15, feet: 10 }); // head up to 52°, feet down to 120°
+  close.run(3000);
+  assertWithinRange(close, "close up");
+  assert.ok(close.tilt < TILT.level - TILT.range + 1, `looks up as far as allowed: ${close.tilt.toFixed(1)}°`);
+  // Lying on the floor in front of it.
+  const floor = iphoneOnStand({ head: 70, feet: 112 });
+  floor.run(2000);
+  floor.run(1500, { head: 30, feet: 6 }); // head down to 115°
+  floor.run(3000);
+  assertWithinRange(floor, "on the floor");
+  assert.ok(floor.tilt > TILT.level + TILT.range - 1, `looks down as far as allowed: ${floor.tilt.toFixed(1)}°`);
+});
+
+test("small moves up and down: the stand follows them, and settles back to level when you're level again", () => {
+  // Chest at about 90° (level): the stand stays level.
+  const sim = iphoneOnStand({ head: 80, feet: 110 });
+  sim.run(2500);
+  assert.ok(Math.abs(sim.tilt - TILT.level) < 0.5, `level while you're level: ${sim.tilt.toFixed(1)}°`);
+  sim.run(1000, { head: -8, feet: -8 }); // you go up a little (onto a step)
+  sim.run(2500);
+  assert.ok(sim.tilt < TILT.level - 5, `looks up a little: ${sim.tilt.toFixed(1)}°`);
+  sim.run(1000, { head: 8, feet: 8 }); // and back down
+  sim.run(2500);
+  assert.ok(Math.abs(sim.tilt - TILT.level) < 0.5, `back to level: ${sim.tilt.toFixed(1)}°`);
+  assertWithinRange(sim, "small moves");
+});
+
+/** A red-and-blue person in a fixed camera's picture (`box` in 0-1 picture coordinates). */
+function still(box) {
+  const image = { width: W, height: H, data: new Uint8ClampedArray(W * H * 4).fill(128) };
+  for (let y = Math.floor(box.y * H); y < Math.ceil((box.y + box.h) * H); y++) {
+    for (let x = Math.floor(box.x * W); x < Math.ceil((box.x + box.w) * W); x++) {
+      const i = (y * W + x) * 4;
+      const c = y < (box.y + box.h / 2) * H ? [200, 30, 30] : [30, 50, 180];
+      image.data.set(c, i);
+    }
+  }
+  return { image, people: [box] };
+}
+
+/**
+ * Locks onto someone high up in the picture (so the stand looks up), then runs `frames` with
+ * nobody in view. Returns each frame's answer.
+ */
+function lookUpThenLose(box, frames) {
+  const brain = new Brain({ ...DEFAULT_SETTINGS });
+  const camera = { pan: LIMITS.center, tilt: LIMITS.center };
+  let t = 1000;
+  const seen = still(box);
+  let out = brain.update({ t, ...seen, camera, radar: null, tap: { x: box.x + box.w / 2, y: box.y + box.h / 2 } });
+  assert.equal(out.mode, "tracking");
+  for (let k = 0; k < 10; k++) {
+    t += FRAME_MS;
+    out = brain.update({ t, ...seen, camera, radar: null });
+  }
+  assert.ok(out.aim.tilt < TILT.level - 5, `looks up at you first: ${out.aim.tilt.toFixed(1)}°`);
+  const outs = [];
+  for (let k = 0; k < frames; k++) {
+    t += FRAME_MS;
+    outs.push({ t, ...brain.update({ t, people: [], image: still({ x: 0, y: 0, w: 0, h: 0 }).image, camera, radar: null }) });
+  }
+  return outs;
+}
+
+test("you vanish in the middle of the picture (HIDDEN): the tilt eases back to level", () => {
+  const outs = lookUpThenLose({ x: 0.45, y: 0.02, w: 0.12, h: 0.5 }, 40);
+  const gone = outs.find((o) => o.mode !== "tracking");
+  assert.equal(gone?.mode, "hidden");
+  const level = outs.find((o) => o.aim && o.aim.tilt === TILT.level);
+  assert.ok(level, "back to level");
+  assert.ok(level.t - gone.t <= 1000, `within a second: ${level.t - gone.t} ms`);
+  // Smoothly: never more than a returnSpeed step at a time, always toward level, and it stays level.
+  const after = outs.filter((o) => o.t >= gone.t);
+  for (let i = 1; i < after.length; i++) {
+    const a = after[i - 1].aim.tilt;
+    const b = after[i].aim.tilt;
+    assert.ok(b >= a - 0.01 && b - a <= (TILT.returnSpeed * FRAME_MS) / 1000 + TILT.levelBand + 0.01, `jumped ${a} -> ${b}`);
+  }
+  assert.ok(outs.at(-1).aim.tilt === TILT.level);
+});
+
+test("you leave the picture at the side (FOLLOWING, SEARCHING): left and right turn as before, the tilt goes back to level", () => {
+  const outs = lookUpThenLose({ x: 0.9, y: 0.02, w: 0.1, h: 0.5 }, 60);
+  const modes = new Set(outs.map((o) => o.mode));
+  assert.ok(modes.has("following"), `follows (${[...modes]})`);
+  const following = outs.filter((o) => o.mode === "following");
+  // Still turning the way you went, steadily, as before.
+  assert.ok(following.at(-1).aim.pan > following[0].aim.pan + 10, "keeps turning toward where you went");
+  assert.ok(following.every((o) => o.aimVel === null || (o.aimVel.pan > 0 && o.aimVel.tilt === 0)));
+  // ...while the tilt returns to level within a second and stays there.
+  const startT = outs.find((o) => o.mode !== "tracking").t;
+  for (const o of outs.filter((o) => o.mode !== "tracking" && o.t - startT >= 1000)) {
+    assert.equal(o.aim?.tilt ?? TILT.level, TILT.level, `${o.mode} at ${o.t - startT} ms: tilt ${o.aim?.tilt}`);
+  }
+});
+
+test("tilt pieces: limited to a small look around level, and easing back to level within a second", () => {
+  assert.equal(limitTilt(TILT.level + 40), TILT.level + TILT.range);
+  assert.equal(limitTilt(TILT.level - 40), TILT.level - TILT.range);
+  assert.equal(limitTilt(TILT.level + TILT.levelBand / 2), TILT.level, "roughly level counts as level");
+  assert.equal(limitTilt(TILT.level - 8), TILT.level - 8, "a small look is kept as it is");
+  assert.equal(predictAim({ pan: 90, tilt: TILT.level + 14 }, { pan: 0, tilt: 100 }, 100).tilt, TILT.level + TILT.range);
+  for (const from of [TILT.level - TILT.range, TILT.level + TILT.range, LIMITS.tiltMin, LIMITS.tiltMax]) {
+    let tilt = from;
+    let ms = 0;
+    while (tilt !== TILT.level) {
+      const next = towardLevel(tilt, 16);
+      assert.ok(Math.abs(next - TILT.level) <= Math.abs(limitTilt(tilt) - TILT.level), "only ever toward level");
+      tilt = next;
+      ms += 16;
+      assert.ok(ms <= 1000, `from ${from}°: still at ${tilt.toFixed(1)}° after a second`);
+    }
+    assert.ok(ms >= 500, `from ${from}°: eases back (took ${ms} ms), doesn't snap`);
   }
 });
 
