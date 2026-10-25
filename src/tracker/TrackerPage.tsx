@@ -23,7 +23,6 @@ import type { Settings } from "./config.ts";
 import {
   ANALYSIS_WIDTH,
   CAMERA_STEERS_IN,
-  DEFAULT_SETTINGS,
   cameraTurnsWithStand,
   DETECT_WIDTH,
   EMERGENCY,
@@ -185,12 +184,9 @@ const TAP_RING_CSS = `
   pointer-events: none; animation: tracker-tap 0.45s ease-out forwards;
 }`;
 
-/**
- * The defaults for this phone. Face recognition starts off on iPhones: Kris's iPhone 14
- * reloaded the page by itself after tracking a while, and faces add work for the graphics chip.
- */
+/** The defaults for this phone, as for a phone with nothing saved. */
 function defaultSettings(): Settings {
-  return { ...DEFAULT_SETTINGS, faces: !isIPhone() };
+  return startSettings(null, isIPhone(), false);
 }
 
 function loadSettings(): Settings {
