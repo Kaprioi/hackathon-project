@@ -187,14 +187,15 @@ export class FaceWatcher {
 }
 
 /**
- * The part of an upright picture where the person's head should be (the top half of their
- * box, a little wider), copied onto its own canvas. `scale` = canvas pixels per picture pixel.
+ * The part of an upright picture where the person's head should be (the top of their box,
+ * FACE.headShare of it, a little wider), copied onto its own canvas. `scale` = canvas pixels
+ * per picture pixel.
  */
 export function cropHead(source: HTMLCanvasElement, box: Box, out: HTMLCanvasElement): { canvas: HTMLCanvasElement; scale: number } {
   const x0 = clamp(box.x - box.w * 0.15, 0, 1) * source.width;
   const x1 = clamp(box.x + box.w * 1.15, 0, 1) * source.width;
   const y0 = clamp(box.y - box.h * 0.05, 0, 1) * source.height;
-  const y1 = clamp(box.y + box.h * 0.5, 0, 1) * source.height;
+  const y1 = clamp(box.y + box.h * FACE.headShare, 0, 1) * source.height;
   const w = Math.max(1, x1 - x0);
   const h = Math.max(1, y1 - y0);
   // Keep the camera's own detail, between 160 and 320 pixels on the long side.

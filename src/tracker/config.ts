@@ -317,6 +317,14 @@ export const FACE = {
   refreshMs: 3000,
   /** Ignore faces smaller than this (pixels across, in the camera's full picture) or less sure than this. */
   minFacePx: 40,
+  /**
+   * How much of the person's box (from the top) to search for their face. It was the top half,
+   * but sitting close to the camera (a laptop, or a phone on the table) the box is just head and
+   * shoulders, the face is in its middle, and the top half cut it off at the nose: "No face seen
+   * yet" forever. On face-api's sample photos the top 70% found 16 faces of 18 people, the top
+   * half 15 and the whole box 13.
+   */
+  headShare: 0.7,
   minScore: 0.6,
 };
 
