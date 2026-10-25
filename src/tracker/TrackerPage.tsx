@@ -23,7 +23,6 @@ import type { Settings } from "./config.ts";
 import {
   ANALYSIS_WIDTH,
   CAMERA_STEERS_IN,
-  DEFAULT_SETTINGS,
   cameraTurnsWithStand,
   DETECT_WIDTH,
   EMERGENCY,
@@ -35,6 +34,7 @@ import {
 import ReminderPopup from "../components/ReminderPopup";
 import { shouldSendInactive, startWatch, watchSaw } from "../family/noMovement.ts";
 import { unlockVoice } from "../family/voice";
+import { rememberWatching, takeReopened } from "./cameraPhone.ts";
 import { Cloud } from "./cloud.ts";
 import type { Detection, PersonDetector } from "./detector.ts";
 import { createPersonDetector, isIPhone, preferredDelegate } from "./detector.ts";
@@ -49,6 +49,7 @@ import type { Turn } from "./orientation.ts";
 import { boxFromUpright, deviceTurn, fromUpright, pictureTurn, screenAngle, toUpright } from "./orientation.ts";
 import type { Angles, Box } from "./geometry.ts";
 import { centerX, centerY, contains, iou } from "./geometry.ts";
+import { startSettings } from "./savedSettings.ts";
 import { ServoModel } from "./servoModel.ts";
 import type { StandStatus } from "./stand.ts";
 import { Stand } from "./stand.ts";
@@ -147,6 +148,7 @@ function describe(e: MovementEvent): string {
 }
 
 const SETTINGS_KEY = "phoneTracker.settings.v1";
+const FACES_CHOSEN_KEY = "phoneTracker.facesChosen.v1";
 
 /** A hidden page can't watch (the browser pauses it), so after this long the camera stops and tells the family. */
 const HIDDEN_STOP_MS = 15_000;
@@ -155,6 +157,7 @@ const TABS_CHANNEL = "carenest-camera";
 const HIDDEN_NOTE =
   "The camera stopped because this page was hidden or the screen turned off. Keep this page open on the screen while it watches.";
 const OTHER_TAB_NOTE = "The camera is now watching in another tab, so it stopped here.";
+const REOPENED_NOTE = "The iPhone restarted CareNest, so the camera stopped. Tap Start watching to carry on.";
 
 /** A touch counts as a tap only if it's this short and moves this little. */
 const TAP_MAX_MS = 600;
@@ -181,22 +184,31 @@ const TAP_RING_CSS = `
   pointer-events: none; animation: tracker-tap 0.45s ease-out forwards;
 }`;
 
-/**
- * The defaults for this phone. Face recognition starts off on iPhones: Kris's iPhone 14
- * reloaded the page by itself after tracking a while, and faces add work for the graphics chip.
- */
+/** The defaults for this phone, as for a phone with nothing saved. */
 function defaultSettings(): Settings {
-  return { ...DEFAULT_SETTINGS, faces: !isIPhone() };
+  return startSettings(null, isIPhone(), false);
 }
 
 function loadSettings(): Settings {
+  let saved: Partial<Settings> | null = null;
+  let facesChosen = false;
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...defaultSettings(), ...(JSON.parse(raw) as Partial<Settings>) };
+    if (raw) saved = JSON.parse(raw) as Partial<Settings>;
+    facesChosen = localStorage.getItem(FACES_CHOSEN_KEY) === "yes";
   } catch {
     // private browsing or blocked storage: just use the defaults
   }
-  return defaultSettings();
+  return startSettings(saved, isIPhone(), facesChosen);
+}
+
+/** Someone switched face recognition on or off by hand, so an iPhone keeps their choice. */
+function rememberFacesChoice(): void {
+  try {
+    localStorage.setItem(FACES_CHOSEN_KEY, "yes");
+  } catch {
+    // not saved; an iPhone then starts with faces off again
+  }
 }
 
 /** Draws the video frame onto `canvas` at w x h, turned upright by `turn` (counterclockwise). */
@@ -701,6 +713,11 @@ export default function TrackerPage() {
 
   const canFullscreen = !!document.fullscreenEnabled; // Android and PCs; not iPhone
 
+  // The iPhone restarted CareNest while it was watching, and it came back here: say why it stopped.
+  useEffect(() => {
+    if (takeReopened()) setStopNote(REOPENED_NOTE);
+  }, []);
+
   // Name the browser tab, like the other pages do.
   useEffect(() => {
     const previous = document.title;
@@ -1023,6 +1040,7 @@ export default function TrackerPage() {
             }
           }
           watchingRef.current = true;
+          rememberWatching(true); // so the iPhone restarting CareNest comes back here (cameraPhone.ts)
           handheldRef.current.reset(); // the hand-held camera angle starts from straight ahead
           report(reporterRef.current.start(performance.now()));
           tabsRef.current?.postMessage("started");
@@ -1061,7 +1079,10 @@ export default function TrackerPage() {
     [stopCamera, report, faceWatcher],
   );
 
-  const stopWatching = useCallback(() => finishWatching("", true), [finishWatching]);
+  const stopWatching = useCallback(() => {
+    rememberWatching(false);
+    finishWatching("", true);
+  }, [finishWatching]);
 
   // Closing the tab (or the browser) doesn't run the clean-up below, so say
   // "stopped" here. The page is going away, so it is sent the keepalive way.
@@ -1149,6 +1170,7 @@ export default function TrackerPage() {
     return () => {
       if (watchingRef.current) report(reporterRef.current.stop());
       watchingRef.current = false;
+      rememberWatching(false); // left the camera page on purpose
       stopCamera();
       detectorRef.current?.close();
       detectorRef.current = null;
@@ -1905,7 +1927,10 @@ function SettingsPanel(props: {
                 ["off", "Off"],
               ]}
               value={s.faces ? "on" : "off"}
-              onChange={(v) => update({ faces: v === "on" })}
+              onChange={(v) => {
+                rememberFacesChoice();
+                update({ faces: v === "on" });
+              }}
             />
             <p className="text-base text-white/90">
               Saves a face fingerprint of the person you tap and uses it to re-find them, even in other clothes. It stays

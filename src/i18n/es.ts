@@ -586,6 +586,8 @@ const es: Record<string, string> = {
     "La cámara se detuvo porque esta página quedó oculta o la pantalla se apagó. Mantenga esta página abierta en la pantalla mientras vigila.",
   "The camera is now watching in another tab, so it stopped here.":
     "La cámara ahora vigila en otra pestaña, así que se detuvo aquí.",
+  "The iPhone restarted CareNest, so the camera stopped. Tap Start watching to carry on.":
+    "El iPhone reinició CareNest, así que la cámara se detuvo. Toque Empezar a vigilar para continuar.",
   "Starting... (the first time takes a little longer)": "Empezando... (la primera vez tarda un poco más)",
   "The database isn't set up on this website yet, so you can try the camera but your family won't see anything.":
     "La base de datos de esta web todavía no está preparada: puede probar la cámara, pero su familia no verá nada.",
