@@ -321,25 +321,57 @@ export const FACE = {
 export const EMERGENCY = {
   /**
    * Box height / width in real pixels: over this = standing, under `lying` = lying down. Lying
-   * was 0.9 at first, but someone sitting at a table (legs hidden, arms out) gets a box that wide.
+   * was 0.9 at first, but someone sitting at a table (legs hidden, arms out) gets a box that wide,
+   * and with elbows out on the table even a little wider than 0.6: a lying-shaped box alone is
+   * never enough for a fall (see `fallDrop`) or a seizure (see `flat`).
    */
   standing: 1.7,
   lying: 0.6,
+  /**
+   * The posture is the middle value of this long (ms) of frames, so one odd box doesn't flip it.
+   * The detector's box jumps about by up to ~10% a frame, more on slower (often Android) phones.
+   */
+  smoothMs: 1000,
+  /**
+   * A box edge this close to the edge of the picture (share of the picture) is cut off: part of
+   * the person is out of view, so the box isn't their real shape. Sitting close to the stand
+   * (legs below the picture) looks short and wide, like lying. Cut-off boxes never start a fall
+   * or a seizure. The price: a fall right next to the stand, ending partly out of the picture,
+   * isn't caught. For the demo, stage falls a few steps from the camera, whole body in view.
+   */
+  edgeMargin: 0.02,
   /** A fall: standing, then lying within this long... */
   fallWithinMs: 4000,
+  /**
+   * ...the top of their box dropping by at least this share of their standing height (the head
+   * going most of the way to the floor; sitting down, even at a table, drops it about a third)...
+   */
+  fallDrop: 0.6,
   /** ...and still lying after this long. */
   lyingMs: 3000, // long enough for the shaking check to speak first if they fell into a seizure
   /**
-   * A seizure: while lying, the box's width or height swings back and forth at least `shakeFlips`
-   * times within `shakeWindowMs`, each swing (peak to peak) at least `shakeSwing` of the person's
-   * size. Only the size counts: a shaking camera moves the box but doesn't resize it. The
-   * detector's own wobble is a few percent; on Apple's phone 3% steps raised a false alarm.
+   * A seizure: while lying really flat (height / width under `flat`; sitting at a table with
+   * elbows out is about 0.5-0.6), the box's width or height swings back and forth at least
+   * `shakeFlips` times within `shakeWindowMs`, each swing (peak to peak) at least `shakeSwing`
+   * of the person's size. Only the size counts: a shaking camera moves the box but doesn't resize
+   * it. The detector's own wobble is a few percent; on Apple's phone 3% steps raised a false alarm.
    */
+  flat: 0.45,
   shakeWindowMs: 3000,
   shakeSwing: 0.1,
   shakeFlips: 5,
-  /** After an alert, watch again once the person has been up (not lying) this long. */
+  /**
+   * Shaking happens in one place: if the middle of the box wanders more than this share of the
+   * person's size during the shaking window, they're moving about, not shaking (from PR #47).
+   */
+  shakeMaxDrift: 0.5,
+  /**
+   * After an alert (and "I'm OK"), watch again only once the person has been standing (not just
+   * sitting) this long (ms), or `cooldownMs` after the alert. Re-arming after a few seconds of
+   * "not lying" made someone sitting at a table get the alert again and again.
+   */
   rearmMs: 3000,
+  cooldownMs: 120_000,
   /** "Are you OK?" countdown before the pretend emergency call (seconds). */
   countdownS: 15,
 };
