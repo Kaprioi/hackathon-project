@@ -85,12 +85,30 @@ function setupProblem(env: CallEnv): string | null {
   return null;
 }
 
-/** What the call says. */
-export function callMessage(kind: CallKind, name?: string): string {
+/**
+ * Gemini's sentence about the picture (api/scene-check.ts), made safe to read out: one line,
+ * no markup, at most 160 characters. Empty if there's nothing usable.
+ */
+export function cleanNote(s: unknown): string {
+  let t = String(s ?? "")
+    .replace(/[\p{Cc}<>]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (t.length > 160) t = t.slice(0, 157).replace(/\s+\S*$/, "") + "...";
+  if (t && !/[.!?]$/.test(t)) t += ".";
+  return t;
+}
+
+/** What the call says. `note` is what Gemini saw in the picture, if it was asked. */
+export function callMessage(kind: CallKind, name?: string, note?: string): string {
   const who = name?.trim() || "Your family member";
-  if (kind === "test") return "This is a test call from CareNest. Calls like this will tell you when someone may need help. No action is needed.";
+  const seen = cleanNote(note);
+  const sees = seen ? ` What the camera sees: ${seen}` : "";
+  if (kind === "test") {
+    return `This is a test call from CareNest. Calls like this will tell you when someone may need help.${sees} No action is needed.`;
+  }
   const what = kind === "fall" ? "may have fallen and isn't getting up" : "may be having a seizure";
-  return `This is a CareNest alert. ${who} ${what}. Please check on them right away.`;
+  return `This is a CareNest alert. ${who} ${what}.${sees} Please check on them right away.`;
 }
 
 function escapeXml(s: string): string {
@@ -162,7 +180,7 @@ export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: 
   const say = query.get("say");
   if (say !== null) {
     if (!isKind(say)) return { status: 400, body: { error: "Unknown alert kind." } };
-    return { status: 200, body: {}, xml: callScript(callMessage(say, env.ALERT_PERSON_NAME)) };
+    return { status: 200, body: {}, xml: callScript(callMessage(say, env.ALERT_PERSON_NAME, query.get("note") ?? undefined)) };
   }
 
   const ready = isReady(env);
@@ -180,6 +198,7 @@ export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: 
 
   const kind = (req.body as { kind?: unknown } | null)?.kind;
   if (!isKind(kind)) return { status: 400, body: { error: "Unknown alert kind." } };
+  const note = cleanNote((req.body as { note?: unknown } | null)?.note);
   if (!ready) return { status: 200, body: { result: "off", problem: setupProblem(env) } };
 
   const signIn = await signInState(req, env, fetchFn);
@@ -191,7 +210,7 @@ export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: 
     return { status: 200, body: { result: "failed", error: "Couldn't check the sign-in with the database. Is the internet on?" } };
   }
 
-  const reply = await callTwilio(kind, env, publicBase(req, env), now, fetchFn);
+  const reply = await callTwilio(kind, note, env, publicBase(req, env), now, fetchFn);
   const ok = reply.result === "sent";
   last = { at: now, kind, ok, error: reply.error };
   console.log(`[emergency-call] ${kind}: ${ok ? "Twilio is calling" : `didn't go through: ${reply.error}`}`);
@@ -201,6 +220,7 @@ export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: 
 /** Makes the call (if the limits allow). */
 async function callTwilio(
   kind: CallKind,
+  note: string,
   env: CallEnv,
   base: string | null,
   now: number,
@@ -232,7 +252,8 @@ async function callTwilio(
       body: new URLSearchParams({
         To: env.ALERT_CALL_TO!,
         From: env.TWILIO_FROM!,
-        Url: `${base}/api/emergency-call?say=${kind}`,
+        // Gemini's sentence rides along in the address Twilio fetches the words from.
+        Url: `${base}/api/emergency-call?say=${kind}${note ? `&note=${encodeURIComponent(note)}` : ""}`,
       }).toString(),
     });
     if (res.ok) return { result: "sent" };

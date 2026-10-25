@@ -29,6 +29,8 @@ Finds people with the phone's camera, follows the one you tap, and drives the st
 | `cameraPhone.test.mjs` | Tests for `cameraPhone.ts`. |
 | `savedSettings.ts` | The settings the page starts with: saved ones plus this phone's defaults. Face recognition starts off on iPhones (to save memory), even with older saved settings, until someone switches it in Settings. Up/down only counts when chosen by hand (Flip up/down): the page's own up/down flips are never saved. |
 | `savedSettings.test.mjs` | Tests for `savedSettings.ts`. |
+| `sceneCheck.ts` | Gemini's look at the picture: when an alert's countdown runs out, sends one still picture to the server (`api/scene-check.ts`), which asks Google Gemini to describe it in one sentence for the call and the alert screen. Never cancels an alert or call. |
+| `sceneCheck.test.mjs` | Tests for `api/scene-check.ts` and the call reading Gemini's sentence out, with a stand-in Gemini and Twilio. |
 | `brain.test.mjs` | Tests with made-up frames, including a simulated room. Run `npm run test:tracker`. |
 | `radar.test.mjs` | Tests for the radar-guided search: a simulated room with a fake radar (walk out left, double back, someone else, radar quiet, Bluetooth drop, a laptop webcam beside the stand). |
 | `stand.test.mjs` | Tests how often aims are sent to the stand, with a fake Bluetooth stand and a fake clock. |

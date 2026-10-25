@@ -139,6 +139,12 @@ export interface Settings {
    * contact". Their number is a server setting (api/emergency-call.ts), not saved here.
    */
   contactName: string;
+  /**
+   * When an alert's countdown runs out, send one still picture to Google Gemini (through the
+   * server, api/scene-check.ts) and read its description out in the call. Off = no picture is
+   * ever sent. Only works where the server has a Gemini key.
+   */
+  gemini: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -155,6 +161,7 @@ export const DEFAULT_SETTINGS: Settings = {
   emergency: true,
   cameraOnStand: "yes",
   contactName: "",
+  gemini: true,
 };
 
 /** True if the camera turns with the stand (the phone on it), false for a computer's webcam beside it. */
@@ -404,8 +411,10 @@ export const EMERGENCY = {
   maxLyingArea: 0.3,
   /** After an alert, watch again once the person has been up (not lying) this long. */
   rearmMs: 3000,
-  /** "Are you OK?" countdown before the pretend emergency call (seconds). */
+  /** "Are you OK?" countdown before the emergency call (seconds). */
   countdownS: 15,
+  /** Once the countdown runs out, the call waits at most this long for Gemini's description (sceneCheck.ts). */
+  geminiWaitMs: 6000,
 };
 
 /** Long side of the small copy of each frame used for colours and the cover tracker. */

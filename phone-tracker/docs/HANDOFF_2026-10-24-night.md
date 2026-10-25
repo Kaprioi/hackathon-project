@@ -93,6 +93,14 @@ Never push to `main`. Git author is Dennis Liang / dennisliang07@gmail.com.
    Trade-off for the demo: **stage the fall a few steps from the camera**, so the whole body stays in the picture
    (a body touching the top or bottom edge isn't judged).
 
+6. **Gemini's look at the picture** (late Oct 24, for the "Best Use of Gemini API" prize): when an alert's
+   countdown runs out, one still picture goes to Gemini through `api/scene-check.ts`; its one-sentence description
+   shows on the alert screen and is read out in the call. Never cancels anything; the call waits at most 6 s.
+   Needs `GEMINI_API_KEY` (Google AI Studio) in `.env.local` and Vercel. Free tier: Google may keep and review the
+   pictures, so the demo uses teammates and real use needs the paid tier. Tested with a stand-in Gemini and in
+   Chrome without a key; **not yet tried with a real key.** Google's Gemini agent skills are installed locally in
+   `.agents/skills` (kept out of git through `.git/info/exclude`).
+
 ## Apple's and Kris's to-do before the demo
 
 1. **Supabase:** run `supabase/migrations/20261025000000_live_video.sql` (dashboard → carenest → SQL Editor →
@@ -102,7 +110,7 @@ Never push to `main`. Git author is Dennis Liang / dennisliang07@gmail.com.
    filling up with real data (sign in with the same account on both, press Start watching).
 3. **Open the `live-video` PR**; after the main merge, **Kris merges #13 then `live-video`**.
 4. **Vercel** (Kris has access): add `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, `ALERT_CALL_TO`,
-   `ALERT_PERSON_NAME` (values sent privately, never in GitHub or group chat), redeploy. The Supabase vars are
+   `ALERT_PERSON_NAME` and `GEMINI_API_KEY` (values sent privately, never in GitHub or group chat), redeploy. The Supabase vars are
    already there. Then the real site is https://carenest-eight-bay.vercel.app (tracker at `/tracker`).
 5. **Hardware: the stand has never moved with the phone.** Firmware compiles (arduino-cli, see memory/
    `phone-tracker/CLAUDE.md`), never run on the board. Kris uploads it; S22 → Connect stand → Settings test moves.
