@@ -3,7 +3,7 @@ import { useLanguage } from "../i18n/useLanguage";
 import { accessToken } from "../lib/supabase";
 import { dayKey, dueNow, iconFor, SNOOZE_MINUTES, spokenReminder } from "../family/reminders";
 import { useReminders } from "../family/useReminders";
-import { playChime, speak } from "../family/voice";
+import { playChime, speak, VOICE_ON } from "../family/voice";
 
 // The big reminder card on the phone on the table, like "💊 Heart pills" at 8:00.
 // It shows over the camera view and is said out loud once (and again after
@@ -30,7 +30,8 @@ export default function ReminderPopup({ circleId }: { circleId: string }) {
     const key = `${showing.id}:${dayKey(new Date())}`;
     if (said.current.has(key)) return;
     said.current.add(key);
-    void playChime().then(() => speak(spokenReminder(showing, t), lang, accessToken));
+    // Just the chime while the voice is switched off (see VOICE_ON in voice.ts).
+    void playChime().then(() => VOICE_ON && speak(spokenReminder(showing, t), lang, accessToken));
   }, [showing, t, lang]);
 
   if (!showing) return null;

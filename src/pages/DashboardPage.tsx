@@ -28,6 +28,7 @@ import {
 import { spokenClock } from "../family/readAloud";
 import { useCheckingOnIt } from "../family/useCheckingOnIt";
 import { useSpokenAlerts } from "../family/useSpokenAlerts";
+import { VOICE_ON } from "../family/voice";
 import { cleanNoMovementSettings, noMovementLine, spokenNoMovement, type NoMovementSettings } from "../family/noMovement";
 import { useNoMovement } from "../family/useNoMovement";
 import NoMovementSettingsFields from "../components/NoMovementSettings";
@@ -170,7 +171,7 @@ function Family({
   // Spoken alerts: say new alerts out loud by themselves (off until switched on).
   const [spokenOn, setSpokenOnState] = useState(() => readSaved(SPOKEN_ALERTS_KEY, cleanSpokenAlerts));
   const spoken = useSpokenAlerts({
-    on: spokenOn,
+    on: spokenOn && VOICE_ON,
     settings: alertSettings,
     words: (e, again, lang, t) =>
       spokenAlert(e, whoToSpeakOf(savedName, t), spokenClock(lang, (iso) => localTime(Date.parse(iso), t)), t, again),

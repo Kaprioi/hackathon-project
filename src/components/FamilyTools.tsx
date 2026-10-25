@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { checkingLine, type AlertSettings } from "../family/alerts";
-import { speak, stopVoice } from "../family/voice";
+import { speak, stopVoice, VOICE_ON } from "../family/voice";
 import { useLanguage } from "../i18n/useLanguage";
 import { accessToken } from "../lib/supabase";
 
@@ -28,7 +28,11 @@ function SpeakerIcon({ size }: { size: number }) {
  * site language (fetched from /api/tts). Press again to stop.
  * If the ElevenLabs voice can't be reached, a short note says so.
  */
-export function ReadAloudButton({
+export function ReadAloudButton(props: Parameters<typeof ReadAloud>[0]) {
+  return VOICE_ON ? <ReadAloud {...props} /> : null;
+}
+
+function ReadAloud({
   text,
   label = "Read aloud",
   stopLabel = "Stop reading",
@@ -121,7 +125,11 @@ export function SimpleViewToggle({ on, onChange }: { on: boolean; onChange: (on:
  * before they allow sound, so it speaks straight away to show it works.
  * After a reload, `needsTap` shows a big "tap to turn back on" button.
  */
-export function SpokenAlertsSwitch({
+export function SpokenAlertsSwitch(props: Parameters<typeof SpokenSwitch>[0]) {
+  return VOICE_ON ? <SpokenSwitch {...props} /> : null;
+}
+
+function SpokenSwitch({
   on,
   needsTap,
   note,
