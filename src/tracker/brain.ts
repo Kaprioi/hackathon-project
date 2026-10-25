@@ -444,14 +444,10 @@ export class Brain {
     const strongCount = frameIn.people.length;
     this.cameraOnHead = !frameIn.head;
     this.flippedTilt = false;
-    // Flipped up/down by itself a moment ago, and now the camera sits at the end of the up/down
-    // range with them clearly further from the middle of the picture than at the flip (where
-    // it last saw them)? That flip was wrong (tiltCheck.ts): take it back.
-    if (this.cameraOnHead && this.mode === "tracking" && this.lastBox && this.tiltPinned(frameIn.camera)) {
-      if (this.tiltCheck.pinned(frameIn.t, aimPointY(this.lastBox, this.settings.aimHeight)))
-        this.flipTilt("Up and down is back the way it was: flipping it sent the stand as far up or down as it goes, away from you.");
-    } else {
-      this.tiltCheck.notPinned();
+    // Flipped up/down by itself a moment ago, and now the camera has run to the end of the
+    // up/down range? That flip was wrong (tiltCheck.ts): take it back.
+    if (this.tiltCheck.shouldUndo(frameIn.t, this.aim?.tilt ?? null, frameIn.camera.tilt)) {
+      this.flipTilt("Up and down is back the way it was: flipping it sent the stand as far up or down as it goes.");
     }
     // After a long pause (page hidden, phone locked) people may have moved: don't carry notes over.
     if (frameIn.t - this.prevT > TUNING.longGapMs) {
@@ -826,10 +822,11 @@ export class Brain {
     // check carries on: that's when a motor mounted the other way round shows.)
     const s = this.settings;
     const y = aimPointY(box, s.aimHeight);
+    const atLimit = !!this.aim && atTiltLimit(this.aim.tilt) && Math.abs(f.camera.tilt - this.aim.tilt) < 1;
     const standTilt = f.standTilt ?? null;
-    if (this.cameraOnHead && this.mode === "tracking" && !this.tiltPinned(f.camera) && !this.flippedTilt && this.tiltCheck.update(f.t, f.camera.tilt, y, s.tiltSign, s.fovV, smooth, standTilt)) {
+    if (this.cameraOnHead && this.mode === "tracking" && !atLimit && !this.flippedTilt && this.tiltCheck.update(f.t, f.camera.tilt, y, s.tiltSign, s.fovV, smooth, standTilt)) {
       this.flipTilt("Up and down was the wrong way round for this stand, so it's flipped for this visit (Settings: Flip up/down).");
-      this.tiltCheck.flipped(f.t, y);
+      this.tiltCheck.flipped(f.t);
     }
     const w = this.toWorld(box, f.camera);
     if (this.tiltRestart) {
@@ -888,11 +885,6 @@ export class Brain {
           ? "Not sure that's you (the colours don't match). Checking..."
           : "Tracking you.";
     this.setMode("tracking", f.t, this.mode === "tracking" ? note : this.note);
-  }
-
-  /** True when the camera has tilted all the way to an aim at the end of the up/down range. */
-  private tiltPinned(camera: Angles): boolean {
-    return !!this.aim && atTiltLimit(this.aim.tilt) && Math.abs(camera.tilt - this.aim.tilt) < 1;
   }
 
   /** Flips up/down for this stand (the page keeps it for this visit only, see tiltCheck.ts). */

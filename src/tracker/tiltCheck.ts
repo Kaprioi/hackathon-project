@@ -13,12 +13,10 @@
 // the end of that range the camera can't tilt any further, so there's nothing left to check:
 // a wrong flip there used to stay for good (and was saved). So now:
 //   - no check once the camera has tilted all the way to an aim at the end of the range;
-//   - a flip is taken back only when the camera then sits at an aim at the end of the range
-//     and, for UNDO_EVIDENCE_MS in a row, you're clearly further from the middle of the picture
-//     (up/down) than when it flipped (going by where it last saw you): a wrong flip sends the
-//     stand running away from you to the end and keeps it there. Otherwise (you're as close
-//     to the middle or closer, or it can't tell within UNDO_MS) the flip stays: a motor
-//     mounted the other way round, with you really up or down there;
+//   - a flip that ends with the camera at an aim at the end of the range within UNDO_MS is
+//     taken back (a wrong flip sends the stand running to the end and keeps it there), unless
+//     a check on the way showed the stand turning the right way (then the person really is up
+//     or down there);
 //   - the page doesn't save these flips, so a reload starts from the Settings choice (Flip
 //     up/down) again.
 
@@ -39,12 +37,8 @@ const MAX_CHECK_MS = 2000;
  * little late, so it only has to roughly agree.)
  */
 const STAND_AGREE = 1 / 3;
-/** A flip can only be taken back within this long (ms) after it. */
-const UNDO_MS = 3000;
-/** Taken back after this long (ms) at the end of the range with you further from the middle all along. */
-const UNDO_EVIDENCE_MS = 1000;
-/** "Further from the middle": by at least this much of the picture's height. */
-const UNDO_MARGIN = 0.05;
+/** A flip that ends with the camera at the end of the up/down range within this long (ms) is taken back. */
+const UNDO_MS = 2000;
 
 /** True when `tilt` is at the end of the small up/down range (TILT.range from level), where the stand stops. */
 export function atTiltLimit(tilt: number): boolean {
@@ -56,10 +50,8 @@ export class TiltCheck {
   private strikes = 0;
   /** When it last flipped up/down by itself (null: not in the last UNDO_MS). */
   private flippedAt: number | null = null;
-  /** How far the target was from the middle of the picture (up/down) at that flip. */
-  private flippedOff = 0;
-  /** Since when the target has been further from the middle, with the camera at the end of the range. */
-  private furtherSince: number | null = null;
+  /** Since that flip, a check showed the stand turning the right way (so the flip was right). */
+  private rightSinceFlip = false;
 
   /**
    * One camera frame while tracking. `tilt`: where the camera pointed (degrees); `y`: the
@@ -84,56 +76,43 @@ export class TiltCheck {
     // The right way round, someone standing still moves by -turned (ratio -1) and someone
     // the camera keeps up with stays put (ratio 0). The wrong way round: about +1.
     const ratio = (tiltSign * (y - s.y) * fovV) / turned;
+    if (ratio < 0) this.rightSinceFlip = true;
     this.strikes = ratio > WRONG_RATIO ? this.strikes + 1 : 0;
     if (this.strikes < STRIKES) return false;
     this.strikes = 0;
     return true;
   }
 
-  /** Up/down was flipped by itself at time `t` (after update() said so), with the target at `y`. */
-  flipped(t: number, y: number): void {
+  /** Up/down was flipped by itself at time `t` (after update() said so). */
+  flipped(t: number): void {
     this.flippedAt = t;
-    this.flippedOff = Math.abs(y - 0.5);
-    this.furtherSince = null;
+    this.rightSinceFlip = false;
     this.start = null;
     this.strikes = 0;
   }
 
   /**
-   * One camera frame while tracking with the camera at an aim at the end of the up/down range.
-   * `y`: where the target's aim point was last seen in the picture, as in update() (someone
-   * who ran out of the picture is still as far out as when last seen). Returns true when the
-   * flip from the last UNDO_MS should be taken back: for UNDO_EVIDENCE_MS of such frames in a
-   * row (notPinned() in between starts over), every one had the target clearly further from
-   * the middle than at the flip. Anything less: the flip stays.
+   * One frame. `aimTilt`: where the stand is told to point up/down (null: nowhere); `tilt`:
+   * where the camera points. Returns true when the flip from the last UNDO_MS should be taken
+   * back: the camera has gone all the way to an aim at the end of the up/down range, and no
+   * check on the way there showed it turning the right way.
    */
-  pinned(t: number, y: number): boolean {
+  shouldUndo(t: number, aimTilt: number | null, tilt: number): boolean {
     if (this.flippedAt === null) return false;
     if (t - this.flippedAt > UNDO_MS) {
       this.flippedAt = null;
       return false;
     }
-    if (Math.abs(y - 0.5) < this.flippedOff + UNDO_MARGIN) {
-      this.furtherSince = null;
-      return false;
-    }
-    this.furtherSince ??= t;
-    if (t - this.furtherSince < UNDO_EVIDENCE_MS) return false;
+    if (aimTilt === null || !atTiltLimit(aimTilt) || Math.abs(tilt - aimTilt) >= 1 || this.rightSinceFlip) return false;
     this.flippedAt = null;
     this.start = null;
     this.strikes = 0;
     return true;
   }
 
-  /** One frame without the camera at the end of the range while tracking: the evidence for pinned() starts over. */
-  notPinned(): void {
-    this.furtherSince = null;
-  }
-
   /** Starts the check over (a new target). A flip from the last UNDO_MS can still be taken back. */
   reset(): void {
     this.start = null;
     this.strikes = 0;
-    this.furtherSince = null;
   }
 }
