@@ -26,6 +26,21 @@ export const LIMITS = {
 };
 
 /**
+ * Up and down (the tilt motor). The stand only looks a little up or down from level, and
+ * goes back to level whenever it isn't following someone it can see.
+ */
+export const TILT = {
+  /** Level: straight ahead. The firmware's TILT_LEVEL. */
+  level: 90,
+  /** Look at most this far (degrees) up or down from level. */
+  range: 15,
+  /** Someone this close to level (degrees) counts as level: the stand stays level. */
+  levelBand: 3,
+  /** Going back to level, at this speed (degrees/second): from all the way up or down in about 0.75 s. */
+  returnSpeed: 20,
+};
+
+/**
  * How the firmware moves each motor toward the page's aim, every 20 ms: `ease` of the
  * remaining way (so it glides to a stop and never swings past), never faster than the top
  * speed, and not at all when the aim is within `deadband` (no twitching). Keep these the

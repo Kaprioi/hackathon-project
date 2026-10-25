@@ -20,7 +20,7 @@ import type { Watcher } from "../lib/live";
 import { LiveHost, fetchIceServers, supabaseSignal } from "../lib/live";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
-import { Brain, MODE_LABEL, predictAim, whereaboutsText } from "./brain.ts";
+import { Brain, MODE_LABEL, predictAim, towardLevel, whereaboutsText } from "./brain.ts";
 import type { Settings } from "./config.ts";
 import {
   ANALYSIS_WIDTH,
@@ -31,6 +31,7 @@ import {
   EMERGENCY,
   FACE,
   LIMITS,
+  TILT,
   TUNING,
 } from "./config.ts";
 import ReminderPopup from "../components/ReminderPopup";
@@ -1359,6 +1360,9 @@ export default function TrackerPage() {
     let cameraSteering = false; // did the camera steer the stand last frame?
     // The last aim that's moving steadily (someone walking): moved on between camera frames.
     let moving: { aim: Angles; vel: Angles; t: number } | null = null;
+    // Once the phone stops steering: the last aim, its tilt easing back to level (the pan stays put).
+    let homing: Angles | null = null;
+    let prevStepT = 0;
 
     // Runs once per animation frame. If anything inside throws, show it on screen
     // instead of silently freezing the boxes.
@@ -1518,15 +1522,27 @@ export default function TrackerPage() {
       cameraSteering = !!out.aim && (CAMERA_STEERS_IN as readonly string[]).includes(out.mode);
       moving = cameraSteering && out.aim && out.aimVel ? { aim: out.aim, vel: out.aimVel, t } : null;
       if (out.aim && cameraSteering) {
+        homing = null;
         lastAimRef.current = out.aim;
         if (stand.connected) {
           servo.setTarget(out.aim);
           stand.move(out.aim.pan, out.aim.tilt);
         }
       } else if (!testingRef.current) {
-        stand.releaseControl();
-        if (stand.reported) lastAimRef.current = stand.reported;
+        // Nobody to follow: first bring the tilt back to level (the pan stays where it was
+        // last aimed), then stop steering so the stand holds still.
+        homing ??= lastAimRef.current ? { ...lastAimRef.current } : null;
+        if (homing && homing.tilt !== TILT.level && stand.connected) {
+          homing = { pan: homing.pan, tilt: towardLevel(homing.tilt, t - prevStepT) };
+          lastAimRef.current = homing;
+          servo.setTarget(homing);
+          stand.move(homing.pan, homing.tilt);
+        } else {
+          stand.releaseControl();
+          if (stand.reported) lastAimRef.current = stand.reported;
+        }
       }
+      prevStepT = t;
 
       if (overlayRef.current)
         drawOverlay(overlayRef.current, video, people, out, s.matchLimit, mirroredRef.current, turn, faceWatcher.labels, t);

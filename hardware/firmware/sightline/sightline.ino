@@ -17,7 +17,9 @@
 //     motors: the head goes where its "pan,tilt" aims say (when it can see the
 //     person, and when it turns toward where the radar hears them; it reads the
 //     radar loudness below), and holds still when they stop. The head never
-//     wiggles or sweeps on its own then, so the two can't fight.
+//     wiggles or sweeps on its own then, so the two can't fight. Up/down is
+//     the exception: it only looks slightly up or down and drifts back to
+//     level whenever the aims stop (see TILT_AIM_RANGE).
 //   - Only once Bluetooth is gone (page closed, phone out of range) do the radars
 //     steer on their own again, exactly as before.
 //   - The website switches the humidifier mist on and off (pin A0; the
@@ -71,6 +73,14 @@ const int RADAR_COUNT = 1;
 const int PAN_MIN = 10, PAN_MAX = 170, PAN_CENTER = 90;  // degrees
 const int TILT_MIN = 45, TILT_MAX = 135;                  // degrees, camera steering only
 const int TILT_LEVEL = 90;          // straight ahead; lower = look down
+// Up/down only ever looks a little up or down from level, and drifts back to level on
+// its own: the website's tilt aims are kept within TILT_LEVEL +/- TILT_AIM_RANGE, and
+// the head eases back to TILT_LEVEL whenever the website hasn't sent an aim for
+// TILT_RETURN_MS, while searching, while the radars steer, and after Bluetooth drops.
+// The head never stays tilted up or down by itself. (Pan is not affected.)
+const int TILT_AIM_RANGE = 15;      // degrees either side of level
+const uint32_t TILT_RETURN_MS = 1500;    // no fresh aim for this long: back to level
+const float TILT_RETURN_SPEED = 40;      // degrees/second while drifting back to level (gentle)
 const int PAN_DIRECTION = 1;        // set to -1 if the head turns the wrong way
 const int MIN_ENERGY = 15;          // 0-100; below this a radar "sees nobody"
 const int DEADBAND = 8;             // ignore left/right differences smaller than this
@@ -293,7 +303,8 @@ class MoveCallback : public BLECharacteristicCallbacks {
     int comma = v.indexOf(',');
     if (comma < 0) return;
     cameraPan = constrain(v.substring(0, comma).toFloat(), PAN_MIN, PAN_MAX);
-    cameraTilt = constrain(v.substring(comma + 1).toFloat(), TILT_MIN, TILT_MAX);
+    cameraTilt = constrain(v.substring(comma + 1).toFloat(),
+                           max(TILT_MIN, TILT_LEVEL - TILT_AIM_RANGE), min(TILT_MAX, TILT_LEVEL + TILT_AIM_RANGE));
     lastCameraMove = millis() | 1;     // never 0, which means "not steering"
   }
 };
@@ -415,18 +426,25 @@ void loop() {
   bool mistOn = mistWanted && (int32_t)(now - lastMistCommand) < (int32_t)MIST_TIMEOUT_MS;
   digitalWrite(MIST_PIN, mistOn ? HIGH : LOW);
 
-  // While the website is connected it steers: follow its aims smoothly, and hold
-  // still at the last one when they stop (it's waiting, or has let go).
+  // While the website is connected it steers left/right: follow its aims smoothly,
+  // and hold still at the last one when they stop (it's waiting, or has let go).
+  // Up/down follows its aims only while they are fresh; otherwise (no aim for
+  // TILT_RETURN_MS, searching, radar steering, Bluetooth gone) it drifts back to level.
   bool websiteSteers = websiteConnected;
   uint32_t cameraAt = lastCameraMove;
   bool cameraSteering = cameraAt != 0 && (int32_t)(now - cameraAt) < (int32_t)CAMERA_HOLD_MS;
-  if (websiteSteers && now - lastCameraTick >= CAMERA_TICK_MS) {
+  if (now - lastCameraTick >= CAMERA_TICK_MS) {
     lastCameraTick = now;
-    const float panStep = PAN_TOP_SPEED * CAMERA_TICK_MS / 1000.0;    // 5.6 degrees a tick
-    const float tiltStep = TILT_TOP_SPEED * CAMERA_TICK_MS / 1000.0;  // 4 degrees a tick
-    if (fabs(cameraPan - pan) >= MOVE_DEADBAND) pan += constrain((cameraPan - pan) * CAMERA_EASE, -panStep, panStep);
-    if (fabs(cameraTilt - tilt) >= MOVE_DEADBAND) tilt += constrain((cameraTilt - tilt) * CAMERA_EASE, -tiltStep, tiltStep);
-    panServo.writeMicroseconds(toMicros(pan));
+    if (websiteSteers) {
+      const float panStep = PAN_TOP_SPEED * CAMERA_TICK_MS / 1000.0;    // 5.6 degrees a tick
+      if (fabs(cameraPan - pan) >= MOVE_DEADBAND) pan += constrain((cameraPan - pan) * CAMERA_EASE, -panStep, panStep);
+      panServo.writeMicroseconds(toMicros(pan));
+    }
+    bool freshTiltAim = websiteSteers && state == TRACKING && cameraAt != 0 &&
+                        (int32_t)(now - cameraAt) < (int32_t)TILT_RETURN_MS;
+    float tiltGoal = freshTiltAim ? cameraTilt : TILT_LEVEL;
+    const float tiltStep = (freshTiltAim ? TILT_TOP_SPEED : TILT_RETURN_SPEED) * CAMERA_TICK_MS / 1000.0;
+    if (fabs(tiltGoal - tilt) >= MOVE_DEADBAND) tilt += constrain((tiltGoal - tilt) * CAMERA_EASE, -tiltStep, tiltStep);
     tiltServo.writeMicroseconds(toMicros(tilt));
   }
 

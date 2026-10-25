@@ -22,7 +22,7 @@
 import type { Look, RgbaImage } from "./appearance.ts";
 import { blendLook, lookDistance, lookOf } from "./appearance.ts";
 import type { Settings } from "./config.ts";
-import { LIMITS, RADAR, TUNING } from "./config.ts";
+import { LIMITS, RADAR, TILT, TUNING } from "./config.ts";
 import type { Angles, Box } from "./geometry.ts";
 import { area, centerX, centerY, clamp, contains, iou } from "./geometry.ts";
 import { LumpTracker, toGray } from "./lump.ts";
@@ -153,6 +153,23 @@ export function aimPointY(b: Box, aimHeight: number, headroom: number = TUNING.h
 }
 
 /**
+ * Up/down limited to a small look around level: within TILT.range of it, and exactly level
+ * when within `band` of it (someone roughly level doesn't keep the stand tilted).
+ */
+export function limitTilt(tilt: number, band: number = TILT.levelBand): number {
+  const off = tilt - TILT.level;
+  if (Math.abs(off) <= band) return TILT.level;
+  return TILT.level + clamp(off, -TILT.range, TILT.range);
+}
+
+/** One step (`ms` long) of easing the tilt back to level, at TILT.returnSpeed. */
+export function towardLevel(tilt: number, ms: number): number {
+  const step = (TILT.returnSpeed * Math.max(0, ms)) / 1000;
+  const off = limitTilt(tilt) - TILT.level;
+  return Math.abs(off) <= step ? TILT.level : TILT.level + off - Math.sign(off) * step;
+}
+
+/**
  * Where to point `ms` after the brain's last answer, if its aim keeps moving at `vel`
  * (degrees/second). At most TUNING.predictMaxMs ahead, so a stalled camera can't run it away.
  */
@@ -160,7 +177,7 @@ export function predictAim(aim: Angles, vel: Angles, ms: number): Angles {
   const s = Math.max(0, Math.min(ms, TUNING.predictMaxMs)) / 1000;
   return {
     pan: clamp(aim.pan + vel.pan * s, LIMITS.panMin, LIMITS.panMax),
-    tilt: clamp(aim.tilt + vel.tilt * s, LIMITS.tiltMin, LIMITS.tiltMax),
+    tilt: limitTilt(aim.tilt + vel.tilt * s, 0),
   };
 }
 
@@ -218,6 +235,8 @@ export class Brain {
   private aim: Angles | null = null;
   /** How fast the aim moves this frame (see BrainOutput.aimVel). */
   private aimVel: Angles | null = null;
+  /** The up/down the stand was last told; eases back to level while nobody is followed in view. */
+  private outTilt: number = TILT.level;
 
   private prevT = 0;
   private prevCamera: Angles | null = null;
@@ -398,6 +417,13 @@ export class Brain {
     const seenStrong = target !== null && f.people.indexOf(target) >= 0 && f.people.indexOf(target) < strongCount;
     if (seenStrong || (this.mode !== "tracking" && this.mode !== "hidden")) this.weakSince = null;
 
+    // Up and down: only while following someone in view. Otherwise (hidden, out of the
+    // picture, nobody picked) ease back to level. Only what the stand is told changes, so
+    // left and right carry on exactly as they are.
+    const tracking = this.mode === "tracking";
+    this.outTilt = tracking && this.aim ? this.aim.tilt : towardLevel(this.outTilt, Math.min(f.t - this.prevT, 1000));
+    const aim = this.aim && !tracking ? { ...this.aim, tilt: this.outTilt } : this.aim;
+
     this.prevT = f.t;
     this.prevCamera = { ...f.camera };
     const checking = this.mode === "radar" && this.radarParkSince !== null;
@@ -407,9 +433,10 @@ export class Brain {
     const whereabouts: Whereabouts | null = outOfView && !target ? { side: exitSide, radar: f.radar, checking } : null;
     const matches = this.mode === "idle" ? allLooks.map(() => null) : allLooks.map((l) => this.dist(l));
     const faces = this.mode === "idle" ? f.people.map(() => null) : faceOf;
-    const aimVel = this.aim && this.aimVel && (this.CAN_PREDICT as readonly Mode[]).includes(this.mode) ? this.aimVel : null;
+    const vel = this.aimVel as Angles | null; // (set by the state above)
+    const aimVel = aim && vel && (this.CAN_PREDICT as readonly Mode[]).includes(this.mode) ? (tracking ? vel : { pan: vel.pan, tilt: 0 }) : null;
     const flippedTilt = this.flippedTilt;
-    return { mode: this.mode, target, aim: this.aim, aimVel, note: this.note, match, matches, exitSide, whereabouts, faces, picked, flippedTilt };
+    return { mode: this.mode, target, aim, aimVel, note: this.note, match, matches, exitSide, whereabouts, faces, picked, flippedTilt };
   }
 
   /**
@@ -1288,7 +1315,7 @@ export class Brain {
   private clampAim(a: Angles): Angles {
     return {
       pan: clamp(a.pan, LIMITS.panMin, LIMITS.panMax),
-      tilt: clamp(a.tilt, LIMITS.tiltMin, LIMITS.tiltMax),
+      tilt: limitTilt(a.tilt),
     };
   }
 
