@@ -216,6 +216,12 @@ export const TUNING = {
   /** Delay between the camera seeing something and the motor reacting. An estimate. */
   latencyMs: 80,
   /**
+   * How long an aim takes to reach the stand over Bluetooth once the page sends it (an
+   * estimate). The page's guess of where the camera points starts each move this much later
+   * than the send, and frame aims are sent only after the AI (servoModel.ts setTarget).
+   */
+  bluetoothMs: 30,
+  /**
    * Aim this far ahead of someone walking (milliseconds of their speed), to make up for that
    * delay. Lower = less overshoot when they stop suddenly, but more lag while they walk.
    */

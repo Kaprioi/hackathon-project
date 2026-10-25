@@ -197,3 +197,70 @@ test("you fall over (Dennis's lying-down colours): it keeps you, and the motor s
   assert.ok(Math.abs(late.at(-1) - 80) < 3, `pointing at you (80°), at ${late.at(-1).toFixed(1)}°`);
 });
 
+
+test("a phone's real delays (the AI, then Bluetooth): the stand follows you without swinging back and forth", () => {
+  // On the Android phone on the stand (Galaxy S22) the AI takes about 95 ms a frame, so the
+  // page looks about 9 times a second and only sends a frame's aim once the AI is done; then
+  // Bluetooth takes about 30 ms more. The page's guess of where the camera points must start
+  // each move when the aim really reaches the motor (servoModel.ts setTarget's `at`).
+  // Believing it started at the frame's time put the guess ahead of the real camera: the page
+  // thought it had already turned further, over-corrected, and the stand swung to and fro.
+  const AI_MS = 95;
+  const LOOK_MS = 110;
+  const BT = TUNING.bluetoothMs;
+  const follow = (knowsTheDelays) => {
+    const real = new ServoModel(); // the real motor
+    const guess = new ServoModel(); // the page's guess
+    real.step(0);
+    guess.step(0);
+    const brain = new Brain({ ...DEFAULT_SETTINGS });
+    const toStand = []; // aims on their way: { at, aim }
+    const send = (now, aim) => {
+      toStand.push({ at: now + BT, aim });
+      if (knowsTheDelays) guess.setTarget(aim, now + BT);
+      else guess.setTarget(aim);
+    };
+    const youAt = (t) => (t < 1500 ? 70 : t < 3500 ? 70 + (40 * (t - 1500)) / 1000 : 150); // walk right, stop
+    let outbox = null; // the aim the AI is still working on: { at, out, t }
+    let last = null; // the last aim sent from a frame
+    let nextLook = 0;
+    const log = [];
+    for (let t = 0; t <= 7500; t += SCREEN_MS) {
+      while (toStand.length && toStand[0].at <= t) real.setTarget(toStand.shift().aim);
+      real.step(t);
+      if (outbox && t >= outbox.at) {
+        if (outbox.out.aim) send(t, outbox.out.aim);
+        last = outbox;
+        outbox = null;
+      } else if (last?.out.aim && last.out.aimVel) {
+        send(t, predictAim(last.out.aim, last.out.aimVel, t - last.t));
+      }
+      if (t >= nextLook) {
+        nextLook = t + LOOK_MS;
+        guess.step(t);
+        const seen = t - TUNING.latencyMs;
+        const { image, people } = frame(youAt(seen), real.at(seen).pan);
+        const tap = t === 0 ? { x: 0.5 + (70 - 90) / FOV, y: 0.5 } : null;
+        const out = brain.update({ t, people, image, camera: guess.at(seen), radar: null, tap });
+        outbox = { at: t + AI_MS, out, t };
+      }
+      log.push({ t, you: youAt(t), pan: real.current.pan });
+    }
+    const after = log.filter((l) => l.t > 3500); // once you've stopped
+    let swings = 0;
+    let dir = 0;
+    for (let i = 1; i < after.length; i++) {
+      const d = after[i].pan - after[i - 1].pan;
+      if (Math.abs(d) < 0.05) continue;
+      if (dir && Math.sign(d) !== dir) swings++;
+      dir = Math.sign(d);
+    }
+    const off = after.reduce((a, l) => a + Math.abs(l.pan - l.you), 0) / after.length;
+    return { swings, off };
+  };
+  const before = follow(false);
+  const now = follow(true);
+  assert.ok(now.swings <= 4, `swung back and forth ${now.swings} times after you stopped (was ${before.swings})`);
+  assert.ok(now.off < 2.5, `on average ${now.off.toFixed(1)}° off you after you stopped`);
+  assert.ok(before.swings >= 3 * Math.max(1, now.swings), `the old guess swung ${before.swings} times, the new one ${now.swings}`);
+});
