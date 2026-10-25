@@ -11,11 +11,11 @@ const standing = { x: 0.4, y: 0.2, w: 0.15, h: 0.6 };
 const sitting = { x: 0.4, y: 0.35, w: 0.25, h: 0.45 };
 const lying = { x: 0.3, y: 0.6, w: 0.5, h: 0.2 };
 
-/** Feeds `ms` of frames with box(t) (and the camera's aim(t), if given), returns every alert raised and when. */
-function run(watch, t0, ms, box, aim) {
+/** Feeds `ms` of frames with box(t), returns every alert raised and when. */
+function run(watch, t0, ms, box) {
   const alerts = [];
   for (let t = t0; t < t0 + ms; t += FRAME) {
-    const a = watch.update(t, box(t), ASPECT, aim?.(t));
+    const a = watch.update(t, box(t), ASPECT);
     if (a) alerts.push({ a, t });
   }
   return alerts;
@@ -152,54 +152,51 @@ function throughStand(body, pan, tilt) {
   return x1 - x0 < 0.03 || y1 - y0 < 0.03 ? null : { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 const wave = (t, hz) => Math.sin((2 * Math.PI * hz * t) / 1000);
-/** Runs a person's whole box body(t) seen with the stand turned to aim(t) = { pan, tilt }. */
-function runStand(watch, t0, ms, body, aim) {
-  return run(watch, t0, ms, (t) => throughStand(body(t), aim(t).pan, aim(t).tilt), aim);
-}
 
 test("sitting close at a table while the stand tilts up and down (legs cut off by the picture): no alert", () => {
   const seated = { x: 0.3, y: 0.3, w: 0.4, h: 1.0 }; // legs reach below the picture
-  const body = () => ({ ...seated, w: seated.w * (1 + 0.04 * rand2()) });
-  assert.deepEqual(runStand(new EmergencyWatch(), 0, 20000, body, (t) => ({ pan: 0, tilt: 15 * wave(t, 0.5) })), []);
+  const box = (t) => throughStand({ ...seated, w: seated.w * (1 + 0.04 * rand2()) }, 0, 15 * wave(t, 0.5));
+  assert.deepEqual(run(new EmergencyWatch(), 0, 20000, box), []);
 });
 
 test("walking up and sitting down near the camera, the stand tilting down to follow: no alert", () => {
-  const body = (t) => (t < 4000 ? { x: 0.4, y: 0.1, w: 0.2, h: 0.85 } : { x: 0.25, y: 0.45, w: 0.5, h: 0.9 });
-  const aim = (t) => (t < 4000 ? { pan: 0, tilt: 0 } : { pan: 3 * wave(t, 0.3), tilt: 12 + 3 * wave(t, 0.7) });
-  assert.deepEqual(runStand(new EmergencyWatch(), 0, 20000, body, aim), []);
+  const box = (t) =>
+    t < 4000
+      ? throughStand({ x: 0.4, y: 0.1, w: 0.2, h: 0.85 }, 0, 0)
+      : throughStand({ x: 0.25, y: 0.45, w: 0.5, h: 0.9 }, 3 * wave(t, 0.3), 12 + 3 * wave(t, 0.7));
+  assert.deepEqual(run(new EmergencyWatch(), 0, 20000, box), []);
 });
 
 test("walking about while the stand pans to follow: no alert", () => {
-  const body = (t) => ({ x: 0.43 + 0.05 * wave(t, 0.3), y: 0.15, w: 0.14 * (1 + 0.15 * wave(t, 1.8)), h: 0.7 });
-  assert.deepEqual(runStand(new EmergencyWatch(), 0, 20000, body, (t) => ({ pan: 6 * wave(t, 0.3), tilt: 0 })), []);
+  const box = (t) => throughStand({ x: 0.43 + 0.05 * wave(t, 0.3), y: 0.15, w: 0.14 * (1 + 0.15 * wave(t, 1.8)), h: 0.7 }, 6 * wave(t, 0.3), 0);
+  assert.deepEqual(run(new EmergencyWatch(), 0, 20000, box), []);
 });
 
 test("a real fall while the stand tilts down to follow them: still a fall", () => {
-  const body = (t) => (t < 3000 ? { x: 0.43, y: 0.15, w: 0.14, h: 0.7 } : { x: 0.3, y: 0.62, w: 0.45, h: 0.16 });
-  const aim = (t) => (t < 3000 ? { pan: 0, tilt: 0 } : { pan: 4, tilt: -8 });
-  assert.deepEqual(runStand(new EmergencyWatch(), 0, 8000, body, aim).map((x) => x.a), ["fall"]);
+  const box = (t) =>
+    t < 3000 ? throughStand({ x: 0.43, y: 0.15, w: 0.14, h: 0.7 }, 0, 0) : throughStand({ x: 0.3, y: 0.62, w: 0.45, h: 0.16 }, 4, -8);
+  assert.deepEqual(run(new EmergencyWatch(), 0, 8000, box).map((x) => x.a), ["fall"]);
 });
 
-const still = () => ({ pan: 0, tilt: 0 });
-
-test("a real fall close to the stand, ending at the bottom of the picture: still a fall", () => {
+test("a fall right next to the stand, ending cut off at the bottom of the picture: not caught (accepted trade-off)", () => {
+  // Fewer false alarms: a box cut off at the bottom never counts as lying. Stage falls a few
+  // steps from the camera, with the whole body in the picture.
   const w = new EmergencyWatch();
-  run(w, 0, 2000, () => ({ x: 0.4, y: 0.2, w: 0.15, h: 0.75 }), still);
-  const onFloor = { x: 0.2, y: 0.78, w: 0.55, h: 0.22 }; // cut off by the bottom of the picture
-  assert.deepEqual(run(w, 2000, 5000, () => onFloor, still).map((x) => x.a), ["fall"]);
+  run(w, 0, 2000, () => ({ x: 0.4, y: 0.2, w: 0.15, h: 0.75 }));
+  assert.deepEqual(run(w, 2000, 5000, () => ({ x: 0.2, y: 0.78, w: 0.55, h: 0.22 })), []);
 });
 
 test("standing close with the legs cut off by the bottom of the picture (swaying): no alert", () => {
   const w = new EmergencyWatch();
-  run(w, 0, 2000, () => standing, still);
+  run(w, 0, 2000, () => standing);
   const close = () => ({ x: 0.3, y: 0.05, w: 0.3 * (1 + 0.15 * rand2()), h: 0.95 });
-  assert.deepEqual(run(w, 2000, 15000, close, still), []);
+  assert.deepEqual(run(w, 2000, 15000, close), []);
 });
 
 test("a quick lean forward, then standing close with the feet cut off, then leaning again: no alert", () => {
   const w = new EmergencyWatch();
   const lean = { x: 0.3, y: 0.45, w: 0.4, h: 0.2 };
-  assert.deepEqual(run(w, 0, 100, () => lean, still), []);
-  assert.deepEqual(run(w, 100, 4900, () => ({ x: 0.4, y: 0.1, w: 0.15, h: 0.9 }), still), []);
-  assert.deepEqual(run(w, 5000, 100, () => lean, still), []);
+  assert.deepEqual(run(w, 0, 100, () => lean), []);
+  assert.deepEqual(run(w, 100, 4900, () => ({ x: 0.4, y: 0.1, w: 0.15, h: 0.9 })), []);
+  assert.deepEqual(run(w, 5000, 100, () => lean), []);
 });

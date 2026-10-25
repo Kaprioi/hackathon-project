@@ -1511,7 +1511,7 @@ export default function TrackerPage() {
 
       // Emergency: a fall or seizure of the person being followed raises the alert.
       if (s.emergency) {
-        const kind = emergencyRef.current.update(t, out.mode === "tracking" ? out.target : null, uw / uh, camera);
+        const kind = emergencyRef.current.update(t, out.mode === "tracking" ? out.target : null, uw / uh);
         if (kind) raiseAlarm(kind);
       }
 

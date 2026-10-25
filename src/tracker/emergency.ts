@@ -25,8 +25,6 @@ export class EmergencyWatch {
   private upSince: number | null = null;
   private armed = true;
   private trail: { t: number; v: number[] }[] = [];
-  private lastAim: { pan: number; tilt: number } | null = null;
-  private lastTurn = -Infinity;
   /** What the tracked person seems to be doing, for the screen (null when not seen). */
   posture: "standing" | "sitting" | "lying" | null = null;
 
@@ -42,14 +40,8 @@ export class EmergencyWatch {
   /**
    * Once per frame, with the tracked person's box (null while they're not seen). Returns
    * "fall" or "seizure" once when it happens, then nothing until they've been up again.
-   * `aim` = where the camera points (degrees), if it rides on the stand or is turned by hand.
    */
-  update(t: number, box: Box | null, aspect: number, aim?: { pan: number; tilt: number }): EmergencyKind | null {
-    if (aim) {
-      const last = this.lastAim;
-      if (last && Math.abs(aim.pan - last.pan) + Math.abs(aim.tilt - last.tilt) > EMERGENCY.turnDeg) this.lastTurn = t;
-      this.lastAim = aim;
-    }
+  update(t: number, box: Box | null, aspect: number): EmergencyKind | null {
     if (!box) {
       this.posture = null;
       this.trail = []; // shaking needs an unbroken view; lying time keeps counting
@@ -59,17 +51,14 @@ export class EmergencyWatch {
     // Cut off at the top or bottom only makes a box look shorter, so a tall one is standing for sure.
     if (u >= EMERGENCY.standing) this.lastStanding = t;
     const cut = cutOff(box);
-    // Lying is only judged on a whole box of normal size. Cut off at the top, or right up close,
-    // the box looks short and wide whatever the person is doing; someone on the floor is never
-    // cut off at the top or this big. Cut off at the bottom it only counts when it's clearly
-    // flat and the camera is holding still: someone who fell close to the stand ends up at the
-    // bottom of the picture, but while the camera turns, the bottom edge cuts anyone short.
-    // Frames that don't count are "not seen properly": the lying time and the rest keep going,
-    // but nothing new starts. A tall box is still standing for sure, so they're up.
-    const turning = t - this.lastTurn < EMERGENCY.stillMs;
-    const flat = u <= 1 / EMERGENCY.cutFlat;
-    const unclear = cut.top || (cut.bottom && (cut.sides || turning || !flat)) || box.w * box.h > EMERGENCY.maxLyingArea;
-    if (unclear && u < EMERGENCY.standing) {
+    // Lying is only judged on a whole box of normal size. Cut off at the top or bottom, or right
+    // up close, the box looks short and wide whatever the person is doing; someone on the floor
+    // is never cut off at the top or this big. Such frames count as "not seen properly": the
+    // lying time and the rest keep going, but nothing new starts. A tall box is still standing
+    // for sure, so they're up.
+    // The price: a fall right next to the stand, ending cut off at the bottom of the picture,
+    // isn't caught. For the demo, stage falls a few steps from the camera, whole body in view.
+    if ((cut.top || cut.bottom || box.w * box.h > EMERGENCY.maxLyingArea) && u < EMERGENCY.standing) {
       this.posture = null;
       this.trail = [];
       return null;
