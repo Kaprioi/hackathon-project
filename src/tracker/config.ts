@@ -134,6 +134,22 @@ export interface Settings {
    * picture turns when the motor does. "auto" is from older saved settings and counts as yes.
    */
   cameraOnStand: "auto" | "yes" | "no";
+  /**
+   * Who the emergency alert calls, shown on screen (like "Sam"). Empty = "your emergency
+   * contact".
+   */
+  contactName: string;
+  /**
+   * Their phone number, as typed (call.ts phoneForCall tidies it). Sent to the server with each
+   * call. Empty = the server's own number (ALERT_CALL_TO), if it has one.
+   */
+  contactPhone: string;
+  /**
+   * When an alert's countdown runs out, send one still picture to Google Gemini (through the
+   * server, api/scene-check.ts) and read its description out in the call. Off = no picture is
+   * ever sent. Only works where the server has a Gemini key.
+   */
+  gemini: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -149,6 +165,9 @@ export const DEFAULT_SETTINGS: Settings = {
   faces: true, // the page starts with false on iPhones (see TrackerPage loadSettings)
   emergency: true,
   cameraOnStand: "yes",
+  contactName: "",
+  contactPhone: "",
+  gemini: true,
 };
 
 /** True if the camera turns with the stand (the phone on it), false for a computer's webcam beside it. */
@@ -381,10 +400,27 @@ export const EMERGENCY = {
   shakeWindowMs: 3000,
   shakeSwing: 0.1,
   shakeFlips: 5,
+  /**
+   * Shaking happens in one place: if the middle of the box wanders more than this share of the
+   * person's size during the shaking window, they're moving about (or leaving), not shaking.
+   */
+  shakeMaxDrift: 0.5,
+  /**
+   * A box edge this close to the edge of the picture (share of the picture) is cut off, so the
+   * box isn't the person's real shape or size. Someone right up close (a head and shoulders
+   * filling the picture), looking down at the phone, or walking out of view gets a cut-off box
+   * that looks short and wide, like someone lying down: those false seizure alarms (Apple's
+   * test, Oct 24) are why lying and shaking are only judged on whole boxes.
+   */
+  edgeMargin: 0.02,
+  /** Someone lying on the floor never takes up this much of the picture; bigger = right up close. */
+  maxLyingArea: 0.3,
   /** After an alert, watch again once the person has been up (not lying) this long. */
   rearmMs: 3000,
-  /** "Are you OK?" countdown before the pretend emergency call (seconds). */
+  /** "Are you OK?" countdown before the emergency call (seconds). */
   countdownS: 15,
+  /** Once the countdown runs out, the call waits at most this long for Gemini's description (sceneCheck.ts). */
+  geminiWaitMs: 6000,
 };
 
 /** Long side of the small copy of each frame used for colours and the cover tracker. */

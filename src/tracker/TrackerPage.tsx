@@ -35,6 +35,10 @@ import ReminderPopup from "../components/ReminderPopup";
 import { shouldSendInactive, startWatch, watchSaw } from "../family/noMovement.ts";
 import { unlockVoice } from "../family/voice";
 import { rememberWatching, takeReopened } from "./cameraPhone.ts";
+import type { CallOutcome, CallSetup } from "./call.ts";
+import { callSetup, phoneForCall, requestCall, showPhone } from "./call.ts";
+import { checkScene, sceneSetup, snapshot } from "./sceneCheck.ts";
+import type { SceneOutcome, SceneSetup } from "./sceneCheck.ts";
 import { Cloud } from "./cloud.ts";
 import type { Detection, PersonDetector } from "./detector.ts";
 import { createPersonDetector, isIPhone, preferredDelegate } from "./detector.ts";
@@ -82,12 +86,50 @@ interface Snapshot {
 /** Face recognition: not wanted, still loading its AI, ready, or couldn't load. */
 type FaceStatus = "off" | "loading" | "ready" | "failed";
 
-/** The emergency alert on screen: "Are you OK?" until `endsAt`, then a pretend call from `callStart`. */
+/** The emergency alert on screen: "Are you OK?" until `endsAt`, then the call from `callStart`. */
 interface Alarm {
   kind: EmergencyKind;
   phase: "ask" | "calling";
   endsAt: number;
   callStart: number;
+  /** The real call through the server: on its way, how it went, or "pretend" when calling isn't set up. */
+  call: "pretend" | "sending" | "sent" | "failed";
+  /** Why the call failed, in words (from Twilio or the server). */
+  callError?: string;
+  /** Gemini's look at the picture once the countdown ran out: still asking, or its answer. Unset = not asked. */
+  scene?: "checking" | SceneOutcome;
+  /** Gemini's sentence, read out in the call (kept for "Try again"). */
+  note?: string;
+}
+
+/** The alert screen's line about Gemini's look at the picture, or null when there's nothing to say. */
+function sceneLine(scene: Alarm["scene"]): string | null {
+  if (!scene) return null;
+  if (scene === "checking") return "Gemini is looking at the picture…";
+  if (scene.result === "ok") return `Gemini sees: ${scene.summary}`;
+  if (scene.result === "failed") return `Gemini couldn't check the picture: ${scene.error}`;
+  return null; // no Gemini key on the server
+}
+
+/** "just now", "5 min ago", "2 h ago". */
+function agoText(seconds: number): string {
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
+  return `${Math.round(seconds / 3600)} h ago`;
+}
+
+/** The CareNest login token, or null: the call server only lets signed-in accounts call. */
+async function loginToken(): Promise<string | null> {
+  try {
+    return (await supabase?.auth.getSession())?.data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The emergency contact's name for the screen. */
+function contactLabel(s: Settings): string {
+  return s.contactName.trim() || "your emergency contact";
 }
 
 /** Plays tones (the sound is unlocked by the Start watching tap; without it, it stays silent). */
@@ -557,9 +599,17 @@ function Choice<T extends string>(props: {
   );
 }
 
-/** The emergency alert: "Are you OK?" with a countdown, then a pretend emergency call. */
-function EmergencyScreen(props: { alarm: Alarm; familyAlerted: boolean; onOk: () => void; onCallNow: () => void; onEnd: () => void }) {
-  const { alarm, familyAlerted, onOk, onCallNow, onEnd } = props;
+/** The emergency alert: "Are you OK?" with a countdown, then a call to the emergency contact. */
+function EmergencyScreen(props: {
+  alarm: Alarm;
+  contact: string;
+  familyAlerted: boolean;
+  onOk: () => void;
+  onCallNow: () => void;
+  onRetry: () => void;
+  onEnd: () => void;
+}) {
+  const { alarm, contact, familyAlerted, onOk, onCallNow, onRetry, onEnd } = props;
   const what = alarm.kind === "fall" ? "Possible fall" : "Possible seizure";
   if (alarm.phase === "ask") {
     const left = Math.max(0, Math.ceil((alarm.endsAt - Date.now()) / 1000));
@@ -574,7 +624,9 @@ function EmergencyScreen(props: { alarm: Alarm; familyAlerted: boolean; onOk: ()
         <p className="text-xl font-extrabold tracking-wide uppercase">{what} detected</p>
         <h2 className="text-4xl font-extrabold">Are you OK?</h2>
         <p className="text-7xl font-extrabold tabular-nums">{left}</p>
-        <p className="px-4 text-lg">Calling emergency services in {left} s unless you press I'm OK.</p>
+        <p className="px-4 text-lg">
+          Calling {contact} in {left} s unless you press I'm OK.
+        </p>
         <button
           onClick={onOk}
           className="min-h-16 w-full max-w-sm rounded-2xl bg-white px-8 text-3xl font-extrabold text-red-700 transition-transform active:scale-95"
@@ -588,25 +640,52 @@ function EmergencyScreen(props: { alarm: Alarm; familyAlerted: boolean; onOk: ()
     );
   }
   const secs = Math.max(0, Math.floor((Date.now() - alarm.callStart) / 1000));
+  const real = alarm.call !== "pretend";
+  const status: Record<Alarm["call"], string> = {
+    pretend: "Demo: no real call (calling isn't set up on the server)",
+    sending: "Starting the call…",
+    sent: "Calling now. Their phone should ring in a few seconds.",
+    failed: `The call didn't go through. ${alarm.callError ?? ""}`,
+  };
   return (
     <div
       role="alertdialog"
       aria-modal="true"
-      aria-label="Calling emergency services"
+      aria-label={`Calling ${contact}`}
       className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 overflow-y-auto bg-black/95 px-4 py-6 text-center text-white"
       style={SAFE_ALL}
     >
-      <p className="rounded-full bg-sun px-4 py-1 text-base font-extrabold text-ink">Demo: no real call is made</p>
-      <h2 className="px-4 text-3xl font-extrabold">Calling emergency services…</h2>
+      <p
+        role="status"
+        className={`rounded-2xl px-4 py-1 text-base font-extrabold ${
+          alarm.call === "failed" ? "bg-red-600 text-white" : alarm.call === "sent" ? "bg-leaf text-white" : "bg-sun text-ink"
+        }`}
+      >
+        {status[alarm.call]}
+      </p>
+      <h2 className="px-4 text-3xl font-extrabold">Calling {contact}…</h2>
       <p className="text-lg text-white/90">
         {what} detected · {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}
       </p>
+      {sceneLine(alarm.scene) && (
+        <p role="status" className="max-w-md rounded-2xl bg-white/10 px-4 py-2 text-lg font-semibold">
+          {sceneLine(alarm.scene)}
+        </p>
+      )}
       {familyAlerted && <p className="text-base text-white/90">The family page has been alerted.</p>}
+      {alarm.call === "failed" && (
+        <button
+          onClick={onRetry}
+          className="min-h-14 w-full max-w-sm rounded-2xl bg-white px-8 text-xl font-extrabold text-ink transition-transform active:scale-95"
+        >
+          Try again
+        </button>
+      )}
       <button
         onClick={onEnd}
         className="min-h-16 w-full max-w-sm rounded-2xl bg-red-600 px-8 text-2xl font-extrabold text-white transition-transform active:scale-95"
       >
-        End call
+        {real ? "Close" : "End call"}
       </button>
     </div>
   );
@@ -875,6 +954,8 @@ export default function TrackerPage() {
   const alarmRef = useRef<Alarm | null>(null);
   const [alarm, setAlarm] = useState<Alarm | null>(null);
   const [, setTick] = useState(0); // redraws the countdown
+  /** The upright picture the person detector saw last (the main loop's canvas), for Gemini's look. */
+  const frameRef = useRef<HTMLCanvasElement | null>(null);
 
   /** Sound needs a tap before it's allowed: called from Start watching and Test the alert. */
   const unlockSound = useCallback(() => {
@@ -888,25 +969,83 @@ export default function TrackerPage() {
 
   const raiseAlarm = useCallback((kind: EmergencyKind) => {
     if (alarmRef.current) return;
-    const a: Alarm = { kind, phase: "ask", endsAt: Date.now() + EMERGENCY.countdownS * 1000, callStart: 0 };
+    const a: Alarm = { kind, phase: "ask", endsAt: Date.now() + EMERGENCY.countdownS * 1000, callStart: 0, call: "pretend" };
     alarmRef.current = a;
     setAlarm(a);
     navigator.vibrate?.([400, 200, 400]);
     beep(audioRef.current);
   }, []);
 
-  /** The pretend emergency call (never dials anything), and the alert on the family page. */
+  /** Changes the alert on screen, if it's still the same one (not closed or replaced meanwhile). */
+  const patchAlarm = useCallback((callStart: number, patch: Partial<Alarm>) => {
+    const a = alarmRef.current;
+    if (!a || a.callStart !== callStart) return;
+    const next = { ...a, ...patch };
+    alarmRef.current = next;
+    setAlarm(next);
+  }, []);
+
+  /**
+   * Asks the server to phone the emergency contact (Twilio). If calling isn't set up there,
+   * it becomes a pretend call with a ringing sound.
+   */
+  const placeCall = useCallback(
+    (callStart: number, kind: EmergencyKind, note?: string) => {
+      patchAlarm(callStart, { call: "sending", callError: undefined });
+      const to = settingsRef.current.contactPhone;
+      void loginToken().then((token) => requestCall(kind, token, 15000, note, to)).then((out: CallOutcome) => {
+        if (alarmRef.current?.callStart !== callStart) return; // closed meanwhile
+        if (out.result === "off") {
+          patchAlarm(callStart, { call: "pretend" });
+          ringRef.current?.();
+          ringRef.current = ring(audioRef.current);
+        } else if (out.result === "sent") {
+          patchAlarm(callStart, { call: "sent" });
+        } else {
+          patchAlarm(callStart, { call: "failed", callError: out.error });
+          beep(audioRef.current);
+        }
+      });
+    },
+    [patchAlarm],
+  );
+
+  /**
+   * The call (once per alert), and the alert on the family page. With the Gemini setting on,
+   * one still picture goes to Gemini first (only now, after nobody pressed I'm OK); the call
+   * waits for its description at most `EMERGENCY.geminiWaitMs`, then goes ahead either way.
+   */
   const startCall = useCallback(() => {
     const a = alarmRef.current;
     if (!a || a.phase === "calling") return;
-    const next: Alarm = { ...a, phase: "calling", callStart: Date.now() };
+    const image = settingsRef.current.gemini ? snapshot(frameRef.current) : null;
+    const next: Alarm = { ...a, phase: "calling", callStart: Date.now(), call: "sending", scene: image ? "checking" : undefined };
     alarmRef.current = next;
     setAlarm(next);
     ringRef.current?.();
-    ringRef.current = ring(audioRef.current);
+    ringRef.current = null;
     // The family page only knows "fall" so far; a seizure shows there as "Possible fall".
     report({ kind: "fall", zone: null, posture: "lying" });
-  }, [report]);
+    if (!image) {
+      placeCall(next.callStart, next.kind);
+      return;
+    }
+    const { callStart, kind } = next;
+    void loginToken()
+      .then((token) => checkScene(kind, image, token, EMERGENCY.geminiWaitMs))
+      .then((scene) => {
+        if (alarmRef.current?.callStart !== callStart) return; // closed meanwhile
+        const note = scene.result === "ok" ? scene.summary : undefined;
+        patchAlarm(callStart, { scene, note });
+        placeCall(callStart, kind, note);
+      });
+  }, [report, placeCall, patchAlarm]);
+
+  /** The call didn't go through: try once more (only when asked, so it never calls twice by itself). */
+  const retryCall = useCallback(() => {
+    const a = alarmRef.current;
+    if (a?.phase === "calling" && a.call === "failed") placeCall(a.callStart, a.kind, a.note);
+  }, [placeCall]);
 
   const endAlarm = useCallback(() => {
     ringRef.current?.();
@@ -1210,6 +1349,7 @@ export default function TrackerPage() {
     const actx = analysis.getContext("2d", { willReadFrequently: true });
     const detectCanvas = document.createElement("canvas");
     const dctx = detectCanvas.getContext("2d");
+    frameRef.current = detectCanvas; // the latest upright picture, for Gemini's look on an alert
     let raf = 0;
     let lastVideoTime = -1;
     let lastDetectT = -Infinity;
@@ -1816,9 +1956,11 @@ export default function TrackerPage() {
       {alarm && (
         <EmergencyScreen
           alarm={alarm}
+          contact={contactLabel(settings)}
           familyAlerted={!!cloudRef.current && !sendError}
           onOk={endAlarm}
           onCallNow={startCall}
+          onRetry={retryCall}
           onEnd={endAlarm}
         />
       )}
@@ -1843,6 +1985,26 @@ function SettingsPanel(props: {
   testAlarm: () => void;
 }) {
   const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow, testAlarm } = props;
+  // Real emergency calls: are they set up on the server? (Checked each time the panel opens.)
+  const [setup, setSetup] = useState<CallSetup | null | "checking">("checking");
+  const [callTest, setCallTest] = useState<"idle" | "sending" | CallOutcome>("idle");
+  // Gemini's look at the picture on an alert: does the server have a Gemini key?
+  const [gemini, setGemini] = useState<SceneSetup | null | "checking">("checking");
+  useEffect(() => {
+    let live = true;
+    void loginToken().then(callSetup).then((r) => live && setSetup(r));
+    void loginToken().then(sceneSetup).then((r) => live && setGemini(r));
+    return () => {
+      live = false;
+    };
+  }, []);
+  // The number typed in Settings, tidied for Twilio (null if empty or not a phone number).
+  const typedPhone = s.contactPhone.trim();
+  const phone = phoneForCall(typedPhone);
+  const serverReady = setup !== null && setup !== "checking" && setup.ready && !setup.needsSignIn;
+  // Who a call would ring: the typed number, else the server's own one (if it has one).
+  const serverNumber = serverReady && setup.to ? setup.to : null;
+  const callsReady = serverReady && (phone !== null || (!typedPhone && serverNumber !== null));
   // The test buttons go by the screen. On a mirrored picture the screen's left is the camera's right.
   const side = mirrored ? -1 : 1;
 
@@ -1944,8 +2106,122 @@ function SettingsPanel(props: {
             <Button onClick={testAlarm}>Test the alert</Button>
             <p className="text-base text-white/90">
               Watches the person you follow for a fall (on the floor and not getting up) or a seizure (shaking while lying
-              down). Then it asks "Are you OK?" for {EMERGENCY.countdownS} seconds before a pretend emergency call. No
-              real number is ever dialled. A rough guess from the camera, not a medical device.
+              down). Then it asks "Are you OK?" for {EMERGENCY.countdownS} seconds before calling the emergency contact
+              below. If real calls aren't set up, it's a pretend call. A rough guess from the camera, not a medical device.
+            </p>
+            <label className="block space-y-1">
+              <span className="font-semibold">Emergency contact's name</span>
+              <input
+                type="text"
+                value={s.contactName}
+                maxLength={40}
+                placeholder="Sam"
+                autoComplete="off"
+                onChange={(e) => update({ contactName: e.target.value })}
+                className="min-h-11 w-full rounded-xl bg-white/90 px-3 text-ink"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="font-semibold">Emergency contact's phone number</span>
+              <input
+                type="tel"
+                inputMode="tel"
+                value={s.contactPhone}
+                maxLength={24}
+                placeholder="(555) 123-4567"
+                autoComplete="off"
+                onChange={(e) => update({ contactPhone: e.target.value })}
+                className="min-h-11 w-full rounded-xl bg-white/90 px-3 text-ink"
+              />
+              <span className="block text-base text-white/90">
+                {!typedPhone
+                  ? "US and Canada numbers as usual; other countries start with + and the country code."
+                  : phone
+                    ? `Calls ${showPhone(phone)}.`
+                    : "That doesn't look like a phone number. Use 10 digits, or + and the country code."}
+              </span>
+            </label>
+            <p role="status" className="text-base font-semibold">
+              {setup === "checking"
+                ? "Checking whether real calls are set up…"
+                : setup === null
+                  ? "Couldn't check whether real calls are set up. No internet?"
+                  : setup.needsSignIn
+                    ? "Sign in to CareNest on this phone to use real calls (only signed-in accounts can call)."
+                    : setup.ready
+                      ? phone
+                        ? `Real calls are on: it calls ${s.contactName.trim() || "the number above"}.`
+                        : typedPhone
+                          ? "Real calls are on, but fix the number above first."
+                          : serverNumber
+                            ? `Real calls are on: with no number above, it calls the site's own number, ending ${serverNumber}.`
+                            : "Real calls are on. Type the number to call above."
+                      : setup.problem
+                        ? `Calling is half set up: ${setup.problem}`
+                        : "Real calls aren't set up on this website yet, so the alert makes a pretend call."}
+            </p>
+            {setup !== null && setup !== "checking" && setup.last && (
+              <p className="text-base text-white/90">
+                Last call ({setup.last.kind}, {agoText(setup.last.secondsAgo)}):{" "}
+                {setup.last.ok ? "Twilio placed it." : `didn't go through. ${setup.last.error ?? ""}`}
+              </p>
+            )}
+            <Button
+              disabled={!callsReady || callTest === "sending"}
+              onClick={() => {
+                setCallTest("sending");
+                void loginToken()
+                  .then((token) => requestCall("test", token, 15000, undefined, s.contactPhone))
+                  .then(setCallTest);
+              }}
+            >
+              Test the call (rings them now)
+            </Button>
+            {callTest !== "idle" && (
+              <p role="status" className="text-base font-semibold">
+                {callTest === "sending"
+                  ? "Calling…"
+                  : callTest.result === "sent"
+                    ? "Calling now. Their phone should ring in a few seconds."
+                    : callTest.result === "off"
+                      ? "Real calls aren't set up."
+                      : `Didn't go through: ${callTest.error}`}
+              </p>
+            )}
+            <p className="text-base text-white/90">
+              The number is saved on this phone only. The Twilio keys that make the call are set on the website's server
+              (for the test link: the .env.local file on the PC running it). On a free Twilio trial, the number must be
+              verified in Twilio first. "Test the alert" calls too, once its countdown ends.
+            </p>
+          </fieldset>
+
+          <fieldset className="space-y-2">
+            <legend className="font-semibold">Gemini's look at the picture</legend>
+            <Choice
+              label="Gemini's look at the picture"
+              options={[
+                ["on", "On"],
+                ["off", "Off"],
+              ]}
+              value={s.gemini ? "on" : "off"}
+              onChange={(v) => update({ gemini: v === "on" })}
+            />
+            <p className="text-base text-white/90">
+              Only when an alert's countdown runs out (nobody pressed I'm OK), this phone sends one still picture to Google
+              Gemini, which describes what it sees ("A person is lying on the kitchen floor next to a chair."). The call
+              reads that sentence out and this screen shows it. It never cancels an alert or a call. Nothing is sent
+              otherwise. On Gemini's free tier Google may keep and review what it's sent, so real use needs the paid tier.
+            </p>
+            <p role="status" className="text-base font-semibold">
+              {gemini === "checking"
+                ? "Checking whether Gemini is set up…"
+                : gemini === null
+                  ? "Couldn't check whether Gemini is set up. No internet?"
+                  : gemini.needsSignIn
+                    ? "Sign in to CareNest on this phone to use Gemini."
+                    : gemini.ready
+                      ? "Gemini is set up on the server."
+                      : "Gemini isn't set up: the server needs a GEMINI_API_KEY (for the test link: the .env.local file)."}
             </p>
           </fieldset>
 
