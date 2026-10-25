@@ -54,9 +54,12 @@ export class EmergencyWatch {
     // Lying is only judged on a whole box of normal size. Cut off at the top or bottom, or right
     // up close, the box looks short and wide whatever the person is doing; someone on the floor
     // is never cut off at the top or this big. Such frames count as "not seen properly": the
-    // lying time and the rest keep going, but nothing new starts.
-    if (cut.top || cut.bottom || box.w * box.h > EMERGENCY.maxLyingArea) {
-      this.posture = u >= EMERGENCY.standing ? "standing" : null;
+    // lying time and the rest keep going, but nothing new starts. A box that doesn't look flat
+    // even so isn't lying for sure (being cut off only makes it look shorter), so they're up.
+    // The price: a fall right next to the stand, ending cut off at the bottom of the picture,
+    // isn't caught. For the demo, stage falls a few steps from the camera, whole body in view.
+    if ((cut.top || cut.bottom || box.w * box.h > EMERGENCY.maxLyingArea) && u < EMERGENCY.lying) {
+      this.posture = null;
       this.trail = [];
       return null;
     }
@@ -114,17 +117,12 @@ export class EmergencyWatch {
       let flips = 0;
       let dir = 0; // +1 rising, -1 falling, 0 not started
       let peak = tr[0].v[k];
-      let lo = peak;
-      let hi = peak;
       for (let i = 1; i < tr.length; i++) {
         const x = tr[i].v[k];
         if (dir === 0) {
-          // Not moving yet: start once the size has spanned a full swing (up or down from anywhere
-          // it has been, not only from the first frame, which may be the middle of a shake).
-          lo = Math.min(lo, x);
-          hi = Math.max(hi, x);
-          if (hi - lo >= swing) {
-            dir = x === hi ? 1 : -1;
+          // Not moving yet: start once the size has gone a full swing away from where it began.
+          if (Math.abs(x - peak) >= swing) {
+            dir = Math.sign(x - peak);
             peak = x;
           }
         } else if ((x - peak) * dir > 0) {
