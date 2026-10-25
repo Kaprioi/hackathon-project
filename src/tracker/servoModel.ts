@@ -1,7 +1,7 @@
 // Guesses where the camera is pointing right now.
 //
 // The stand doesn't report its angle back (older firmware), but we know exactly how the
-// firmware moves the motors (MOTION in config.ts: a quarter of the remaining way every
+// firmware moves the motors (MOTION in config.ts: a fraction of the remaining way every
 // 20 ms, never faster than a top speed, and not at all for a tiny move), so we copy that
 // here. Knowing where the camera was pointing when a frame was taken lets the brain turn
 // "you're on the left of the picture" into "you're at 70 degrees in the room".
@@ -111,12 +111,15 @@ export class ServoModel {
   private advanceBy(t: number): void {
     const dt = t - this.lastT;
     if (dt <= 0) return;
-    const keep = Math.pow(1 - MOTION.ease, dt / SERVO_TICK_MS);
+    const keep = {
+      pan: Math.pow(1 - MOTION.panEase, dt / SERVO_TICK_MS),
+      tilt: Math.pow(1 - MOTION.tiltEase, dt / SERVO_TICK_MS),
+    };
     const speed = { pan: MOTION.panSpeed, tilt: MOTION.tiltSpeed };
     for (const axis of ["pan", "tilt"] as const) {
       if (Math.abs(this.target[axis] - this.now[axis]) < MOTION.deadband) continue; // a tiny move: the firmware holds still
       const maxMove = (speed[axis] * dt) / 1000;
-      const eased = this.target[axis] + (this.now[axis] - this.target[axis]) * keep;
+      const eased = this.target[axis] + (this.now[axis] - this.target[axis]) * keep[axis];
       const move = Math.max(-maxMove, Math.min(maxMove, eased - this.now[axis]));
       this.now[axis] += move;
     }

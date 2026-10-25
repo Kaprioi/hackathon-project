@@ -118,13 +118,16 @@ const uint32_t FOUND_CONFIRM_MS = 1000;  // must be seen this long to count as "
 #define RADAR_UUID   "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  // we notify "presence,left,right,pan,tilt,radars"
 #define MIST_UUID    "6e400004-b5a3-f393-e0a9-e50e24dcca9e"  // website writes "1" (on) or "0" (off)
 const uint32_t CAMERA_HOLD_MS = 700;     // the website's aims count as "person in view" (for alerts) this long
-// Website steering: every 20 ms move 25% of the remaining way (glides to a stop, never
-// swings past), at most a top speed, and not at all for an aim within MOVE_DEADBAND (no
-// twitching). The website's copy of this assumes exactly these numbers (MOTION in
+// Website steering: every 20 ms move a fraction of the remaining way (glides to a stop,
+// never swings past), at most a top speed, and not at all for an aim within MOVE_DEADBAND
+// (no twitching). The website's copy of this assumes exactly these numbers (MOTION in
 // src/tracker/config.ts). The page sends aims up to 40 times a second, so it's smooth.
+// Pan is calmer than the motor could go (was 25% and 280°/s): the phone on its tall arm
+// wobbled after fast moves and the head shook side to side while the person sat still.
 const uint32_t CAMERA_TICK_MS = 20;
-const float CAMERA_EASE = 0.25;
-const float PAN_TOP_SPEED = 280;         // degrees/second (HS-422: about 285 unloaded; was 240)
+const float PAN_EASE = 0.12;             // pan: 12% of the remaining way per tick (was 25%)
+const float TILT_EASE = 0.25;            // tilt: 25% (unchanged; it only moves 15° either way)
+const float PAN_TOP_SPEED = 120;         // degrees/second (was 280; the HS-422 does about 285 unloaded)
 const float TILT_TOP_SPEED = 200;        // tilt lifts the phone: a little gentler
 const float MOVE_DEADBAND = 0.3;         // degrees
 const uint32_t MIST_TIMEOUT_MS = 3000;   // no "1" from the website for this long: mist off (safety)
@@ -529,8 +532,8 @@ void loop() {
   if (now - lastCameraTick >= CAMERA_TICK_MS) {
     lastCameraTick = now;
     if (websiteSteers) {
-      const float panStep = PAN_TOP_SPEED * CAMERA_TICK_MS / 1000.0;    // 5.6 degrees a tick
-      if (fabs(cameraPan - pan) >= MOVE_DEADBAND) pan += constrain((cameraPan - pan) * CAMERA_EASE, -panStep, panStep);
+      const float panStep = PAN_TOP_SPEED * CAMERA_TICK_MS / 1000.0;    // 2.4 degrees a tick
+      if (fabs(cameraPan - pan) >= MOVE_DEADBAND) pan += constrain((cameraPan - pan) * PAN_EASE, -panStep, panStep);
       panServo.writeMicroseconds(panMicros(pan));
     } else if (!useRadar) {
       // No radar and no phone: glide back to straight ahead and wait there.
@@ -546,7 +549,7 @@ void loop() {
                         (int32_t)(now - cameraAt) < (int32_t)TILT_RETURN_MS;
     float tiltGoal = freshTiltAim ? cameraTilt : TILT_LEVEL;
     const float tiltStep = (freshTiltAim ? TILT_TOP_SPEED : TILT_RETURN_SPEED) * CAMERA_TICK_MS / 1000.0;
-    if (fabs(tiltGoal - tilt) >= MOVE_DEADBAND) tilt += constrain((tiltGoal - tilt) * CAMERA_EASE, -tiltStep, tiltStep);
+    if (fabs(tiltGoal - tilt) >= MOVE_DEADBAND) tilt += constrain((tiltGoal - tilt) * TILT_EASE, -tiltStep, tiltStep);
     tiltServo.writeMicroseconds(tiltMicros(tilt));
   }
 

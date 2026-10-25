@@ -2,6 +2,13 @@
 
 Newest entry at the top. Add one entry at the end of every session.
 
+## 2026-10-25 (late morning) — The stand holds still while you stand still (PR #66)
+
+- **Problem (Apple, on the stand):** tapped, face recognised, standing still, and the head kept turning left and right trying to track.
+- **Causes found by simulation:** (1) both motors moved together whenever either was past the dead zone; the dead tilt motor left the page's tilt guess stuck at its limit and "past the dead zone" every frame, so left/right chased every jump of the AI's box. (2) A jumpy box (close up, arms moving) gave someone standing still a speed, so they counted as walking. (3) The board runs the calm pan motor (12%, 120°/s, flashed 4 AM) but main's website modelled 25%, 280°/s.
+- **Fixed (branch `tracker-hold-still`, PR #66):** a dead zone per motor; walking only once the half-second average has moved past the dead zone; the calm firmware (identical to the board's sketch, so no reflash) and matching `MOTION` committed. Standing still, simulated: 687 → 12 back-and-forths, worst wander 13.3° → 2.9°. Two new tests; all tracker tests and `tsc` pass.
+- Next: merge #66 (Vercel redeploys), reload the page on the S22, stand still 20 s, then walk and stop.
+
 ## 2026-10-25 — Real emergency calls on the live site, number typed in Settings
 
 - **Found:** on carenest-eight-bay.vercel.app the alert only made a pretend call, and there was nowhere to type a number. The real Twilio call lived only on `tracker-live` (PR #43), never merged; `/api/emergency-call` answered 404 on the live site.
