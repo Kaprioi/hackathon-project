@@ -228,6 +228,21 @@ export const EMERGENCY = {
   shakeWindowMs: 3000,
   shakeSwing: 0.1,
   shakeFlips: 5,
+  /**
+   * Shaking happens in one place: if the middle of the box wanders more than this share of the
+   * person's size during the shaking window, they're moving about (or leaving), not shaking.
+   */
+  shakeMaxDrift: 0.5,
+  /**
+   * A box edge this close to the edge of the picture (share of the picture) is cut off, so the
+   * box isn't the person's real shape or size. Someone right up close (a head and shoulders
+   * filling the picture), looking down at the phone, or walking out of view gets a cut-off box
+   * that looks short and wide, like someone lying down: those false seizure alarms (Apple's
+   * test, Oct 24) are why lying and shaking are only judged on whole boxes.
+   */
+  edgeMargin: 0.02,
+  /** Someone lying on the floor never takes up this much of the picture; bigger = right up close. */
+  maxLyingArea: 0.3,
   /** After an alert, watch again once the person has been up (not lying) this long. */
   rearmMs: 3000,
   /** "Are you OK?" countdown before the pretend emergency call (seconds). */
