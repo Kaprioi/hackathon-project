@@ -32,13 +32,31 @@ export class ServoModel {
   private lastT = -1;
   private history: Sample[] = [];
   private tiltOffSince: number | null = null;
+  /** Aims still on their way to the stand: { when they arrive, the aim }, oldest first. */
+  private pending: { at: number; target: Angles }[] = [];
 
-  setTarget(a: Angles): void {
-    this.target = { ...a };
+  /**
+   * Aim the motor. `at` = when the aim really reaches the stand (performance.now() time).
+   * The page only sends a frame's aim once the AI has looked at it (about 100 ms on a phone),
+   * and Bluetooth adds a little more; until then the real motor keeps going toward the old
+   * aim. Believing it moved straight away put this guess ahead of the real camera, so the
+   * page thought it had already turned further than it had, over-corrected, and the stand
+   * swung back and forth. Without `at`: straight away.
+   */
+  setTarget(a: Angles, at?: number): void {
+    if (at === undefined || at <= this.lastT) {
+      this.pending = [];
+      this.target = { ...a };
+      return;
+    }
+    // Only the newest aim matters (the stand only gets the newest request).
+    this.pending = this.pending.filter((p) => p.at < at);
+    this.pending.push({ at, target: { ...a } });
   }
 
   /** The stand reported where it really is (its radars moved it): believe that instead. */
   sync(a: Angles, t: number): void {
+    this.pending = [];
     this.now = { ...a };
     this.target = { ...a };
     this.lastT = t;
@@ -67,8 +85,17 @@ export class ServoModel {
     return true;
   }
 
-  /** Moves the guess forward to time `t` (milliseconds). */
+  /** Moves the guess forward to time `t` (milliseconds), switching aims as they arrive. */
   step(t: number): void {
+    while (this.pending.length && this.pending[0].at <= t) {
+      const p = this.pending.shift()!;
+      this.advance(p.at);
+      this.target = p.target;
+    }
+    this.advance(t);
+  }
+
+  private advance(t: number): void {
     if (this.lastT < 0) this.lastT = t;
     const dt = t - this.lastT;
     if (dt <= 0) return;

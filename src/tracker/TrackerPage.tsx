@@ -1250,7 +1250,7 @@ export default function TrackerPage() {
       const stand = standRef.current;
       if (!moving || !stand.connected || testingRef.current) return;
       const a = predictAim(moving.aim, moving.vel, performance.now() - moving.t);
-      servoRef.current.setTarget(a);
+      servoRef.current.setTarget(a, performance.now() + TUNING.bluetoothMs);
       stand.move(a.pan, a.tilt);
       lastAimRef.current = a;
     };
@@ -1273,7 +1273,8 @@ export default function TrackerPage() {
       // Turn the picture so people stand upright for the AI. With the phone sideways and
       // auto-rotate off, the camera picture arrives on its side; turned, the AI finds
       // people it would otherwise miss. Everything after this works in the upright picture.
-      const turn: Turn = s.turn === "auto" ? pictureTurn(deviceTurnRef.current, screenAngle()) : (Number(s.turn) as Turn);
+      const turn: Turn =
+        s.turn === "auto" ? pictureTurn(deviceTurnRef.current, screenAngle(), mirroredRef.current) : (Number(s.turn) as Turn);
       turnRef.current = turn;
       const sideways = turn === 90 || turn === 270;
       const uw = sideways ? vh : vw; // the upright picture's size
@@ -1395,7 +1396,8 @@ export default function TrackerPage() {
         homing = null;
         lastAimRef.current = out.aim;
         if (stand.connected) {
-          servo.setTarget(out.aim);
+          // Sent now, after the AI: the motor starts on it a Bluetooth hop later, not at time t.
+          servo.setTarget(out.aim, performance.now() + TUNING.bluetoothMs);
           stand.move(out.aim.pan, out.aim.tilt);
         }
       } else if (!testingRef.current) {
@@ -1405,7 +1407,7 @@ export default function TrackerPage() {
         if (homing && homing.tilt !== TILT.level && stand.connected) {
           homing = { pan: homing.pan, tilt: towardLevel(homing.tilt, t - prevStepT) };
           lastAimRef.current = homing;
-          servo.setTarget(homing);
+          servo.setTarget(homing, performance.now() + TUNING.bluetoothMs);
           stand.move(homing.pan, homing.tilt);
         } else {
           stand.releaseControl();
@@ -1505,7 +1507,7 @@ export default function TrackerPage() {
     lastAimRef.current = { pan, tilt };
     setSnap((s) => ({ ...s, aim: { pan, tilt } }));
     if (stand.connected) {
-      servoRef.current.setTarget({ pan, tilt });
+      servoRef.current.setTarget({ pan, tilt }, performance.now() + TUNING.bluetoothMs);
       stand.move(pan, tilt);
     }
   };

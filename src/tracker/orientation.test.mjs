@@ -26,6 +26,23 @@ test("the picture is only turned when the phone turned but the screen didn't", (
   assert.equal(pictureTurn(270, 90), 0, "never flip upside down on its own (sensor reported the other way)");
 });
 
+test("the front camera's sideways picture lies on its other side, so it gets the opposite turn", () => {
+  // Its picture has left and right swapped compared with the back camera's (before the
+  // page mirrors it), so the same sideways phone needs 270 where the back camera needs 90.
+  assert.equal(pictureTurn(90, 0, true), 270, "phone turned left, auto-rotate off, front camera");
+  assert.equal(pictureTurn(270, 0, true), 90, "phone turned right, auto-rotate off, front camera");
+  assert.equal(pictureTurn(90, 0, false), 90, "the back camera is unchanged");
+  assert.equal(pictureTurn(90, 90, true), 0, "the screen turned with the phone: already upright");
+  assert.equal(pictureTurn(0, 0, true), 0, "held upright");
+  assert.equal(pictureTurn(null, 0, true), 0, "no motion sensor");
+  // The phone turned left: the room's "up" points to the phone's right-hand edge. In the back
+  // camera's picture that edge is the picture's right; in the front camera's (unmirrored)
+  // picture it's the picture's left. After the turn, "up" must be the top of the picture.
+  const up = (x, y, turn) => toUpright(x, y, turn);
+  assert.ok(up(0.9, 0.5, pictureTurn(90, 0, false)).y < 0.2, "back camera: the right edge ends up on top");
+  assert.ok(up(0.1, 0.5, pictureTurn(90, 0, true)).y < 0.2, "front camera: the left edge ends up on top");
+});
+
 test("points survive the trip to the upright picture and back", () => {
   for (const turn of [0, 90, 180, 270]) {
     for (const [x, y] of [[0.1, 0.2], [0.9, 0.3], [0.5, 0.5], [0, 1]]) {
