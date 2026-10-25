@@ -2,6 +2,7 @@
 // sightline.ino (its constants plus the code between "innerPid begin" and "innerPid end").
 #include "firmware.h"
 #include <cstdio>
+#include <initializer_list>
 
 static int failures = 0;
 static void check(bool ok, const char *what) {
@@ -85,6 +86,41 @@ int main() {
 
   r = stepTo(tilt, 105, 90, TILT_RETURN_SPEED, 50, &end);
   check(r.maxSpeed <= TILT_RETURN_SPEED + 0.01f && r.maxOvershoot <= 0, "tilt back to level: gentle return speed, no swinging past");
+
+  // Tilt is a little softer than the old easing (25% of the way per 20 ms, top-speed cap,
+  // MOVE_DEADBAND), so the website's tilt check never sees the motor ahead of its guess.
+  for (float jump : {1.0f, 5.0f, 15.0f, 30.0f}) {
+    InnerPid p = tilt;
+    p.reset(90, true);
+    float pos = 90, old = 90, aim = 90 + jump, worstAhead = 0;
+    const float oldStep = TILT_TOP_SPEED * DT;
+    for (int i = 0; i < 50; i++) {
+      pos = p.step(pos, aim, TILT_TOP_SPEED, DT);
+      if (fabsf(aim - old) >= MOVE_DEADBAND) old += fminf(fmaxf((aim - old) * 0.25f, -oldStep), oldStep);
+      if (pos - old > worstAhead) worstAhead = pos - old;
+    }
+    char msg[120];
+    snprintf(msg, sizeof msg, "tilt %2.0f deg jump: at most 0.1 deg ahead of the old easing (worst %.2f)", jump, worstAhead);
+    check(worstAhead <= 0.1f, msg);
+  }
+  // The same while someone walks (aims every 25 ms, the board ticks every 20 ms), up to
+  // the edge of the tilt range. Where both stop inside MOVE_DEADBAND after that isn't counted.
+  for (float degPerSec : {10.0f, 30.0f, 60.0f}) {
+    InnerPid p = tilt;
+    p.reset(90, true);
+    float pos = 90, old = 90, aim = 90, worstAhead = 0;
+    const float oldStep = TILT_TOP_SPEED * DT;
+    for (int ms = 0; ms <= 1000; ms += 5) {
+      if (ms % 25 == 0) aim = fminf(90 + TILT_AIM_RANGE, 90 + degPerSec * ms / 1000.0f);
+      if (ms % 20 != 0 || ms == 0) continue;
+      pos = p.step(pos, aim, TILT_TOP_SPEED, DT);
+      if (fabsf(aim - old) >= MOVE_DEADBAND) old += fminf(fmaxf((aim - old) * 0.25f, -oldStep), oldStep);
+      if (aim < 90 + TILT_AIM_RANGE && pos - old > worstAhead) worstAhead = pos - old;
+    }
+    char msg[120];
+    snprintf(msg, sizeof msg, "tilt walk %2.0f deg/s: at most 0.1 deg ahead of the old easing (worst %.2f)", degPerSec, worstAhead);
+    check(worstAhead <= 0.1f, msg);
+  }
 
   // Jitter: aims within the deadband never move it.
   {

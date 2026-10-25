@@ -131,8 +131,8 @@ const uint32_t CAMERA_HOLD_MS = 700;     // the website's aims count as "person 
 //     on smoothly next tick. After PID_HOLD_TICKS of holding still it forgets them.
 // The motors can't report where they are, so "where the motor is" is where this board
 // last told it to be. The website's copy of the motion (MOTION in src/tracker/config.ts)
-// assumes 25% of the remaining way per 20 ms: KP 12.5 x 0.02 s is exactly that, so with
-// I and D small its guess stays close. The exception is the first ~0.1 s of a big jump:
+// assumes 25% of the remaining way per 20 ms: pan's KP 12.5 x 0.02 s is exactly that, so
+// with I and D small its guess stays close (tilt stays a little behind it, see TILT_KP). The exception is the first ~0.1 s of a big jump:
 // the gentle speed-up keeps the motor a few degrees behind the guess until it gets going.
 const uint32_t CAMERA_TICK_MS = 20;
 const float PAN_TOP_SPEED = 280;         // degrees/second (HS-422: about 285 unloaded; was 240)
@@ -146,12 +146,14 @@ const float MOVE_DEADBAND = 0.3;         // degrees
 //   KD (no unit): takes off this fraction of the speed it is already moving at, which
 //      smooths out jumpy aims. It looks at the motor's own movement, not at the aim, so a
 //      sudden new aim doesn't cause a kick.
-// Tilt carries the phone's weight: same KP (so the website's guess still fits), but a
-// softer I, more D, and it speeds up and slows down more gently.
+// Tilt carries the phone's weight, and is on purpose a little softer than the old easing
+// (25% of the way per 20 ms), so the website's up/down check never sees the motor ahead
+// of its guess: a lower KP (11 x 0.02 s = 22% of the way per tick), a much softer I,
+// more D, and it speeds up and slows down more gently.
 const float PAN_KP = 12.5, PAN_KI = 20, PAN_KD = 0.05;
-const float TILT_KP = 12.5, TILT_KI = 12, TILT_KD = 0.1;
+const float TILT_KP = 11, TILT_KI = 4, TILT_KD = 0.15;
 const float PAN_ACCEL = 3000;            // degrees/second, per second (full speed in about 0.1 s)
-const float TILT_ACCEL = 1500;           // gentler: about 0.13 s to full speed with the phone on it
+const float TILT_ACCEL = 1200;           // gentler: about 0.17 s to full speed with the phone on it
 const float PID_I_ZONE = 12;             // degrees: the I part only works this close to the aim
 const float PID_I_MAX = 60;              // degrees/second: the most speed the I part can add
 const float PID_RESET_JUMP = PID_I_ZONE; // degrees: an aim jumping further than this in one tick clears the I part
