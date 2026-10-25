@@ -50,7 +50,7 @@ const zh: Record<string, string> = {
   "Why families choose CareNest": "家人选择 CareNest 的理由",
   "Just a phone on a table": "只需桌上一部手机",
   "Nothing to wear": "不用佩戴任何设备",
-  "Video stays on the phone": "视频只留在手机上",
+  "Live video only for family": "实时视频只给家人看",
   "Only invited family can see": "只有受邀的家人能看到",
   "Updates by itself": "自动更新",
   "Fall & quiet alerts": "跌倒和无动静提醒",
@@ -72,8 +72,8 @@ const zh: Record<string, string> = {
   "Made to be simple for everyone — grandparents included.": "人人都能轻松使用——爷爷奶奶也不例外。",
   "If the phone thinks someone may have fallen, or it stops checking in, the family page says so in big letters.":
     "如果手机觉得有人可能跌倒了，或者它很久没有报平安，家人页面会用大字显示出来。",
-  "The camera picture never leaves the phone. Only short notes like “moving around, left side” are sent.":
-    "摄像头的画面绝不会离开手机。只会发送简短的文字，比如“正在走动，左边”。",
+  "Family get short notes like “moving around, left side”, and can press Watch live to see and talk. Nothing is recorded.":
+    "家人会收到简短的文字，比如“正在走动，左边”，也可以按“实时观看”来查看和说话。不会录下任何内容。",
   "One simple page shows what is happening right now and a short list of today’s news.":
     "一个简单的页面，显示现在的情况和今天的简短动态。",
   "The family page changes the moment something happens. No need to reload or ring round.":
@@ -119,9 +119,9 @@ const zh: Record<string, string> = {
   "We are a small hackathon team. Many of us have parents and grandparents who live alone, and we wanted a simple, kind way to stay close without cameras sending pictures anywhere or gadgets to wear.":
     "我们是一个黑客松小团队。我们中很多人的父母和祖父母独自生活，我们想要一种简单、贴心的方式来保持亲近——不用把画面发到任何地方，也不用佩戴任何设备。",
   "Good questions": "常见问题",
-  "Does any video leave the phone?": "会有视频离开手机吗？",
-  "No. The camera picture never leaves the phone. Only short notes like “moving around, left side” are sent to your family page.":
-    "不会。摄像头的画面绝不会离开手机。只会把简短的文字，比如“正在走动，左边”，发送到您的家人页面。",
+  "Can family see video?": "家人能看到视频吗？",
+  "Only live, and only when someone in your family presses Watch live. The phone then shows a red LIVE sign. The video goes straight to them, encrypted, and is never recorded or saved. The rest of the time only short notes like “moving around, left side” are sent.":
+    "只能实时观看，而且只有在家人按下“实时观看”时才会开始。这时手机上会显示红色的“LIVE”标志。视频经过加密直接发送给他们，绝不会被录下或保存。其他时候只会发送简短的文字，比如“正在走动，左边”。",
   "What do I need to get started?": "开始使用需要什么？",
   "Just a spare phone standing on a table where it can see the room. Nothing to wear, nothing to charge on the wrist.":
     "只需一部闲置的手机，立在桌上能看到房间的位置。不用佩戴，也不用给手环充电。",
@@ -548,8 +548,8 @@ const zh: Record<string, string> = {
   "Phone *camera*": "手机*摄像头*",
   "Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a few words, how things are going.":
     "把这部手机立在桌上，对着房间。它会留意动静，并用几句简单的话告诉您的家人情况如何。",
-  'Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or pictures ever leave it.':
-    "视频只留在这部手机上。只会发送简短的文字，比如“正在走动 - 左边”。视频和照片绝不会离开手机。",
+  'Only short notes like "moving around - left side" are sent. Family can also watch live and talk to you, and the bar at the top turns red while they do. Nothing is recorded.':
+    "只会发送简短的文字，比如“正在走动 - 左边”。家人也可以实时观看并和您说话，这时顶部的横条会变成红色。不会录下任何内容。",
   "Please sign in first, so your family can see the updates.": "请先登录，这样您的家人才能看到消息。",
   "Start watching": "开始看护",
   "The camera stopped because this page was hidden or the screen turned off. Keep this page open on the screen while it watches.":
@@ -582,12 +582,12 @@ const zh: Record<string, string> = {
   "Green means all is well, like \"Moving around\". Red means the phone thinks someone may have fallen: please call or visit. A white box means the phone hasn't checked in for a few minutes — check it is on and charging.":
     "绿色表示一切都好，比如“正在走动”。红色表示手机认为可能有人摔倒了：请打电话或去看看。白色的框表示手机已经几分钟没有消息了，请检查它是否开着、正在充电。",
   "Your privacy": "您的隐私",
-  "Video and pictures never leave the phone. Family only get short notes in words, like \"Sitting still - left side\". Only the people you add can see them.":
-    "视频和照片绝不会离开手机。家人只会收到简短的文字，比如“坐着没动 - 左边”。只有您添加的人才能看到。",
+  "Family get short notes in words, like \"Sitting still - left side\". They can also watch live and talk through the phone, and the phone shows a red LIVE sign while they do. Nothing is recorded. Only the people you add can see or watch.":
+    "家人会收到简短的文字，比如“坐着没动 - 左边”。他们也可以实时观看并通过手机说话，这时手机上会显示红色的“LIVE”标志。不会录下任何内容。只有您添加的人才能查看或观看。",
   "Common questions": "常见问题",
   "Does CareNest record video?": "CareNest 会录像吗？",
-  "No. The phone looks at the room itself and only sends short words, like \"Moving around\". No video or pictures are sent or saved anywhere.":
-    "不会。手机自己查看房间，只发送简短的文字，比如“正在走动”。不会发送或保存任何视频或照片。",
+  "No. The phone looks at the room itself and sends short words, like \"Moving around\". Family can also watch live, which shows a red LIVE sign on the phone, but nothing is ever recorded or saved.":
+    "不会。手机自己查看房间，并发送简短的文字，比如“正在走动”。家人也可以实时观看，这时手机上会显示红色的“LIVE”标志，但绝不会录下或保存任何内容。",
   "Which phone can I use?": "我可以用哪种手机？",
   "Most smartphones from the last few years work. It needs a working camera, Wi-Fi or mobile data, and a charger.":
     "近几年的大多数智能手机都可以。它需要能用的摄像头、Wi-Fi 或手机流量，还有充电器。",
@@ -680,7 +680,7 @@ const zh: Record<string, string> = {
   "Don't Allow": "不允许",
   "Stand it *on a table*": "把它*立在桌上*",
   "Stand the iPhone up where it can see most of the room, and leave it plugged in.": "把 iPhone 立在能看到房间大部分地方的位置，并保持充电。",
-  "A green \"Camera on\" sign means it's working. Video never leaves the phone.": "绿色的“摄像头已开启”标志表示它正在工作。视频永远不会离开这部手机。",
+  "A green \"Camera on\" sign means it's working. It turns red while family watch live. Nothing is recorded.": "绿色的“摄像头已开启”标志表示它正在工作。家人实时观看时它会变成红色。不会录下任何内容。",
   "The iPhone on the table, showing the green \"Camera on\" sign": "桌上的 iPhone，显示绿色的“摄像头已开启”标志",
   "Camera on": "摄像头已开启",
   "You're *all set!*": "*一切就绪！*",
@@ -814,6 +814,48 @@ const zh: Record<string, string> = {
   "Please type a name for the home.": "请输入家的名字。",
   "Saved. Everyone in the family sees the new name.": "已保存。所有家人都会看到新名字。",
   "My care circle": "我的照护圈",
+  // Watch live (src/components/LiveView.tsx)
+  "Watch live": "实时观看",
+  "Watch live now": "立即实时观看",
+  "Connecting to the phone…": "正在连接手机…",
+  "Talk": "说话",
+  "Stop talking": "停止说话",
+  "Mute sound": "静音",
+  "Sound on": "打开声音",
+  "Stop watching": "停止观看",
+  "Try again": "再试一次",
+  "They can hear you now through the phone.": "对方现在可以通过手机听到您说话。",
+  "The phone shows a red LIVE sign while you watch. Nothing is recorded.": "您观看时，手机上会显示红色的“LIVE”标志。不会录下任何内容。",
+  "See and hear the room through the phone camera, and talk to them. Nothing is recorded.": "通过手机摄像头查看和收听房间里的情况，还可以和他们说话。不会录下任何内容。",
+  "The phone camera seems to be off right now.": "手机摄像头现在好像是关着的。",
+  "The phone camera isn't on right now. Ask them to open Phone camera and press \"Start watching\".": "手机摄像头现在没有打开。请让他们打开“手机摄像头”，然后按“开始看护”。",
+  "Live video is switched off on the phone (Settings, Live video for family).": "手机上的实时视频已关闭（Settings 里的 Live video for family）。",
+  "3 family members are already watching. Try again in a little while.": "已经有 3 位家人在观看了。请稍后再试。",
+  "Couldn't connect to the phone. The network may be blocking video. Try again, or try another Wi-Fi.": "无法连接到手机。网络可能拦截了视频。请再试一次，或换一个 Wi-Fi。",
+  "The live video ended (the phone stopped watching).": "实时视频已结束（手机停止了看护）。",
+  "Your microphone is blocked. Allow it for this site in the browser to talk.": "您的麦克风被阻止了。请在浏览器中允许本网站使用麦克风，才能说话。",
+  "Couldn't start live video. Check the internet and try again.": "无法开始实时视频。请检查网络后再试。",
+  "Live video isn't switched on in the database yet (see README: Live video).": "数据库里还没有开启实时视频（见 README：Live video）。",
+  "Couldn't connect for live video. Check the internet and try again.": "无法连接实时视频。请检查网络后再试。",
+  // Family page dashboard (src/components/DayPanels.tsx)
+  "Today at a glance": "今天一览",
+  "Moving today": "今天活动时间",
+  "Last moved": "上次活动",
+  "Moving now": "正在活动",
+  "Not yet today": "今天还没有",
+  "Spent most time": "待得最久的地方",
+  "Alerts today": "今天的提醒",
+  "None": "没有",
+  "1 possible fall": "1 次可能摔倒",
+  "{n} possible falls": "{n} 次可能摔倒",
+  "Today: moving {moving}, still {still}, nobody in view {nobody}, camera off {off}.": "今天：活动 {moving}，静止 {still}，没有人 {nobody}，摄像头关闭 {off}。",
+  "Moving": "活动",
+  "Still": "静止",
+  "Now": "现在",
+  "under a minute": "不到一分钟",
+  "{m} min": "{m} 分钟",
+  "The phone camera is on.": "手机摄像头已开启。",
+  "Nothing yet. News from the phone camera will appear here, newest first.": "还没有消息。手机摄像头的消息会显示在这里，最新的在最上面。",
 };
 
 export default zh;

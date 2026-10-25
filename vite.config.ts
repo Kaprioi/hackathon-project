@@ -3,11 +3,13 @@ import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { handleEmergencyCall } from "./api/emergency-call.ts";
+import { handleIceServers } from "./api/ice-servers.ts";
 import { handleSceneCheck } from "./api/scene-check.ts";
 
 /**
  * The dev server answers /api/emergency-call (and /api/scene-check, for Gemini's look at the
- * picture) the way Vercel does, so the tracker's emergency call also works from `npm run dev`
+ * picture, and /api/ice-servers, for live video) the way
+ * Vercel does, so the tracker's emergency call and live video also work from `npm run dev`
  * (and the phone test link). The Twilio settings are read from .env.local on every request.
  */
 function emergencyCallApi(): Plugin {
@@ -65,6 +67,17 @@ function emergencyCallApi(): Plugin {
             res.setHeader("Cache-Control", "no-store");
             res.end(JSON.stringify(r.body));
           });
+        });
+      });
+      // Live video's relay servers (api/ice-servers.ts), the same way.
+      server.middlewares.use("/api/ice-servers", (request, res) => {
+        const req = request as unknown as { method?: string; headers: Record<string, string | string[] | undefined> };
+        const env = loadEnv(server.config.mode, server.config.root, "");
+        void handleIceServers({ method: req.method ?? "GET", headers: req.headers }, env).then((r) => {
+          res.statusCode = r.status;
+          res.setHeader("Content-Type", "application/json");
+          res.setHeader("Cache-Control", "no-store");
+          res.end(JSON.stringify(r.body));
         });
       });
     },
