@@ -74,7 +74,7 @@ A motorized stand that holds an iPhone and keeps one chosen person in view as th
 
 **Bluetooth protocol** (website `../src/tracker/stand.ts` and `config.ts`; firmware `.ino`)
 - Service UUID `6e400001-b5a3-f393-e0a9-e50e24dcca9e`.
-- Move `…0002` (write): text `pan,tilt` such as `90,90`. Pan is limited to 10–170° and tilt to 45–135°, and the firmware moves each motor a quarter of the remaining way to the target every 20 ms (`CAMERA_EASE` in `sightline.ino`). While the camera is steering, the website repeats the aim every 250 ms even if it hasn't changed. On a SightLine stand, the radars steer again once moves stop for about 0.7 s.
+- Move `…0002` (write): text `pan,tilt` such as `90,90`. Pan is limited to 10–170° and tilt to 45–135°, and every 20 ms the firmware moves the pan motor 12% of the remaining way to the target (at most 120°/s) and the tilt motor 25% (at most 200°/s) (`PAN_EASE`, `TILT_EASE` in `sightline.ino`; `MOTION` in `config.ts` must match). Pan was 25% and 280°/s until Oct 25, when the phone wobbled on its tall arm. While the camera is steering, the website repeats the aim every 250 ms even if it hasn't changed. On a SightLine stand, the radars steer again once moves stop for about 0.7 s.
 - Radar `…0003` (notify): `1` or `0` from the single-radar stand. SightLine sends `presence,left,right,pan,tilt` such as `1,42,13,95.0,90.0`, so the website knows where the radars have turned the head. With one radar, right is always 0; the website only reads presence, pan and tilt.
 - Mist `…0004` (write): `1` = on, `0` = off. Unused since the humidifier was dropped; still in the firmware, which turns the pin off after 3 s without a `1`.
 
