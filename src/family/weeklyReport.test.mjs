@@ -92,7 +92,9 @@ test("night hours come from the Care profile, else 10 pm to 7 am", () => {
 });
 
 test("camera-off time: a 'stopped' or a silent phone counts as off", () => {
-  const events = [];
+  // The phone was already in use last week.
+  const before = ev("heartbeat", 10, "12:00");
+  const events = [before];
   // Yesterday the phone watched 08:00 to 10:00 with heartbeats, then said "stopped".
   for (let m = 0; m <= 120; m += 0.5) {
     const ms = at(1, "08:00") + m * 60_000;
@@ -104,8 +106,19 @@ test("camera-off time: a 'stopped' or a silent phone counts as off", () => {
   // Today only counts up to now (23:00).
   assert.equal(r.days[6].cameraOffMinutes, 23 * 60);
   // A lone heartbeat keeps the camera "on" for 2 minutes only.
-  const lone = weeklyReport([ev("heartbeat", 2, "12:00")], NOW, opts);
+  const lone = weeklyReport([before, ev("heartbeat", 2, "12:00")], NOW, opts);
   assert.equal(lone.days[4].cameraOffMinutes, 24 * 60 - 2);
+});
+
+test("camera-off time only starts once the phone has been set up", () => {
+  // A new account: the phone first started today at 20:00 and watched until now (23:00).
+  const events = [ev("started", 0, "20:00")];
+  for (let m = 0.5; m <= 180; m += 0.5) {
+    events.push({ id: nextId++, kind: "heartbeat", zone: null, posture: null, created_at: new Date(at(0, "20:00") + m * 60_000).toISOString() });
+  }
+  const r = weeklyReport(events, NOW, opts);
+  assert.equal(r.thisWeek.cameraOffMinutes, 0);
+  assert.ok(r.days.slice(0, 6).every((d) => d.cameraOffMinutes === 0));
 });
 
 test("the summary compares with last week", () => {

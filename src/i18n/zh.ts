@@ -805,6 +805,8 @@ const zh: Record<string, string> = {
   "Alerts and family": "提醒和家人",
   "Show {count} more": "再显示 {count} 条",
   "Show less": "收起",
+  // Header link once signed in
+  "Your Account": "您的账户",
 };
 
 export default zh;

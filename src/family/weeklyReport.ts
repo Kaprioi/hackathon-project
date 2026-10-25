@@ -178,8 +178,10 @@ export function weeklyReport(
     const end = Math.min(next, at + PHONE_SILENT_MS, now);
     if (end > at) watching.push([at, end]);
   });
+  // Time before the phone first sent anything isn't "off": a new account hadn't set it up yet.
+  const firstSeen = sorted[0]?.at ?? Infinity;
   for (let d = 7; d < 14; d++) {
-    const from = all[d].start;
+    const from = Math.max(all[d].start, firstSeen);
     const to = Math.min(ends[d], now);
     if (to <= from) continue;
     let on = 0;

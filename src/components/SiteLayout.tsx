@@ -63,6 +63,10 @@ export function SiteHeader() {
   // Nobody signed in yet: make the Sign In link glow and point at it. (Not when
   // the Supabase keys are missing, because then signing in can't work.)
   const pointAtSignIn = Boolean(supabase) && session === null && pathname !== "/login";
+  // Once signed in, "Sign In" becomes "Your Account".
+  const links = session
+    ? navLinks.map((link) => (link.to === "/login" ? { to: "/account", label: "Your Account" } : link))
+    : navLinks;
   const [scrolled, setScrolled] = useState(false);
   const [progress, setProgress] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -116,7 +120,7 @@ export function SiteHeader() {
           </Link>
           <nav aria-label="Main" className="site-nav hidden xl:block">
             <ul className="flex gap-1">
-              {navLinks.map((link) => {
+              {links.map((link) => {
                 const spotlight = pointAtSignIn && link.to === "/login";
                 return (
                   <li key={link.to} className="relative">
@@ -189,7 +193,7 @@ export function SiteHeader() {
           <nav id="mobile-menu" aria-label="Mobile" className="site-mobile-menu animate-slide-in border-t-2 border-lilac px-6 pb-6 pt-3 xl:hidden">
             <LanguagePicker className="mb-3 md:hidden" />
             <ul className="flex flex-col gap-2">
-              {navLinks.map((link, i) => (
+              {links.map((link, i) => (
                 <li key={link.to} className="animate-slide-in" style={{ animationDelay: `${i * 60}ms` }}>
                   <NavLink
                     to={link.to}

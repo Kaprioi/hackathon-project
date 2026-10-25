@@ -845,6 +845,8 @@ const es: Record<string, string> = {
   "Alerts and family": "Avisos y familia",
   "Show {count} more": "Ver {count} más",
   "Show less": "Ver menos",
+  // Header link once signed in
+  "Your Account": "Su cuenta",
 };
 
 export default es;
