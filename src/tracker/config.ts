@@ -400,6 +400,11 @@ export const EMERGENCY = {
   shakeSwing: 0.1,
   shakeFlips: 5,
   /**
+   * Shaking only counts while the box is this flat (height / width): really lying down. Someone
+   * sitting at a table with elbows out is about 0.5-0.6, and their arms resize the box all the time.
+   */
+  flat: 0.45,
+  /**
    * Shaking happens in one place: if the middle of the box wanders more than this share of the
    * person's size during the shaking window, they're moving about (or leaving), not shaking.
    */
@@ -418,12 +423,17 @@ export const EMERGENCY = {
   /**
    * ...unless the top of the box (their head) dropped by at least this share of their standing
    * height since they last stood: then a flat box cut off by the edge, or close up, still counts
-   * as lying (a real fall often ends at the bottom of the picture). Sitting down close to the
-   * camera only drops it about a third.
+   * as lying (a real fall often ends at the bottom of the picture). Every fall needs this drop:
+   * sitting down, even at a table with a box as flat as lying, only drops it about a third.
    */
   fallDrop: 0.6,
-  /** After an alert, watch again once the person has been up (not lying) this long. */
+  /**
+   * After an alert ("I'm OK"), watch again only once the person has been standing (not just
+   * sitting) this long (ms), or `cooldownMs` after the alert. Re-arming after a few seconds of
+   * "not lying" made someone sitting at a table get the alert again and again.
+   */
   rearmMs: 3000,
+  cooldownMs: 120_000,
   /** "Are you OK?" countdown before the emergency call (seconds). */
   countdownS: 15,
   /**

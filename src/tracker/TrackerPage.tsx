@@ -1695,7 +1695,10 @@ export default function TrackerPage() {
       // Emergency: a fall (checked by Gemini first) or seizure of the person being followed
       // raises the alert.
       if (s.emergency) {
-        const kind = emergencyRef.current.update(t, out.mode === "tracking" ? out.target : null, uw / uh);
+        // How far the picture slid up because the camera looks down (0 when level).
+        const bs = brainRef.current.settings;
+        const tiltShift = (camera.tilt - TILT.level) / (bs.tiltSign * bs.fovV);
+        const kind = emergencyRef.current.update(t, out.mode === "tracking" ? out.target : null, uw / uh, tiltShift);
         if (kind) checkThenAlarm(kind);
         // Gemini saw no fall: if they're still lying down EMERGENCY.stillDownMs later (without
         // standing up in between), raise the alert anyway, in case Gemini was wrong.

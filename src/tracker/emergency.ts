@@ -24,8 +24,11 @@ export class EmergencyWatch {
   /** Their box the last time it looked standing, to tell how far the top of it dropped since. */
   private standBox: Box | null = null;
   private lyingSince: number | null = null;
-  private upSince: number | null = null;
+  /** Since this lying spell started, the top of their box came most of the way down (a fall, not sitting down). */
+  private dropped = false;
+  private standingSince: number | null = null;
   private armed = true;
+  private alertT = -Infinity;
   private trail: { t: number; v: number[] }[] = [];
   /** What the tracked person seems to be doing, for the screen (null when not seen). */
   posture: "standing" | "sitting" | "lying" | null = null;
@@ -35,16 +38,22 @@ export class EmergencyWatch {
     this.lastStanding = -Infinity;
     this.standBox = null;
     this.lyingSince = null;
-    this.upSince = null;
+    this.dropped = false;
+    this.standingSince = null;
     this.armed = true;
+    this.alertT = -Infinity;
     this.trail = [];
   }
 
   /**
-   * Once per frame, with the tracked person's box (null while they're not seen). Returns
-   * "fall" or "seizure" once when it happens, then nothing until they've been up again.
+   * Once per frame, with the tracked person's box (null while they're not seen). `tiltShift` is
+   * how far the picture has slid up (share of its height) because the camera looks down: the
+   * drop is measured as if the camera were level, so the stand tilting down to follow someone
+   * to the floor doesn't hide how far they fell. Returns "fall" or "seizure" once when it
+   * happens, then nothing until they've stood up again (or a while has passed).
    */
-  update(t: number, box: Box | null, aspect: number): EmergencyKind | null {
+  update(t: number, box: Box | null, aspect: number, tiltShift = 0): EmergencyKind | null {
+    if (!this.armed && t - this.alertT >= EMERGENCY.cooldownMs) this.armed = true;
     if (!box) {
       this.posture = null;
       this.trail = []; // shaking needs an unbroken view; lying time keeps counting
@@ -52,10 +61,19 @@ export class EmergencyWatch {
     }
     const u = uprightness(box, aspect);
     // Cut off at the top or bottom only makes a box look shorter, so a tall one is standing for sure.
+    const level = { ...box, y: box.y + tiltShift }; // where the box would be with the camera level
     if (u >= EMERGENCY.standing) {
       this.lastStanding = t;
-      this.standBox = box;
+      this.standBox = level;
+      // After an alert, watch again only once they've clearly stood up (sitting isn't enough:
+      // re-arming after a few seconds of "not lying" set the alert off again and again at a table).
+      this.standingSince ??= t;
+      if (!this.armed && t - this.standingSince >= EMERGENCY.rearmMs) this.armed = true;
+    } else {
+      this.standingSince = null;
     }
+    const s = this.standBox;
+    const drop = s ? (level.y - s.y) / s.h : 0; // how far the top of the box came down, in standing heights
     const cut = cutOff(box);
     // Lying is only judged on a whole box of normal size. Cut off at the top or bottom, or right
     // up close, the box looks short and wide whatever the person is doing; someone on the floor
@@ -67,32 +85,24 @@ export class EmergencyWatch {
     // or when they were already lying. Sitting down close to the camera only drops it about a third.
     if (cut.top || cut.bottom || box.w * box.h > EMERGENCY.maxLyingArea) {
       this.trail = [];
-      const s = this.standBox;
-      const dropped = !!s && (box.y - s.y) / s.h >= EMERGENCY.fallDrop;
-      if (u < EMERGENCY.lying && (dropped || this.lyingSince !== null)) {
+      if (u < EMERGENCY.lying && (drop >= EMERGENCY.fallDrop || this.lyingSince !== null)) {
         this.posture = "lying";
-        this.lyingSince ??= t;
-        this.upSince = null;
+        this.startLying(t, drop);
         return this.fallen(t);
       }
       this.posture = u >= EMERGENCY.standing ? "standing" : null;
       return null;
     }
     this.posture = u >= EMERGENCY.standing ? "standing" : u < EMERGENCY.lying ? "lying" : "sitting";
-    if (u < EMERGENCY.lying) {
-      this.lyingSince ??= t;
-      this.upSince = null;
-    } else {
-      this.lyingSince = null;
-      this.upSince ??= t;
-      if (!this.armed && t - this.upSince >= EMERGENCY.rearmMs) this.armed = true;
-    }
+    if (u < EMERGENCY.lying) this.startLying(t, drop);
+    else this.lyingSince = null;
 
     // The box's width and height, for spotting shaking (a shaking camera moves the box without
     // resizing it), and its middle, to tell shaking in place from moving about. Only while lying,
     // in full view: getting up or lying down, and a side of the picture cutting the box, change
-    // its size without any shaking.
-    if (u < EMERGENCY.lying && !cut.sides) {
+    // its size without any shaking. And only while really flat: someone sitting at a table with
+    // their elbows out is nearly as wide as someone lying, and their arms resize the box all the time.
+    if (u < EMERGENCY.flat && !cut.sides) {
       this.trail.push({ t, v: [box.w, box.h, box.x + box.w / 2, box.y + box.h / 2] });
       while (this.trail.length && t - this.trail[0].t > EMERGENCY.shakeWindowMs) this.trail.shift();
     } else {
@@ -100,22 +110,35 @@ export class EmergencyWatch {
     }
 
     if (!this.armed || this.lyingSince === null) return null;
-    if (this.shaking()) {
-      this.armed = false;
-      return "seizure";
-    }
+    if (this.shaking()) return this.alert(t, "seizure");
     return this.fallen(t);
   }
 
-  /** A fall: standing a moment before they started lying, and still lying a while later. */
-  private fallen(t: number): EmergencyKind | null {
-    if (!this.armed || this.lyingSince === null) return null;
-    const fell = this.lyingSince - this.lastStanding <= EMERGENCY.fallWithinMs;
-    if (fell && t - this.lyingSince >= EMERGENCY.lyingMs) {
-      this.armed = false;
-      return "fall";
+  /** Lying this frame: the lying time starts (or carries on), and a big enough drop is noted. */
+  private startLying(t: number, drop: number): void {
+    if (this.lyingSince === null) {
+      this.lyingSince = t;
+      this.dropped = false;
     }
+    if (drop >= EMERGENCY.fallDrop) this.dropped = true;
+  }
+
+  /**
+   * A fall: standing a moment before they started lying, the top of their box (their head) came
+   * most of the way down (sitting down, even at a table with a wide box, only drops it about a
+   * third), and still lying a while later.
+   */
+  private fallen(t: number): EmergencyKind | null {
+    if (!this.armed || this.lyingSince === null || !this.dropped) return null;
+    const fell = this.lyingSince - this.lastStanding <= EMERGENCY.fallWithinMs;
+    if (fell && t - this.lyingSince >= EMERGENCY.lyingMs) return this.alert(t, "fall");
     return null;
+  }
+
+  private alert(t: number, kind: EmergencyKind): EmergencyKind {
+    this.armed = false;
+    this.alertT = t;
+    return kind;
   }
 
   /**
