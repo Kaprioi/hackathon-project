@@ -200,3 +200,12 @@ test("a quick lean forward, then standing close with the feet cut off, then lean
   assert.deepEqual(run(w, 100, 4900, () => ({ x: 0.4, y: 0.1, w: 0.15, h: 0.9 })), []);
   assert.deepEqual(run(w, 5000, 100, () => lean), []);
 });
+
+test("standing, one wide frame while sitting down at a table, then sitting close with the legs cut off: no alert", () => {
+  const w = new EmergencyWatch();
+  run(w, 0, 2100, () => standing);
+  const bend = { x: 0.3, y: 0.45, w: 0.4, h: 0.2 };
+  assert.deepEqual(run(w, 2100, 100, () => bend), []);
+  assert.deepEqual(run(w, 2200, 3800, () => ({ x: 0.3, y: 0.3, w: 0.4, h: 0.7 })), []);
+  assert.deepEqual(run(w, 6000, 100, () => bend), []);
+});

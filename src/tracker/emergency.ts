@@ -54,11 +54,11 @@ export class EmergencyWatch {
     // Lying is only judged on a whole box of normal size. Cut off at the top or bottom, or right
     // up close, the box looks short and wide whatever the person is doing; someone on the floor
     // is never cut off at the top or this big. Such frames count as "not seen properly": the
-    // lying time and the rest keep going, but nothing new starts. A tall box is still standing
-    // for sure, so they're up.
+    // lying time and the rest keep going, but nothing new starts. A box that doesn't look flat
+    // even so isn't lying for sure (being cut off only makes it look shorter), so they're up.
     // The price: a fall right next to the stand, ending cut off at the bottom of the picture,
     // isn't caught. For the demo, stage falls a few steps from the camera, whole body in view.
-    if ((cut.top || cut.bottom || box.w * box.h > EMERGENCY.maxLyingArea) && u < EMERGENCY.standing) {
+    if ((cut.top || cut.bottom || box.w * box.h > EMERGENCY.maxLyingArea) && u < EMERGENCY.lying) {
       this.posture = null;
       this.trail = [];
       return null;
