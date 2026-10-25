@@ -170,6 +170,63 @@ export function towardLevel(tilt: number, ms: number): number {
 }
 
 /**
+ * Up/down never stays looking up or down for long, even while following someone: once the
+ * stand has been told to look up or down (more than TILT.levelBand off level) for more than
+ * TILT.holdMs in a row, it eases back to level. Back at level, for TILT.cooldownMs it won't
+ * look that way again unless they go clearly further (TILT.cooldownMargin degrees) that way,
+ * so it doesn't bounce straight back up or down. Only the tilt: left and right never change.
+ */
+export class TiltHold {
+  /** Since when the stand has been told to look up or down (null = level). */
+  private awaySince: number | null = null;
+  /** Held too long: easing back to level. */
+  private returning = false;
+  /** Back at level after a hold: since when, which way it had looked (+1 down, -1 up) and how far. */
+  private levelAt: number | null = null;
+  private side = 0;
+  private heldOff = 0;
+  /** True when this frame's tilt isn't the wanted one (easing back, or waiting out the cooldown). */
+  holding = false;
+
+  /**
+   * One frame. `want`: the tilt the brain would like (already limited to TILT.range);
+   * `told`: the tilt the stand was told last frame; `t`: now; `ms`: since the last frame.
+   * Returns the tilt to tell the stand now.
+   */
+  update(want: number, told: number, t: number, ms: number): number {
+    if (!this.returning && this.awaySince !== null && t - this.awaySince > TILT.holdMs) {
+      // Looked up or down too long: ease back to level.
+      this.returning = true;
+      this.side = Math.sign(told - TILT.level);
+      this.heldOff = Math.abs(told - TILT.level);
+    }
+    const off = want - TILT.level;
+    let out = want;
+    if (this.returning) {
+      out = towardLevel(told, ms);
+      if (out === TILT.level) {
+        this.returning = false;
+        this.levelAt = t;
+      }
+    } else if (this.levelAt !== null) {
+      if (t - this.levelAt >= TILT.cooldownMs) this.levelAt = null;
+      else if (Math.sign(off) === this.side && Math.abs(off) < this.heldOff + TILT.cooldownMargin) out = TILT.level;
+    }
+    this.holding = out !== want;
+    if (Math.abs(out - TILT.level) <= TILT.levelBand) this.awaySince = null;
+    else this.awaySince ??= t;
+    return out;
+  }
+
+  reset(): void {
+    this.awaySince = null;
+    this.returning = false;
+    this.levelAt = null;
+    this.holding = false;
+  }
+}
+
+/**
  * Where to point `ms` after the brain's last answer, if its aim keeps moving at `vel`
  * (degrees/second). At most TUNING.predictMaxMs ahead, so a stalled camera can't run it away.
  */
@@ -237,6 +294,8 @@ export class Brain {
   private aimVel: Angles | null = null;
   /** The up/down the stand was last told; eases back to level while nobody is followed in view. */
   private outTilt: number = TILT.level;
+  /** Brings the tilt back to level after looking up or down too long, even while following someone. */
+  private tiltHold = new TiltHold();
 
   private prevT = 0;
   private prevCamera: Angles | null = null;
@@ -326,6 +385,7 @@ export class Brain {
     this.others = [];
     this.note = "Released. Tap a person to lock on.";
     this.tiltCheck.reset();
+    this.tiltHold.reset();
   }
 
   update(frameIn: FrameInput): BrainOutput {
@@ -418,11 +478,15 @@ export class Brain {
     if (seenStrong || (this.mode !== "tracking" && this.mode !== "hidden")) this.weakSince = null;
 
     // Up and down: only while following someone in view. Otherwise (hidden, out of the
-    // picture, nobody picked) ease back to level. Only what the stand is told changes, so
-    // left and right carry on exactly as they are.
+    // picture, nobody picked) ease back to level. And never looking up or down for more
+    // than TILT.holdMs in a row (TiltHold). Only what the stand is told changes, so left
+    // and right carry on exactly as they are.
     const tracking = this.mode === "tracking";
-    this.outTilt = tracking && this.aim ? this.aim.tilt : towardLevel(this.outTilt, Math.min(f.t - this.prevT, 1000));
-    const aim = this.aim && !tracking ? { ...this.aim, tilt: this.outTilt } : this.aim;
+    const ms = Math.min(f.t - this.prevT, 1000);
+    const want = tracking && this.aim ? this.aim.tilt : towardLevel(this.outTilt, ms);
+    this.outTilt = this.tiltHold.update(want, this.outTilt, f.t, ms);
+    const followsTilt = tracking && !this.tiltHold.holding;
+    const aim = this.aim && this.aim.tilt !== this.outTilt ? { ...this.aim, tilt: this.outTilt } : this.aim;
 
     this.prevT = f.t;
     this.prevCamera = { ...f.camera };
@@ -434,7 +498,7 @@ export class Brain {
     const matches = this.mode === "idle" ? allLooks.map(() => null) : allLooks.map((l) => this.dist(l));
     const faces = this.mode === "idle" ? f.people.map(() => null) : faceOf;
     const vel = this.aimVel as Angles | null; // (set by the state above)
-    const aimVel = aim && vel && (this.CAN_PREDICT as readonly Mode[]).includes(this.mode) ? (tracking ? vel : { pan: vel.pan, tilt: 0 }) : null;
+    const aimVel = aim && vel && (this.CAN_PREDICT as readonly Mode[]).includes(this.mode) ? (followsTilt ? vel : { pan: vel.pan, tilt: 0 }) : null;
     const flippedTilt = this.flippedTilt;
     return { mode: this.mode, target, aim, aimVel, note: this.note, match, matches, exitSide, whereabouts, faces, picked, flippedTilt };
   }

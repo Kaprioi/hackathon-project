@@ -19,7 +19,8 @@
 //     radar loudness below), and holds still when they stop. The head never
 //     wiggles or sweeps on its own then, so the two can't fight. Up/down is
 //     the exception: it only looks slightly up or down and drifts back to
-//     level whenever the aims stop (see TILT_AIM_RANGE).
+//     level whenever the aims stop, or after looking up or down for more than
+//     TILT_HOLD_MS in a row (see TILT_AIM_RANGE).
 //   - Only once Bluetooth is gone (page closed, phone out of range) do the radars
 //     steer on their own again, exactly as before.
 //   - The website switches the humidifier mist on and off (pin A0; the
@@ -77,9 +78,15 @@ const int TILT_LEVEL = 90;          // straight ahead; lower = look down
 // its own: the website's tilt aims are kept within TILT_LEVEL +/- TILT_AIM_RANGE, and
 // the head eases back to TILT_LEVEL whenever the website hasn't sent an aim for
 // TILT_RETURN_MS, while searching, while the radars steer, and after Bluetooth drops.
-// The head never stays tilted up or down by itself. (Pan is not affected.)
+// It also never looks up or down for more than TILT_HOLD_MS in a row, even while the
+// website keeps aiming there: then it drifts back to level until the aims come back to
+// within TILT_LEVEL_BAND of level. The website does the same (TILT.holdMs and
+// TILT.levelBand in src/tracker/config.ts; keep them equal); this is the stand's own
+// safety net. The head never stays tilted up or down by itself. (Pan is not affected.)
 const int TILT_AIM_RANGE = 15;      // degrees either side of level
 const uint32_t TILT_RETURN_MS = 1500;    // no fresh aim for this long: back to level
+const uint32_t TILT_HOLD_MS = 4000;      // aimed up or down this long in a row: back to level
+const float TILT_LEVEL_BAND = 3;         // aims this close to level count as level
 const float TILT_RETURN_SPEED = 40;      // degrees/second while drifting back to level (gentle)
 const int PAN_DIRECTION = 1;        // set to -1 if the head turns the wrong way
 const int MIN_ENERGY = 15;          // 0-100; below this a radar "sees nobody"
@@ -127,6 +134,7 @@ float tilt = TILT_LEVEL;
 float sweepDir = 1;
 uint32_t lastSeenAt = 0, seenSince = 0, lastTick = 0, lastLog = 0;
 uint32_t lastCameraTick = 0, lastReport = 0;
+uint32_t tiltAwaySince = 0;             // since when aimed up or down (0 = level, see TILT_HOLD_MS)
 
 // Written by the Bluetooth callbacks, read by loop().
 volatile float cameraPan = PAN_CENTER, cameraTilt = TILT_LEVEL;
@@ -430,6 +438,7 @@ void loop() {
   // and hold still at the last one when they stop (it's waiting, or has let go).
   // Up/down follows its aims only while they are fresh; otherwise (no aim for
   // TILT_RETURN_MS, searching, radar steering, Bluetooth gone) it drifts back to level.
+  // It also drifts back to level once aimed up or down for more than TILT_HOLD_MS.
   bool websiteSteers = websiteConnected;
   uint32_t cameraAt = lastCameraMove;
   bool cameraSteering = cameraAt != 0 && (int32_t)(now - cameraAt) < (int32_t)CAMERA_HOLD_MS;
@@ -442,8 +451,14 @@ void loop() {
     }
     bool freshTiltAim = websiteSteers && state == TRACKING && cameraAt != 0 &&
                         (int32_t)(now - cameraAt) < (int32_t)TILT_RETURN_MS;
-    float tiltGoal = freshTiltAim ? cameraTilt : TILT_LEVEL;
-    const float tiltStep = (freshTiltAim ? TILT_TOP_SPEED : TILT_RETURN_SPEED) * CAMERA_TICK_MS / 1000.0;
+    float aimTilt = cameraTilt;
+    bool aimedAway = freshTiltAim && fabs(aimTilt - TILT_LEVEL) > TILT_LEVEL_BAND;
+    if (!aimedAway) tiltAwaySince = 0;
+    else if (tiltAwaySince == 0) tiltAwaySince = now | 1;   // never 0, which means "level"
+    bool heldTooLong = tiltAwaySince != 0 && (int32_t)(now - tiltAwaySince) > (int32_t)TILT_HOLD_MS;
+    bool followTilt = freshTiltAim && !heldTooLong;
+    float tiltGoal = followTilt ? aimTilt : TILT_LEVEL;
+    const float tiltStep = (followTilt ? TILT_TOP_SPEED : TILT_RETURN_SPEED) * CAMERA_TICK_MS / 1000.0;
     if (fabs(tiltGoal - tilt) >= MOVE_DEADBAND) tilt += constrain((tiltGoal - tilt) * CAMERA_EASE, -tiltStep, tiltStep);
     tiltServo.writeMicroseconds(toMicros(tilt));
   }

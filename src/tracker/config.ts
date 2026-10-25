@@ -27,7 +27,8 @@ export const LIMITS = {
 
 /**
  * Up and down (the tilt motor). The stand only looks a little up or down from level, and
- * goes back to level whenever it isn't following someone it can see.
+ * goes back to level whenever it isn't following someone it can see, or after looking up or
+ * down for too long.
  */
 export const TILT = {
   /** Level: straight ahead. The firmware's TILT_LEVEL. */
@@ -38,6 +39,15 @@ export const TILT = {
   levelBand: 3,
   /** Going back to level, at this speed (degrees/second): from all the way up or down in about 0.75 s. */
   returnSpeed: 20,
+  /**
+   * Looking up or down for longer than this (ms) in a row: back to level, even while following
+   * someone (asked for: after 3 to 5 seconds). Keep it the same as the firmware's TILT_HOLD_MS.
+   */
+  holdMs: 4000,
+  /** Then, for this long (ms), it doesn't look that way again (so it doesn't bounce straight back)... */
+  cooldownMs: 1500,
+  /** ...unless the person goes clearly further that way: this many degrees further than before. */
+  cooldownMargin: 5,
 };
 
 /**
