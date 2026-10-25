@@ -1972,7 +1972,7 @@ function SettingsPanel(props: {
             </p>
             <div className="grid grid-cols-3 gap-2">
               <span />
-              <Button disabled={!canTest} onClick={() => testMove(LIMITS.center, LIMITS.center - 30 * s.tiltSign)}>
+              <Button disabled={!canTest} onClick={() => testMove(LIMITS.center, LIMITS.center - TILT.range * s.tiltSign)}>
                 Up
               </Button>
               <span />
@@ -1986,7 +1986,7 @@ function SettingsPanel(props: {
                 Right
               </Button>
               <span />
-              <Button disabled={!canTest} onClick={() => testMove(LIMITS.center, LIMITS.center + 30 * s.tiltSign)}>
+              <Button disabled={!canTest} onClick={() => testMove(LIMITS.center, LIMITS.center + TILT.range * s.tiltSign)}>
                 Down
               </Button>
               <span />
