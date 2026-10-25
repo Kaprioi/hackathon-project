@@ -28,6 +28,7 @@ import {
 import { spokenClock } from "../family/readAloud";
 import { useCheckingOnIt } from "../family/useCheckingOnIt";
 import { useSpokenAlerts } from "../family/useSpokenAlerts";
+import { cleanHomeName, DEFAULT_HOME_NAME, MAX_HOME_NAME, shownHomeName } from "../family/homeName";
 import { VOICE_ON } from "../family/voice";
 import { cleanNoMovementSettings, noMovementLine, spokenNoMovement, type NoMovementSettings } from "../family/noMovement";
 import { useNoMovement } from "../family/useNoMovement";
@@ -358,7 +359,7 @@ function Family({
                   <span className="absolute inset-0 animate-pulse-ring rounded-full bg-leaf" />
                   <span className="relative h-3 w-3 rounded-full bg-leaf" />
                 </span>
-                {circle?.name ?? t("Your family")}
+                {circle ? shownHomeName(circle.name, t) : t("Your family")}
               </p>
               <h1 className="mt-4 text-4xl font-extrabold md:text-5xl">
                 <Highlight text={t("Family *page*")} />
@@ -538,6 +539,9 @@ function Family({
               </summary>
               {/* The cards inside sit flat in this one panel, split by thin lines. */}
               <div className="mt-6 flex flex-col gap-8 border-t-[3px] border-lilac pt-6 [&>*+*]:border-t-[3px] [&>*+*]:border-lilac [&>*+*]:pt-8 [&>section]:rounded-none [&>section]:bg-transparent [&>section]:p-0 [&>section]:shadow-none sm:[&>section]:p-0">
+                {circle && circle.owner_id === userId && (
+                  <NameYourHome circle={circle} onSaved={(name) => setCircle({ ...circle, name })} />
+                )}
                 <SpokenAlertsSwitch on={spokenOn} needsTap={spoken.needsTap} note={spoken.note} onChange={setSpokenOn} onWake={spoken.turnedOn} />
                 {/* Phone notifications, so family hear about a fall even with this page closed. */}
                 {circle && (
@@ -566,6 +570,63 @@ function merge(old: EventRow[], incoming: EventRow[], keep = HOW_MANY): EventRow
 /** "14:05" in the viewer's own time. */
 function clock(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/** The owner names their home, like "Grandma's home". Everyone in the family sees it at the top. */
+function NameYourHome({ circle, onSaved }: { circle: Circle; onSaved: (name: string) => void }) {
+  const id = useId();
+  const { t } = useLanguage();
+  // Empty while it still has the default name, so the default is never saved in another language.
+  const [name, setName] = useState(circle.name === DEFAULT_HOME_NAME ? "" : circle.name);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const clean = cleanHomeName(name);
+    if (!clean) return setMessage({ ok: false, text: "Please type a name for the home." });
+    setBusy(true);
+    setMessage(null);
+    const { error } = await supabase!.from("care_circles").update({ name: clean }).eq("id", circle.id);
+    setBusy(false);
+    if (error) return setMessage({ ok: false, text: "Sorry, that didn't work. Please try again." });
+    setName(clean);
+    onSaved(clean);
+    setMessage({ ok: true, text: "Saved. Everyone in the family sees the new name." });
+  }
+
+  return (
+    <section aria-labelledby={`${id}-title`} className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
+      <h2 id={`${id}-title`} className="text-2xl font-extrabold">
+        {t("Name your home")}
+      </h2>
+      <p className="mt-2 text-lg text-muted">{t("Shown at the top of the Family page for everyone, like \"Grandma's home\".")}</p>
+      <form onSubmit={save} className="mt-4 flex flex-col gap-3 sm:flex-row" noValidate>
+        <label htmlFor={`${id}-name`} className="sr-only">
+          {t("Name your home")}
+        </label>
+        <input
+          id={`${id}-name`}
+          value={name}
+          maxLength={MAX_HOME_NAME}
+          onChange={(e) => {
+            setName(e.target.value);
+            setMessage(null);
+          }}
+          placeholder={t("For example: Grandma's home")}
+          className="min-h-14 w-full rounded-2xl border-[3px] border-muted bg-surface px-5 text-xl text-ink transition-colors hover:border-brand focus:border-brand"
+        />
+        <button type="submit" disabled={busy} className={`${buttonVariants.primary} shrink-0 text-xl disabled:opacity-70`}>
+          {busy ? t("Saving…") : t("Save name")}
+        </button>
+      </form>
+      {message && (
+        <p role={message.ok ? "status" : "alert"} className={`mt-3 text-lg font-bold ${message.ok ? "text-leaf" : ERROR_RED}`}>
+          {t(message.text)}
+        </p>
+      )}
+    </section>
+  );
 }
 
 function AddFamily({ circleId }: { circleId: string }) {
