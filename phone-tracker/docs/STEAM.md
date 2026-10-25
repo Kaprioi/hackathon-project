@@ -1,5 +1,7 @@
 # Steam: a humidifier whose mist follows you
 
+> **Dropped on Oct 24, 2026:** the humidifier parts can't be obtained, so there is no mist in the build. Kept for history. See `phone-tracker/CLAUDE.md`.
+
 The hackathon theme is "Steel and Steam", and the team wants steam in the build. The team's rule: the steam must be **functional and tied to what the camera does**, not something bolted on to meet the theme.
 
 **Test for any steam idea:** take the camera away. If the steam still makes sense on its own, it's a separate project bolted on.
