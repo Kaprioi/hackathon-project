@@ -49,7 +49,7 @@ import type { Turn } from "./orientation.ts";
 import { boxFromUpright, deviceTurn, fromUpright, pictureTurn, screenAngle, toUpright } from "./orientation.ts";
 import type { Angles, Box } from "./geometry.ts";
 import { centerX, centerY, contains, iou } from "./geometry.ts";
-import { startSettings } from "./savedSettings.ts";
+import { settingsToSave, startSettings } from "./savedSettings.ts";
 import { ServoModel } from "./servoModel.ts";
 import type { StandStatus } from "./stand.ts";
 import { Stand } from "./stand.ts";
@@ -149,6 +149,7 @@ function describe(e: MovementEvent): string {
 
 const SETTINGS_KEY = "phoneTracker.settings.v1";
 const FACES_CHOSEN_KEY = "phoneTracker.facesChosen.v1";
+const TILT_CHOSEN_KEY = "phoneTracker.tiltChosen.v1";
 
 /** A hidden page can't watch (the browser pauses it), so after this long the camera stops and tells the family. */
 const HIDDEN_STOP_MS = 15_000;
@@ -186,20 +187,31 @@ const TAP_RING_CSS = `
 
 /** The defaults for this phone, as for a phone with nothing saved. */
 function defaultSettings(): Settings {
-  return startSettings(null, isIPhone(), false);
+  return startSettings(null, isIPhone(), false, false);
 }
 
 function loadSettings(): Settings {
   let saved: Partial<Settings> | null = null;
   let facesChosen = false;
+  let tiltChosen = false;
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) saved = JSON.parse(raw) as Partial<Settings>;
     facesChosen = localStorage.getItem(FACES_CHOSEN_KEY) === "yes";
+    tiltChosen = localStorage.getItem(TILT_CHOSEN_KEY) === "yes";
   } catch {
     // private browsing or blocked storage: just use the defaults
   }
-  return startSettings(saved, isIPhone(), facesChosen);
+  return startSettings(saved, isIPhone(), facesChosen, tiltChosen);
+}
+
+/** Someone chose up/down by hand (Flip up/down), so it's kept; the page's own flips aren't (savedSettings.ts). */
+function rememberTiltChoice(): void {
+  try {
+    localStorage.setItem(TILT_CHOSEN_KEY, "yes");
+  } catch {
+    // not saved; up/down then starts from the default again
+  }
 }
 
 /** Someone switched face recognition on or off by hand, so an iPhone keeps their choice. */
@@ -233,9 +245,10 @@ function drawUpright(canvas: HTMLCanvasElement, video: HTMLVideoElement, turn: T
   ctx.restore();
 }
 
-function saveSettings(s: Settings): void {
+/** Saves the settings, with up/down as last chosen by hand (savedSettings.ts: never an automatic flip). */
+function saveSettings(s: Settings, handTiltSign: Settings["tiltSign"]): void {
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settingsToSave(s, handTiltSign)));
   } catch {
     // not saved; fine
   }
@@ -626,6 +639,8 @@ export default function TrackerPage() {
   const cameraRequestRef = useRef(0); // only the newest camera request may finish
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const settingsRef = useRef<Settings>(loadSettings());
+  // Up/down as last chosen by hand: the only one saved (the brain's own flips last this visit).
+  const handTiltSignRef = useRef<Settings["tiltSign"]>(settingsRef.current.tiltSign);
   const brainRef = useRef<Brain>(new Brain(settingsRef.current));
   const standRef = useRef<Stand>(new Stand());
   const servoRef = useRef<ServoModel>(new ServoModel());
@@ -944,11 +959,18 @@ export default function TrackerPage() {
     return () => window.clearTimeout(id);
   }, [ripple]);
 
-  const updateSettings = useCallback((patch: Partial<Settings>) => {
+  /** Changes settings. `auto`: the brain flipped up/down by itself, which isn't saved (savedSettings.ts). */
+  const updateSettings = useCallback((patch: Partial<Settings>, auto = false) => {
     const next = { ...settingsRef.current, ...patch };
     settingsRef.current = next;
     brainRef.current.settings = next;
-    saveSettings(next);
+    if (!auto) {
+      if (patch.tiltSign !== undefined) {
+        handTiltSignRef.current = patch.tiltSign;
+        rememberTiltChoice();
+      }
+      saveSettings(next, handTiltSignRef.current);
+    }
     setSettings(next);
   }, []);
 
@@ -1294,6 +1316,11 @@ export default function TrackerPage() {
       // When the radars are steering (SightLine stand), trust the angle the stand reports.
       if (stand.connected && !cameraSteering && stand.reported) servo.sync(stand.reported, t);
       servo.step(t);
+      // While the camera steers, the stand (SightLine) still reports where it points. If the
+      // up/down guess has been clearly off that for a moment, believe the stand's tilt; the
+      // brain also checks up/down against it. Left/right keep the guess, exactly as before.
+      const standTilt = stand.connected ? (stand.freshReport(t)?.tilt ?? null) : null;
+      if (cameraSteering && standTilt !== null) servo.followReportedTilt(standTilt, t);
       // Without a stand, the phone's gyroscope says how it's been turned by hand (if it has one).
       const handheld = handheldRef.current;
       // While nobody is being followed, keep the hand-held angle at straight ahead, so a new pick
@@ -1324,14 +1351,16 @@ export default function TrackerPage() {
         radar: stand.connected ? stand.radar : null,
         radarEnergy: stand.connected ? stand.energy : null,
         camera,
+        standTilt,
         head: stand.connected && !onStand ? head : undefined,
         tap,
         weak,
         faces: s.faces ? faceWatcher.takeVerdicts() : [],
       });
 
-      // The up/down motor turned the wrong way for this stand, so the brain flipped it: keep that.
-      if (out.flippedTilt) updateSettings({ tiltSign: s.tiltSign === 1 ? -1 : 1 });
+      // The brain flipped up/down (the motor turned the wrong way, or it took back such a flip):
+      // keep that for this visit, but don't save it (savedSettings.ts).
+      if (out.flippedTilt) updateSettings({ tiltSign: s.tiltSign === 1 ? -1 : 1 }, true);
 
       // A tap that picked someone new: forget the old target's face. (A tap on nobody keeps it.)
       if (out.picked) {

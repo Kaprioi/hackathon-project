@@ -76,7 +76,7 @@ const int TILT_LEVEL = 90;          // straight ahead; lower = look down
 // Up/down only ever looks a little up or down from level, and drifts back to level on
 // its own: the website's tilt aims are kept within TILT_LEVEL +/- TILT_AIM_RANGE, and
 // the head eases back to TILT_LEVEL whenever the website hasn't sent an aim for
-// TILT_RETURN_MS, while searching, while the radars steer, and after Bluetooth drops.
+// TILT_RETURN_MS, while the radars steer, and after Bluetooth drops.
 // The head never stays tilted up or down by itself. (Pan is not affected.)
 const int TILT_AIM_RANGE = 15;      // degrees either side of level
 const uint32_t TILT_RETURN_MS = 1500;    // no fresh aim for this long: back to level
@@ -429,7 +429,7 @@ void loop() {
   // While the website is connected it steers left/right: follow its aims smoothly,
   // and hold still at the last one when they stop (it's waiting, or has let go).
   // Up/down follows its aims only while they are fresh; otherwise (no aim for
-  // TILT_RETURN_MS, searching, radar steering, Bluetooth gone) it drifts back to level.
+  // TILT_RETURN_MS, radar steering, Bluetooth gone) it drifts back to level.
   bool websiteSteers = websiteConnected;
   uint32_t cameraAt = lastCameraMove;
   bool cameraSteering = cameraAt != 0 && (int32_t)(now - cameraAt) < (int32_t)CAMERA_HOLD_MS;
@@ -440,7 +440,11 @@ void loop() {
       if (fabs(cameraPan - pan) >= MOVE_DEADBAND) pan += constrain((cameraPan - pan) * CAMERA_EASE, -panStep, panStep);
       panServo.writeMicroseconds(toMicros(pan));
     }
-    bool freshTiltAim = websiteSteers && state == TRACKING && cameraAt != 0 &&
+    // Fresh aims count whatever this stand's own radar state is: the radar can still say
+    // SEARCHING for a while after the person comes back, and the website (which can see
+    // them) decides when someone is in view. Ignoring its aims then left the head level
+    // while the website thought it had tilted, which tricked its up/down check.
+    bool freshTiltAim = websiteSteers && cameraAt != 0 &&
                         (int32_t)(now - cameraAt) < (int32_t)TILT_RETURN_MS;
     float tiltGoal = freshTiltAim ? cameraTilt : TILT_LEVEL;
     const float tiltStep = (freshTiltAim ? TILT_TOP_SPEED : TILT_RETURN_SPEED) * CAMERA_TICK_MS / 1000.0;

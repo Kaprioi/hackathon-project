@@ -9,6 +9,17 @@
 import { LIMITS, MOTION, SERVO_TICK_MS } from "./config.ts";
 import type { Angles } from "./geometry.ts";
 
+/**
+ * The stand's own report of its tilt (SightLine, 10 times a second) arrives a little late
+ * (up to 100 ms between reports, then Bluetooth), so it's compared with where we guessed the
+ * tilt was this long ago.
+ */
+const REPORT_LAG_MS = 100;
+/** Our up/down guess and the stand's report disagree by more than this (degrees)... */
+const TILT_SYNC_DEG = 4;
+/** ...for this long (ms): believe the stand. A moment of disagreement is just the report lagging behind a quick move. */
+const TILT_SYNC_MS = 250;
+
 interface Sample {
   t: number;
   pan: number;
@@ -20,6 +31,7 @@ export class ServoModel {
   private target: Angles = { pan: LIMITS.center, tilt: LIMITS.center };
   private lastT = -1;
   private history: Sample[] = [];
+  private tiltOffSince: number | null = null;
 
   setTarget(a: Angles): void {
     this.target = { ...a };
@@ -30,8 +42,29 @@ export class ServoModel {
     this.now = { ...a };
     this.target = { ...a };
     this.lastT = t;
+    this.tiltOffSince = null;
     this.history.push({ t, pan: a.pan, tilt: a.tilt });
     while (this.history.length > 2 && this.history[0].t < t - 1000) this.history.shift();
+  }
+
+  /**
+   * While the page steers, the stand (SightLine) still reports where its tilt really is. If our
+   * up/down guess has been clearly off that for a moment (the stand didn't tilt where it was
+   * told: older firmware ignored the aims while its own radar was searching, or the aims
+   * stopped arriving), believe the stand's tilt. Left/right keeps its guess, exactly as before.
+   * Call it after step(t). Returns true when it moved the guess.
+   */
+  followReportedTilt(tilt: number, t: number): boolean {
+    if (Math.abs(this.at(t - REPORT_LAG_MS).tilt - tilt) <= TILT_SYNC_DEG) {
+      this.tiltOffSince = null;
+      return false;
+    }
+    this.tiltOffSince ??= t;
+    if (t - this.tiltOffSince < TILT_SYNC_MS) return false;
+    this.tiltOffSince = null;
+    this.now = { ...this.now, tilt };
+    this.history.push({ t, pan: this.now.pan, tilt });
+    return true;
   }
 
   /** Moves the guess forward to time `t` (milliseconds). */

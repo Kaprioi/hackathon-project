@@ -48,6 +48,8 @@ const MOVE_EVERY_MS = 25; // at most 40 moves a second (the page moves a walking
 // (Older SightLine firmware let its radars steer once these stopped for 700 ms; the
 // current one holds still while the page is connected.)
 const MOVE_REPEAT_MS = 250;
+// The stand reports its angle 10 times a second; older than this, a report doesn't count as "now".
+const REPORT_FRESH_MS = 500;
 const MIST_REPEAT_MS = 1000; // repeat the mist setting every second; the firmware turns mist off after 3 s of silence
 
 export class Stand {
@@ -58,6 +60,8 @@ export class Stand {
   energy: RadarEnergy | null = null;
   /** Where the stand says it's pointing (only stands that report it, like SightLine), else null. */
   reported: { pan: number; tilt: number } | null = null;
+  /** When `reported` arrived (performance.now()). */
+  reportedAt = -Infinity;
   /** False if the connected firmware is too old to have the mist switch. */
   hasMist = false;
   /** Called whenever status or radar changes. */
@@ -171,7 +175,10 @@ export class Stand {
     if (parts.length >= 5) {
       const pan = Number(parts[3]);
       const tilt = Number(parts[4]);
-      if (Number.isFinite(pan) && Number.isFinite(tilt)) this.reported = { pan, tilt };
+      if (Number.isFinite(pan) && Number.isFinite(tilt)) {
+        this.reported = { pan, tilt };
+        this.reportedAt = performance.now();
+      }
       const left = Number(parts[1]);
       const right = Number(parts[2]);
       const radars = parts[5] === "1" || parts[5] === "2" ? (Number(parts[5]) as 1 | 2) : RADAR.count;
@@ -187,6 +194,11 @@ export class Stand {
       this.shownEnergy = e;
       this.onChange();
     }
+  }
+
+  /** Where the stand says it's pointing, if it said so within the last REPORT_FRESH_MS (else null). */
+  freshReport(now: number): { pan: number; tilt: number } | null {
+    return this.reported && now - this.reportedAt <= REPORT_FRESH_MS ? this.reported : null;
   }
 
   private async onDropped(): Promise<void> {
