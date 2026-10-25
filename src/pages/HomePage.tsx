@@ -167,7 +167,7 @@ function Hero({ signedIn }: { signedIn: boolean }) {
 const reasons = [
   "Just a phone on a table",
   "Nothing to wear",
-  "Video stays on the phone",
+  "Live video only for family",
   "Only invited family can see",
   "Updates by itself",
   "Fall & quiet alerts",
@@ -327,8 +327,8 @@ const features = [
   {
     icon: <CheckInIcon />,
     bg: "bg-mint",
-    title: "Video stays on the phone",
-    text: "The camera picture never leaves the phone. Only short notes like “moving around, left side” are sent.",
+    title: "Live video only for family",
+    text: "Family get short notes like “moving around, left side”, and can press Watch live to see and talk. Nothing is recorded.",
   },
   {
     icon: <DashboardIcon />,
@@ -792,8 +792,8 @@ function WhoWeAre() {
 
 const questions = [
   {
-    q: "Does any video leave the phone?",
-    a: "No. The camera picture never leaves the phone. Only short notes like “moving around, left side” are sent to your family page.",
+    q: "Can family see video?",
+    a: "Only live, and only when someone in your family presses Watch live. The phone then shows a red LIVE sign. The video goes straight to them, encrypted, and is never recorded or saved. The rest of the time only short notes like “moving around, left side” are sent.",
   },
   {
     q: "What do I need to get started?",

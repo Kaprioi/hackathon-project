@@ -16,6 +16,8 @@ import Highlight from "../components/Highlight";
 import LanguagePicker from "../components/LanguagePicker";
 import { Blobs, LogoMark } from "../components/SiteLayout";
 import { useLanguage } from "../i18n/useLanguage";
+import type { Watcher } from "../lib/live";
+import { LiveHost, fetchIceServers, supabaseSignal } from "../lib/live";
 import { supabase } from "../lib/supabase";
 import type { BrainOutput, Mode } from "./brain.ts";
 import { Brain, MODE_LABEL, predictAim, towardLevel, whereaboutsText } from "./brain.ts";
@@ -127,6 +129,13 @@ async function loginToken(): Promise<string | null> {
   }
 }
 
+/** "Sam is watching live", "Sam and Jo are watching live". */
+function watchingText(watchers: Watcher[]): string {
+  const names = watchers.map((w) => w.name);
+  const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `${list} ${names.length === 1 ? "is" : "are"} watching live`;
+}
+
 /** The emergency contact's name for the screen. */
 function contactLabel(s: Settings): string {
   return s.contactName.trim() || "your emergency contact";
@@ -184,7 +193,9 @@ const EVENT_WORDS: Record<MovementEvent["kind"], string> = {
 };
 
 function describe(e: MovementEvent): string {
-  return [EVENT_WORDS[e.kind], e.zone && `${e.zone} side`, e.posture && e.posture !== "unknown" && e.posture]
+  // "middle", not "middle side"
+  const where = e.zone && (e.zone === "middle" ? "middle" : `${e.zone} side`);
+  return [EVENT_WORDS[e.kind], where, e.posture && e.posture !== "unknown" && e.posture]
     .filter(Boolean)
     .join(" - ");
 }
@@ -763,6 +774,9 @@ export default function TrackerPage() {
   const stillWatchRef = useRef(startWatch(Date.now()));
   const watchingRef = useRef(false); // true from "Start watching" until "Stop watching" (flips don't count)
   const tabsRef = useRef<BroadcastChannel | null>(null);
+  const liveRef = useRef<LiveHost | null>(null); // family watching live (src/lib/live.ts)
+  const liveStartingRef = useRef(false);
+  const micRef = useRef<MediaStreamTrack | null>(null); // the room's sound, for live video
 
   const [running, setRunning] = useState(false);
   const [account, setAccount] = useState<Account>(supabase ? "checking" : "no-database");
@@ -787,6 +801,10 @@ export default function TrackerPage() {
   const [circleId, setCircleId] = useState("");
   /** Why the camera stopped by itself, shown on the start screen (English; translated when shown). */
   const [stopNote, setStopNote] = useState("");
+  /** Who's watching live right now (shown in red at the top), whether family can, and why not. */
+  const [watchers, setWatchers] = useState<Watcher[]>([]);
+  const [liveReady, setLiveReady] = useState(false);
+  const [liveNote, setLiveNote] = useState("");
   const [snap, setSnap] = useState<Snapshot>({
     mode: "idle",
     note: "Tap a person to lock on.",
@@ -892,6 +910,58 @@ export default function TrackerPage() {
     return () => clearInterval(timer);
   }, [running, report]);
 
+  /** Stops live video (the camera stopped, it was switched off, or the account changed). */
+  const stopLive = useCallback(() => {
+    liveRef.current?.stop();
+    liveRef.current = null;
+    micRef.current?.stop();
+    micRef.current = null;
+    setWatchers([]);
+    setLiveReady(false);
+  }, []);
+
+  /**
+   * Lets family watch live: opens the microphone, then waits on this family's private
+   * channel for "Watch live" from the family page. Needs a signed-in account (its care circle).
+   */
+  const startLive = useCallback(async () => {
+    const db = supabase;
+    const cloud = cloudRef.current;
+    if (!db || !cloud || liveRef.current || liveStartingRef.current || !settingsRef.current.liveVideo) return;
+    liveStartingRef.current = true;
+    setLiveNote("");
+    const stillWanted = () => watchingRef.current && cloudRef.current === cloud && settingsRef.current.liveVideo;
+    try {
+      if (!micRef.current) {
+        try {
+          const sound = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          });
+          micRef.current = sound.getAudioTracks()[0] ?? null;
+        } catch {
+          setLiveNote("The microphone is blocked, so family can watch but can't hear the room or talk.");
+        }
+      }
+      const signal = await supabaseSignal(db, cloud.circleId);
+      if (!stillWanted()) {
+        signal.close();
+        return;
+      }
+      const host = new LiveHost({ signal, iceServers: () => loginToken().then(fetchIceServers), onWatchers: setWatchers });
+      host.setTracks(streamRef.current?.getVideoTracks()[0] ?? null, micRef.current);
+      liveRef.current = host;
+      setLiveReady(true);
+    } catch (e) {
+      setLiveNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      liveStartingRef.current = false;
+      if (!stillWanted() && !liveRef.current) {
+        micRef.current?.stop();
+        micRef.current = null;
+      }
+    }
+  }, []);
+
   // Check whether someone is signed in (the family page only works for signed-in people).
   useEffect(() => {
     const db = supabase;
@@ -904,6 +974,7 @@ export default function TrackerPage() {
       if (!cloudRef.current || cloudRef.current.userId === session?.user.id) return;
       cloudRef.current = null;
       setCircleId("");
+      setTimeout(stopLive, 0); // live video belongs to the old family (later: not inside this callback)
       if (!session || !watchingRef.current) return;
       // Later, not inside this callback: Supabase asks not to call it from here.
       setTimeout(() => {
@@ -913,13 +984,14 @@ export default function TrackerPage() {
             cloudRef.current = cloud;
             setCircleId(cloud.circleId);
             report(reporterRef.current.start(performance.now()));
+            void startLive();
           },
           (e: unknown) => setSendError(e instanceof Error ? e.message : String(e)),
         );
       }, 0);
     });
     return () => data.subscription.unsubscribe();
-  }, [report]);
+  }, [report, startLive, stopLive]);
 
   // While this page is open: use the whole screen (under the notch too, with the
   // controls padded clear of it) and a black browser bar on Android.
@@ -1155,6 +1227,7 @@ export default function TrackerPage() {
           return;
         }
         streamRef.current = stream;
+        liveRef.current?.setTracks(stream.getVideoTracks()[0] ?? null, micRef.current); // a flip: watchers see the new camera
         const track = stream.getVideoTracks()[0];
         const info = track?.getSettings() ?? {};
         deviceIdRef.current = info.deviceId;
@@ -1228,6 +1301,7 @@ export default function TrackerPage() {
       if (tellFamily) report(reporterRef.current.stop());
       cameraRequestRef.current++; // cancel a camera start that's still under way
       stopCamera();
+      stopLive();
       brainRef.current.release();
       faceWatcher.forget();
       setRunning(false);
@@ -1237,13 +1311,19 @@ export default function TrackerPage() {
       void wakeLockRef.current?.release();
       wakeLockRef.current = null;
     },
-    [stopCamera, report, faceWatcher],
+    [stopCamera, stopLive, report, faceWatcher],
   );
 
   const stopWatching = useCallback(() => {
     rememberWatching(false);
     finishWatching("", true);
   }, [finishWatching]);
+
+  // Family can watch live while the camera is on (and the setting allows it).
+  useEffect(() => {
+    if (running && settings.liveVideo) void startLive();
+    else stopLive();
+  }, [running, settings.liveVideo, startLive, stopLive]);
 
   // Closing the tab (or the browser) doesn't run the clean-up below, so say
   // "stopped" here. The page is going away, so it is sent the keepalive way.
@@ -1253,11 +1333,12 @@ export default function TrackerPage() {
       watchingRef.current = false;
       cloudRef.current?.sendOnClose(reporterRef.current.stop());
       stopCamera();
+      stopLive();
       setRunning(false);
     };
     window.addEventListener("pagehide", onPageHide);
     return () => window.removeEventListener("pagehide", onPageHide);
-  }, [stopCamera]);
+  }, [stopCamera, stopLive]);
 
   // A hidden page (another tab, another app, screen off) is paused by the browser,
   // so it isn't really watching. After a short while, stop and tell the family.
@@ -1333,13 +1414,14 @@ export default function TrackerPage() {
       watchingRef.current = false;
       rememberWatching(false); // left the camera page on purpose
       stopCamera();
+      stopLive();
       detectorRef.current?.close();
       detectorRef.current = null;
       detectorLoadRef.current = null;
       stand.disconnect();
       void wakeLockRef.current?.release();
     };
-  }, [stopCamera, report]);
+  }, [stopCamera, stopLive, report]);
 
   // The main loop: once per new camera frame.
   useEffect(() => {
@@ -1683,6 +1765,7 @@ export default function TrackerPage() {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         aria-label="Camera view. Tap a person to follow them."
+        aria-hidden={!running}
       />
       {ripple && <span key={ripple.key} className="tracker-tap" style={{ left: ripple.x, top: ripple.y }} aria-hidden="true" />}
 
@@ -1694,13 +1777,21 @@ export default function TrackerPage() {
 
       {/* Top: the privacy sign (always on screen while the camera is on), then what it's
           doing on the left and readings on the right */}
-      <div className="pointer-events-none absolute inset-x-0 top-0">
+      {/* Before the camera starts, the start screen covers these: keep screen readers and the Tab key off them too */}
+      <div className="pointer-events-none absolute inset-x-0 top-0" inert={!running}>
         {running && (
           <div
-            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 bg-leaf px-3 py-1.5 text-center font-extrabold text-white"
+            className={`flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 px-3 py-1.5 text-center font-extrabold text-white ${watchers.length ? "bg-alert" : "bg-leaf"}`}
             style={{ ...SIDES, paddingTop: "max(0.375rem, env(safe-area-inset-top))" }}
           >
-            <span className="text-base">● Camera on - video stays on this phone</span>
+            {/* Whoever is on camera can always see when family are watching or talking */}
+            <span className="text-base" role="status">
+              {watchers.length
+                ? `● LIVE: ${watchingText(watchers)}${watchers.some((w) => w.talking) ? " (talking)" : ""}`
+                : liveReady
+                  ? "● Camera on - family can watch live"
+                  : "● Camera on - video stays on this phone"}
+            </span>
             <span className="text-sm font-bold">
               {sendError
                 ? "Family can't see updates right now"
@@ -1791,7 +1882,11 @@ export default function TrackerPage() {
       </div>
 
       {/* Bottom: messages, then the controls */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2" style={SAFE_BOTTOM}>
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2"
+        style={SAFE_BOTTOM}
+        inert={!running}
+      >
         {snap.portrait && running && connected && (
           <p className="rounded-xl bg-sun px-3 py-1.5 text-center text-sm font-bold text-ink">
             Turn the phone sideways for the stand, and switch off rotation lock.
@@ -1853,6 +1948,7 @@ export default function TrackerPage() {
           mirrored={mirrored}
           fullscreen={canFullscreen ? { on: fullscreen, toggle: toggleFullscreen } : null}
           turnNow={snap.turn}
+          live={{ watchers, ready: liveReady, note: liveNote }}
           testAlarm={() => {
             closeSettings();
             unlockSound();
@@ -1865,33 +1961,35 @@ export default function TrackerPage() {
         <div className="on-light absolute inset-0 z-10 overflow-y-auto bg-cream text-ink select-text" style={SAFE_ALL}>
           <div className="relative isolate flex min-h-full items-center justify-center p-4 sm:p-6">
             <Blobs fixed />
-            <div className="w-full max-w-lg animate-slide-in space-y-5 rounded-[40px] bg-surface p-7 text-center shadow-lift sm:p-10">
-              <div className="text-left">
+            <div className="flex w-full max-w-lg animate-slide-in flex-col items-center gap-2 [@media(max-height:599px)]:max-w-2xl rounded-[32px] bg-surface px-5 py-4 text-center shadow-lift [@media(min-height:600px)]:gap-4 [@media(min-height:600px)]:py-5 [@media(min-height:600px)]:sm:rounded-[40px] [@media(min-height:600px)]:sm:p-10">
+              {/* On a short screen (a phone turned sideways) the back button, logo and language picker
+                  are skipped, so "Start watching" stays in view */}
+              <div className="w-full text-left [@media(max-height:599px)]:hidden">
                 <BackButton />
               </div>
               <Link
                 to="/"
-                className="group mx-auto flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline"
+                className="group flex min-h-12 w-fit items-center gap-3 text-2xl font-black text-ink no-underline [@media(max-height:599px)]:hidden"
               >
                 <LogoMark />
                 CareNest
               </Link>
-              <LanguagePicker className="justify-center" />
-              <h1 className="text-4xl font-extrabold">
+              <LanguagePicker className="justify-center [@media(max-height:599px)]:hidden" />
+              <h1 className="text-2xl font-extrabold [@media(min-height:600px)]:text-4xl">
                 <Highlight text={t("Phone *camera*")} />
               </h1>
-              <p className="text-xl font-bold text-muted">
+              <p className="text-base font-bold text-muted [@media(min-height:600px)]:text-xl">
                 {t(
                   "Stand this phone on a table, pointing at the room. It watches for movement and tells your family, in a few words, how things are going.",
                 )}
               </p>
-              <p className="rounded-2xl bg-mint px-4 py-3 text-lg font-bold text-ink">
+              <p className="rounded-2xl bg-mint px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
                 {t(
-                  'Video stays on this phone. Only short notes like "moving around - left side" are sent. No video or pictures ever leave it.',
+                  'Only short notes like "moving around - left side" are sent. Family can also watch live and talk to you, and the bar at the top turns red while they do. Nothing is recorded.',
                 )}
               </p>
               {stopNote && (
-                <p role="status" className="rounded-2xl bg-sun px-4 py-3 text-lg font-bold text-ink">
+                <p role="status" className="rounded-2xl bg-sun px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
                   {t(stopNote)}
                 </p>
               )}
@@ -1912,9 +2010,9 @@ export default function TrackerPage() {
                 </div>
               )}
               {account === "signed-out" ? (
-                <div className="space-y-3">
-                  <p className="text-xl font-bold">{t("Please sign in first, so your family can see the updates.")}</p>
-                  <Link to="/login?next=/tracker" className={`${buttonVariants.primary} min-h-16 w-full text-2xl`}>
+                <div className="w-full space-y-3">
+                  <p className="text-base font-bold [@media(min-height:600px)]:text-xl">{t("Please sign in first, so your family can see the updates.")}</p>
+                  <Link to="/login?next=/tracker" className={`${buttonVariants.primary} w-full text-xl [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}>
                     {t("Sign in")}
                   </Link>
                 </div>
@@ -1922,7 +2020,7 @@ export default function TrackerPage() {
                 <button
                   onClick={() => void startCamera()}
                   disabled={loading || account === "checking"}
-                  className={`${buttonVariants.primary} min-h-16 w-full text-2xl transition-transform active:scale-95 disabled:opacity-60`}
+                  className={`${buttonVariants.primary} w-full text-xl transition-transform active:scale-95 disabled:opacity-60 [@media(min-height:600px)]:min-h-16 [@media(min-height:600px)]:text-2xl`}
                 >
                   {loading ? t("Starting... (the first time takes a little longer)") : t("Start watching")}
                 </button>
@@ -1936,7 +2034,7 @@ export default function TrackerPage() {
                 </p>
               )}
               {account === "no-database" && (
-                <p className="rounded-2xl bg-sun px-4 py-3 text-lg font-bold text-ink">
+                <p className="rounded-2xl bg-sun px-4 py-3 text-base font-bold text-ink [@media(min-height:600px)]:text-lg">
                   {t(
                     "The database isn't set up on this website yet, so you can try the camera but your family won't see anything.",
                   )}
@@ -1983,8 +2081,10 @@ function SettingsPanel(props: {
   turnNow: Turn;
   /** Shows the emergency alert now, for rehearsing the demo. */
   testAlarm: () => void;
+  /** Live video for family: who's watching, whether family can, and why not. */
+  live: { watchers: Watcher[]; ready: boolean; note: string };
 }) {
-  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow, testAlarm } = props;
+  const { settings: s, update, close, testMove, canTest, chooseCamera, cameraBusy, mirrored, fullscreen, turnNow, testAlarm, live } = props;
   // Real emergency calls: are they set up on the server? (Checked each time the panel opens.)
   const [setup, setSetup] = useState<CallSetup | null | "checking">("checking");
   const [callTest, setCallTest] = useState<"idle" | "sending" | CallOutcome>("idle");
@@ -2089,6 +2189,33 @@ function SettingsPanel(props: {
               Yes (the usual) when this phone sits on the stand: the camera turns left, right, up and down with the
               motor. No only when testing with a computer's webcam next to the stand: then the motor still turns toward
               you, but the page doesn't think the picture turned with it.
+            </p>
+          </fieldset>
+
+          <fieldset className="space-y-2">
+            <legend className="font-semibold">Live video for family</legend>
+            <Choice
+              label="Live video for family"
+              options={[
+                ["on", "On"],
+                ["off", "Off"],
+              ]}
+              value={s.liveVideo ? "on" : "off"}
+              onChange={(v) => update({ liveVideo: v === "on" })}
+            />
+            <p role="status" className="text-base font-semibold">
+              {!s.liveVideo
+                ? "Off: family can't watch live."
+                : live.watchers.length
+                  ? `${watchingText(live.watchers)} now.`
+                  : live.ready
+                    ? 'Ready: family can press "Watch live" on the family page.'
+                    : "Starts when the camera is on and this phone is signed in."}
+            </p>
+            {s.liveVideo && live.note && <p className="text-base font-semibold text-amber-200">{live.note}</p>}
+            <p className="text-base text-white/90">
+              Family see and hear the room live and can talk to you through this phone. It goes straight to them,
+              encrypted, and nothing is recorded. The bar at the top turns red while anyone watches.
             </p>
           </fieldset>
 

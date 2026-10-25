@@ -7,21 +7,22 @@ SBUHacks ends **Sunday Oct 25, 4 PM Eastern** (MLH lists 2026-10-25 20:00 UTC). 
 ## Start here
 
 1. **Open Claude Code in `C:\Users\marba\Projects\hackathon-merge\phone-tracker`** (so `CLAUDE.md` loads).
-   `hackathon-merge` is a git worktree on branch **`live-video`**, which holds all the newest work.
+   Start a **new** session; don't resume the long Oct 24 one (its log reached 41 MB and crashed on every resume).
+   `hackathon-merge` is a git worktree on branch **`tracker-live`**, which holds all the newest work:
+   the latest `main` (with Kris's PR #42) plus our 8 newer commits. It replaces `live-video`, PR #13 and PR #23.
    (`C:\Users\marba\Projects\hackathon-project` is an older worktree on `tracker-website`; don't work there.)
-2. **Both of our branches now conflict with `main`.** The team merged 15 more PRs on Oct 24 evening
-   (weekly report with activity charts, family notes, daily reminders, Web Push fall notifications,
-   "no movement for a while", Lighthouse fixes). Dry runs:
-   - `live-video` vs `main`: conflicts in `.env.example`, `README.md`, `package.json`, `package-lock.json`,
-     `src/i18n/es.ts`, `src/i18n/zh.ts`, `src/pages/DashboardPage.tsx`, `src/tracker/TrackerPage.tsx`.
-   - `tracker-phone-friendly` (PR #13) vs `main`: `.env.example`, `package.json`, `package-lock.json`, `TrackerPage.tsx`.
-   First job: merge `origin/main` into both (keep both sides, as on Oct 24: see "How the last merge was done"),
-   re-run tests, push. Ask Apple before committing (house rule), then push.
-3. **The family page is being changed by Kris's agents too** (family notes and reminders landed on it).
-   Our dashboard layout (below) rearranges that page, so when merging, place their new cards in the layout
-   (probably the right-hand column under Spoken alerts) instead of dropping either side. Tell Kris.
+2. **How `tracker-live` was made (late on Oct 24).** Main got our tracker through Kris's PR #42 as one squashed
+   commit, so git no longer saw our history as shared, and `git merge origin/main` into `live-video` gave 18
+   conflicting files (49 sections in `TrackerPage.tsx` alone). Instead: a new branch from `origin/main`, then each
+   newer commit replayed with `git cherry-pick`: PR #23's two iPhone fixes, the Twilio call, the sign-in lock,
+   live video, the family dashboard, the seizure fix, the handoff. Conflicts were "keep both sides" (main's
+   tracker changes, Kris's new "Camera turns with the stand" setting, our contact name and call; one duplicate
+   Spanish/Chinese line, `"{h} h {m} min"`, removed because main's weekly report already has it).
+3. **Family page:** main's new cards are kept inside our laptop layout: Family notes under Recent news on the
+   left, then Daily reminders, Alerts on this device and Everyone in the loop down the right. Tell Kris.
 4. **Running on this PC (the "test link"):**
-   - Vite dev server for `hackathon-merge`: `npx vite --host 127.0.0.1 --port 5176 --strictPort` (pid 31772).
+   - Vite dev server for `hackathon-merge`: `npx vite --host 127.0.0.1 --port 5176 --strictPort` (pid 59728,
+     restarted late on Oct 24, now serving `tracker-live`).
      Other Vite servers on port 5175 belong to the old `hackathon-project` worktree; ignore them.
    - Cloudflare quick tunnel (pid 46860):
      `C:\Users\marba\AppData\Local\Temp\claude\C--Users-marba-Projects\c135ed46-898b-4f54-9522-bd0608ae0031\scratchpad\cloudflared\cloudflared.exe tunnel --url http://127.0.0.1:5176 --http-host-header 127.0.0.1:5176 --no-autoupdate`
@@ -35,20 +36,23 @@ SBUHacks ends **Sunday Oct 25, 4 PM Eastern** (MLH lists 2026-10-25 20:00 UTC). 
    live site). Because Supabase is set, the test link asks for sign-in like the real site. Saving this file
    restarts the dev server for a moment.
 
-## Uncommitted right now (branch `live-video`)
+## Committed state
 
-- **Seizure false-alarm fix** (`src/tracker/emergency.ts`, `config.ts`, 5 new tests in `emergency.test.mjs`). See below.
-- **This handoff** and a `SESSION_LOG.md` entry.
-Apple was asked whether to commit them; check `git status` and ask if they're still uncommitted.
+Everything is committed and pushed on `tracker-live` (8 commits on top of `origin/main`, plus this note).
+Checked in a fresh session before pushing: 309 tests pass, type check and build clean. A Chrome check on the
+test link (family page with main's new cards; camera page settings, start and stop) showed no errors, and a scan
+of the new commits found no keys or phone numbers. The seizure fix is live on the test link but not yet retested
+on the phone.
 
 ## Pull requests and branches
 
 | What | Branch | State |
 |---|---|---|
-| PR #13 | `tracker-phone-friendly` → `main` | Phone-friendly tracker, faces, fall/seizure alert, Twilio call, sign-in lock, merged with main + PR #23 as of Oct 24 afternoon. **Now conflicts with main** (4 files). |
-| PR #23 (Kris's agents) | `fm/tracker-m13` → `main` | Older copy of our tracker + their iPhone fixes. Fully contained in PR #13; merging #13 makes #23 redundant. |
-| (no PR yet) | `live-video` | PR #13 + live video + dashboard layout (+ the seizure fix once committed). Open it: https://github.com/Kaprioi/hackathon-project/pull/new/live-video. Say "Includes PR #13, merge that first" and "needs `supabase/migrations/20261025000000_live_video.sql` run". **Now conflicts with main** (8 files). |
-| PR #7 | `sightline-bluetooth-mist` → `hardware-build-guide` | Bluetooth link for Kris's SightLine firmware (worktree `C:\Users\marba\Projects\hackathon-sightline`). Kris to review. `UPLOAD_AND_TEST.md` there. |
+| New PR | `tracker-live` → `main` | **Everything newest**, no conflicts with main. Needs `supabase/migrations/20261025000000_live_video.sql` run. Replaces #13 and #23. |
+| PR #13 | `tracker-phone-friendly` → `main` | Superseded by `tracker-live` (conflicts with main). Close once the new PR is merged. |
+| PR #23 (Kris's agents) | `fm/tracker-m13` → `main` | Superseded; its two iPhone fixes are in `tracker-live`. Close. |
+| (no PR) | `live-video` | Old version of `tracker-live`, conflicts with main. Don't use. |
+| PR #7 | `sightline-bluetooth-mist` → `hardware-build-guide` | **Not needed.** Kris combined the Bluetooth link with his one-radar program himself in PR #42 (merged into main, 8:33 PM Oct 24). Close. |
 
 `gh` isn't installed. PR state was read with the public GitHub API (`curl https://api.github.com/repos/Kaprioi/hackathon-project/pulls`).
 Never push to `main`. Git author is Dennis Liang / dennisliang07@gmail.com.
@@ -108,13 +112,16 @@ Never push to `main`. Git author is Dennis Liang / dennisliang07@gmail.com.
 2. **Retest on the S22** (test link): the seizure fix (go close, look down, walk out: no alert; lie down and
    shake on purpose: alert), Watch live on the laptop (headphones or "Mute sound" in the same room), the dashboard
    filling up with real data (sign in with the same account on both, press Start watching).
-3. **Open the `live-video` PR**; after the main merge, **Kris merges #13 then `live-video`**.
+3. **Kris merges the `tracker-live` PR**, then closes #13, #23 and #7.
 4. **Vercel** (Kris has access): add `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, `ALERT_CALL_TO`,
    `ALERT_PERSON_NAME` and `GEMINI_API_KEY` (values sent privately, never in GitHub or group chat), redeploy. The Supabase vars are
    already there. Then the real site is https://carenest-eight-bay.vercel.app (tracker at `/tracker`).
-5. **Hardware: the stand has never moved with the phone.** Firmware compiles (arduino-cli, see memory/
-   `phone-tracker/CLAUDE.md`), never run on the board. Kris uploads it; S22 → Connect stand → Settings test moves.
-   Biggest demo risk. Backup: phone on a plain tripod (tracking, alerts, call and live video all still work).
+5. **Hardware: the stand moves with the website, left and right.** Kris ran it on the real board on the evening of
+   Oct 24 (PR #42). Left/right follows. Up/down didn't follow in his test (likely the tilt motor turns the other
+   way); PR #42 makes the page notice that within about a second and flip it, not yet tried on the stand. His test
+   used a laptop webcam beside the stand; **the S22 riding on the stand as the camera is still untested.**
+   Test: S22 on the stand → `/tracker` → Connect stand → tap yourself → walk left and right, stand up and sit down.
+   Still the biggest demo risk. Backup: phone on a plain tripod (tracking, alerts, call and live video all still work).
 
 ## Demo day (what the judges see)
 
@@ -140,7 +147,9 @@ Never push to `main`. Git author is Dennis Liang / dennisliang07@gmail.com.
 
 ## How the last merge was done (for the next one)
 
-- `git merge --no-ff --no-commit origin/main`, then resolve by keeping both sides:
+- Late Oct 24 (`tracker-live`): a replay, not a merge (see "Start here" 2), because main had squashed our history.
+  Same "keep both sides" rules as below for each commit. If main squashes again, do the same.
+- Earlier on Oct 24: `git merge --no-ff --no-commit origin/main`, then resolve by keeping both sides:
   - `package.json`: union of the test lists (ours: `brain events orientation handheld faces emergency call callServer`
     + `src/lib/live.test.mjs`, `src/family/dayPicture.test.mjs`; theirs: everything they list) and of dependencies.
   - `package-lock.json`: both sides only add packages; keep both blocks, then `npm install` and check the lock is unchanged.
@@ -153,7 +162,7 @@ Never push to `main`. Git author is Dennis Liang / dennisliang07@gmail.com.
 
 ## Working notes
 
-- Tests: `npm test` (216, everything) or `npm run test:tracker`. Node runs the `.ts` files directly, so no
+- Tests: `npm test` (309, everything) or `npm run test:tracker`. Node runs the `.ts` files directly, so no
   TypeScript-only syntax like constructor parameter properties in tested files.
 - In Git Bash, long inline `node -e`/heredoc scripts with mixed quotes can break; write them to a file in the
   scratchpad and run that. Files are mixed CRLF/LF; edit scripts keep each file's line endings.

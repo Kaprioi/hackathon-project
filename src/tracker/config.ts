@@ -145,6 +145,11 @@ export interface Settings {
    */
   contactPhone: string;
   /**
+   * Family can press "Watch live" on the family page to see and hear this camera and talk
+   * back (src/lib/live.ts). Nothing is recorded. Off = the phone turns every request down.
+   */
+  liveVideo: boolean;
+  /**
    * When an alert's countdown runs out, send one still picture to Google Gemini (through the
    * server, api/scene-check.ts) and read its description out in the call. Off = no picture is
    * ever sent. Only works where the server has a Gemini key.
@@ -167,6 +172,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cameraOnStand: "yes",
   contactName: "",
   contactPhone: "",
+  liveVideo: true,
   gemini: true,
 };
 

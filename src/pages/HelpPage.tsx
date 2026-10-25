@@ -10,7 +10,7 @@ import { useLanguage } from "../i18n/useLanguage";
 // The Help page: short picture steps for getting started, what the family page
 // means, the privacy promise, and a few common questions.
 
-/** A padlock: for "video stays on the phone". */
+/** A padlock: for "your privacy". */
 function PrivacyIcon() {
   return (
     <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
@@ -67,7 +67,7 @@ const getSteps = (t: Translate) => [
     icon: <PrivacyIcon />,
     title: t("Your privacy"),
     body: t(
-      "Video and pictures never leave the phone. Family only get short notes in words, like \"Sitting still - left side\". Only the people you add can see them.",
+      "Family get short notes in words, like \"Sitting still - left side\". They can also watch live and talk through the phone, and the phone shows a red LIVE sign while they do. Nothing is recorded. Only the people you add can see or watch.",
     ),
   },
 ];
@@ -76,7 +76,7 @@ const getSteps = (t: Translate) => [
 const getFaqs = (t: Translate) => [
   {
     q: t("Does CareNest record video?"),
-    a: t("No. The phone looks at the room itself and only sends short words, like \"Moving around\". No video or pictures are sent or saved anywhere."),
+    a: t("No. The phone looks at the room itself and sends short words, like \"Moving around\". Family can also watch live, which shows a red LIVE sign on the phone, but nothing is ever recorded or saved."),
   },
   {
     q: t("Which phone can I use?"),
