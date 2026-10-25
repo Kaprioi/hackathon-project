@@ -134,6 +134,13 @@ export const TUNING = {
   /** A box this close to the left or right edge (fraction of the frame) counts as "at the edge". */
   edgeMargin: 0.1,
   /**
+   * Lost before reaching the edge, but walking sideways at least this fast (degrees a second),
+   * and still walking they'd be in the outer `exitZone` of the picture on that side by now: they
+   * walked out that way (the detector often drops someone early), so the stand turns after them.
+   */
+  exitSpeed: 20,
+  exitZone: 0.35,
+  /**
    * Up and down: a box whose top is closer than this to the top of the picture (fraction of
    * the picture's height) may have the head cut off, so the aim moves up toward the box's top (brain.ts aimPointY).
    */

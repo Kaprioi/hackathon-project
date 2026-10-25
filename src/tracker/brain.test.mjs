@@ -175,6 +175,52 @@ test("walking out of the picture: it keeps turning that way, searches, then re-f
   assert.ok(Math.abs(out.target.x - 0.45) < 0.01);
 });
 
+for (const [way, step] of [["left", -0.04], ["right", 0.04]]) {
+  test(`walking out on the ${way}, but the camera loses you before the edge: it still turns ${way} after you`, () => {
+    // The detector often drops someone a little before the edge of the picture (motion blur, or
+    // half of them already out of view). They walked out: the stand must turn after them, not
+    // decide they "vanished where they stood" and watch the empty spot.
+    const brain = newBrain();
+    let t = 0;
+    let out = brain.update(frame(t, [person(0.42, RED, BLUE)], { tap: { x: 0.5, y: 0.5 } }));
+    let x = 0.42;
+    // Walk (about 40 degrees a second) until 18% from the edge, where the detector gives up.
+    while (x > 0.18 && x + 0.15 < 0.82) {
+      t += FRAME_MS;
+      x += step;
+      out = brain.update(frame(t, [person(x, RED, BLUE)]));
+    }
+    const modes = new Set();
+    const aims = [];
+    for (let i = 0; i < 25; i++) {
+      t += FRAME_MS;
+      out = brain.update(frame(t, []));
+      modes.add(out.mode);
+      if (out.mode === "following") aims.push(out.aim.pan);
+    }
+    assert.ok(!modes.has("hidden"), `should not watch the empty spot (modes: ${[...modes]})`);
+    assert.ok(modes.has("following"), "should turn to follow");
+    // Pan goes down to turn left on this stand (panSign 1): the picture's left is lower pan.
+    const turned = aims.at(-1) - aims[0];
+    assert.ok(step < 0 ? turned < 0 : turned > 0, `should keep turning ${way}, turned ${turned.toFixed(1)}`);
+  });
+}
+
+test("stepping out of sight in the middle of the picture while barely moving: HIDDEN, not following", () => {
+  const brain = newBrain();
+  let t = 0;
+  let out = brain.update(frame(t, [person(0.42, RED, BLUE)], { tap: { x: 0.5, y: 0.5 } }));
+  for (let i = 0; i < 10; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [person(0.42 - 0.002 * i, RED, BLUE)])); // shuffling, not walking
+  }
+  for (let i = 0; i < 25; i++) {
+    t += FRAME_MS;
+    out = brain.update(frame(t, [], { radar: true }));
+  }
+  assert.equal(out.mode, "hidden");
+});
+
 test("hiding under a blanket: HIDDEN while the radar senses you, LOST once it's empty", () => {
   const brain = newBrain();
   let t = 0;
