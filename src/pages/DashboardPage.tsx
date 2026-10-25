@@ -25,6 +25,8 @@ import {
 } from "../family/alerts";
 import { spokenClock } from "../family/readAloud";
 import { useCheckingOnIt } from "../family/useCheckingOnIt";
+import { dayPicture, type DayPicture } from "../family/dayPicture";
+import { DayStrip, QuickTiles } from "../components/DayPanels";
 import { useSpokenAlerts } from "../family/useSpokenAlerts";
 import {
   AlertSettingsPanel,
@@ -296,6 +298,7 @@ function Family({
   const sayTime = (ms: number) => (lang === "en" ? localTime(ms, t) : spokenClock(lang, clock)(new Date(ms).toISOString()));
   const daySpoken = spokenDay(summariseDay(todayEvents, now, { t, timeOf: sayTime }), who, t);
   const { latest } = summary;
+  const picture = dayPicture(todayEvents, now, summary.stoppedAt);
 
   // Say "Phone stopped watching" once when the phone goes quiet while this page is
   // open. (A "stopped" message from the phone is said by spoken.heard instead.)
@@ -312,7 +315,7 @@ function Family({
       {/* At least as tall as the screen, so the footer doesn't jump as the news loads in. */}
       <section className="relative isolate min-h-screen px-4 pb-24 pt-6 sm:px-6">
         <Blobs fixed />
-        <div className="mx-auto flex max-w-3xl flex-col gap-8">
+        <div className={`mx-auto flex flex-col gap-8 ${simple ? "max-w-3xl" : "max-w-3xl lg:max-w-6xl"}`}>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="inline-flex items-center gap-3 rounded-full bg-surface px-4 py-2 text-base font-extrabold uppercase tracking-wide text-brand shadow-soft">
@@ -357,137 +360,158 @@ function Family({
             </p>
           )}
 
-          <section
-            aria-labelledby="now-title"
-            className={`rounded-[32px] p-6 shadow-lift transition-colors duration-500 sm:p-8 ${moodStyles[summary.mood]} ${summary.mood === "alert" ? "animate-shake" : ""}`}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 id="now-title" className="text-xl font-extrabold">
-                {t("Right now")}
-              </h2>
-              {/* "Live" only while the camera is really watching, not just while this page is connected. */}
-              <LivePill off={live && !summary.cameraOn}>
-                {!live ? t("Connecting…") : summary.cameraOn ? t("Live") : t("Camera off")}
-              </LivePill>
-            </div>
-            <p
-              aria-live="polite"
-              className={`mt-3 leading-tight font-black ${simple ? "text-5xl sm:text-6xl" : "text-3xl sm:text-4xl"}`}
-            >
-              <span key={latest?.id ?? "none"} className="block animate-pop">
-                {latest ? headline(summary, now, clock, t) : circle ? t("No news yet") : t("Loading…")}
-              </span>
-            </p>
-            {summary.mood === "alert" && (
-              <p className={`mt-4 font-bold ${simple ? "text-3xl" : "text-xl"}`}>
-                {t("The phone thinks someone may have fallen. Please call or visit to check they are okay.")}{" "}
-                {t("The Call buttons are just below.")}
-              </p>
-            )}
-            {summary.mood === "alert" && circle && (
-              <button
-                type="button"
-                onClick={() => setLiveAsk((n) => n + 1)}
-                className={`${buttonVariants.inverse} mt-4 ${simple ? "text-2xl" : ""}`}
+          {/* Laptops: live video on the left, "Right now" and the Call buttons on the right.
+              Phones: one column, with the Call buttons straight under "Right now" (the fall
+              alert says they're "just below"). */}
+          <div className={`grid gap-8 ${simple ? "" : "lg:grid-cols-5 lg:items-start"}`}>
+            <div className={`flex min-w-0 flex-col gap-8 ${simple ? "" : "lg:order-2 lg:col-span-2"}`}>
+              <section
+                aria-labelledby="now-title"
+                className={`rounded-[32px] p-6 shadow-lift transition-colors duration-500 sm:p-8 ${moodStyles[summary.mood]} ${summary.mood === "alert" ? "animate-shake" : ""}`}
               >
-                {t("Watch live now")}
-              </button>
-            )}
-            {latest && (
-              <div className="mt-5">
-                <ReadAloudButton text={spokenStatus(summary, who, spokenClock(lang, clock), t)} big={simple} />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 id="now-title" className="text-xl font-extrabold">
+                    {t("Right now")}
+                  </h2>
+                  {/* "Live" only while the camera is really watching, not just while this page is connected. */}
+                  <LivePill off={live && !summary.cameraOn}>
+                    {!live ? t("Connecting…") : summary.cameraOn ? t("Live") : t("Camera off")}
+                  </LivePill>
+                </div>
+                <p
+                  aria-live="polite"
+                  className={`mt-3 leading-tight font-black ${simple ? "text-5xl sm:text-6xl" : "text-3xl sm:text-4xl"}`}
+                >
+                  <span key={latest?.id ?? "none"} className="block animate-pop">
+                    {latest ? headline(summary, now, clock, t) : circle ? t("No news yet") : t("Loading…")}
+                  </span>
+                </p>
+                {summary.mood === "alert" && (
+                  <p className={`mt-4 font-bold ${simple ? "text-3xl" : "text-xl"}`}>
+                    {t("The phone thinks someone may have fallen. Please call or visit to check they are okay.")}{" "}
+                    {t("The Call buttons are just below.")}
+                  </p>
+                )}
+                {summary.mood === "alert" && circle && (
+                  <button
+                    type="button"
+                    onClick={() => setLiveAsk((n) => n + 1)}
+                    className={`${buttonVariants.inverse} mt-4 ${simple ? "text-2xl" : ""}`}
+                  >
+                    {t("Watch live now")}
+                  </button>
+                )}
+                {latest && (
+                  <div className="mt-5">
+                    <ReadAloudButton text={spokenStatus(summary, who, spokenClock(lang, clock), t)} big={simple} />
+                  </div>
+                )}
+                {!simple && latest && canCheckOn(latest) && (
+                  <div className="mt-4">
+                    <CheckingOnIt
+                      names={checking.whoIsChecking(latest.id)}
+                      mine={checking.isMine(latest.id)}
+                      busy={checking.isBusy(latest.id)}
+                      message={checking.messageFor(latest.id)}
+                      onCheck={() => checking.check(latest.id)}
+                    />
+                  </div>
+                )}
+                {summary.phoneSilent && summary.lastHeard && (
+                  <p className="mt-4 text-xl font-bold">
+                    {t("The phone last checked in {when}.", { when: timeAgo(summary.lastHeard.created_at, now, t) })}{" "}
+                    {t('Check that it is switched on, charging, and showing the "Camera on" sign.')}
+                  </p>
+                )}
+                {!simple && !latest && circle && (
+                  <p className="mt-4 text-xl">
+                    {t("Stand a phone on a table, sign in on it with this account, open")}{" "}
+                    <Link to="/tracker" className="font-bold text-brand underline">
+                      {t("Phone camera")}
+                    </Link>{" "}
+                    {t('and press "Start watching". News will appear here by itself.')}
+                  </p>
+                )}
+                <p className={`mt-4 font-bold ${simple ? "text-2xl" : "text-lg"}`}>
+                  {live ? t("This page updates by itself.") : t("Connecting for live updates…")}
+                </p>
+              </section>
+
+              {/* Call buttons stay in simple view too: they matter most. */}
+              <CallCard userId={userId} />
+            </div>
+            {/* Live video stays in simple view too: seeing them matters most after the news itself. */}
+            {circle && (
+              <div className={`min-w-0 ${simple ? "" : "lg:order-1 lg:col-span-3"}`}>
+                <LiveView circleId={circle.id} userId={userId} cameraOn={summary.cameraOn} startSignal={liveAsk} big={simple} />
               </div>
             )}
-            {!simple && latest && canCheckOn(latest) && (
-              <div className="mt-4">
-                <CheckingOnIt
-                  names={checking.whoIsChecking(latest.id)}
-                  mine={checking.isMine(latest.id)}
-                  busy={checking.isBusy(latest.id)}
-                  message={checking.messageFor(latest.id)}
-                  onCheck={() => checking.check(latest.id)}
-                />
-              </div>
-            )}
-            {summary.phoneSilent && summary.lastHeard && (
-              <p className="mt-4 text-xl font-bold">
-                {t("The phone last checked in {when}.", { when: timeAgo(summary.lastHeard.created_at, now, t) })}{" "}
-                {t('Check that it is switched on, charging, and showing the "Camera on" sign.')}
-              </p>
-            )}
-            {!simple && !latest && circle && (
-              <p className="mt-4 text-xl">
-                {t("Stand a phone on a table, sign in on it with this account, open")}{" "}
-                <Link to="/tracker" className="font-bold text-brand underline">
-                  {t("Phone camera")}
-                </Link>{" "}
-                {t('and press "Start watching". News will appear here by itself.')}
-              </p>
-            )}
-            <p className={`mt-4 font-bold ${simple ? "text-2xl" : "text-lg"}`}>
-              {live ? t("This page updates by itself.") : t("Connecting for live updates…")}
-            </p>
-          </section>
+          </div>
 
-          {/* Live video stays in simple view too: seeing them matters most after the news itself. */}
-          {circle && (
-            <LiveView circleId={circle.id} userId={userId} cameraOn={summary.cameraOn} startSignal={liveAsk} big={simple} />
-          )}
+          {!simple && circle && <QuickTiles picture={picture} now={now} />}
 
-          <SpokenAlertsSwitch on={spokenOn} needsTap={spoken.needsTap} note={spoken.note} onChange={setSpokenOn} onWake={spoken.turnedOn} />
+          {!simple && circle && <TodaySoFar lines={day.lines} hasNews={day.hasNews} fallLine={day.fallLine} spoken={daySpoken} picture={picture} />}
 
-          {/* Call buttons stay in simple view too: they matter most. */}
-          <CallCard userId={userId} />
-
-          {!simple && circle && <TodaySoFar lines={day.lines} hasNews={day.hasNews} fallLine={day.fallLine} spoken={daySpoken} />}
-
-          {!simple && summary.timeline.length > 0 && (
-            <section aria-labelledby="timeline-title">
-              <h2 id="timeline-title" className="text-2xl font-extrabold">
-                {t("Recent news")}
-              </h2>
-              <ol className="mt-4 flex flex-col gap-3">
-                {summary.timeline.map((e) => {
-                  const look = highlightFor(e, alertSettings);
-                  return (
-                    <li
-                      key={e.id}
-                      className={`flex animate-slide-in flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl px-5 py-4 shadow-soft ${look === "highlight" ? "border-[3px] border-alert bg-peach" : "bg-surface"}`}
-                    >
-                      <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full ${dotColour(e.kind)}`} />
-                      <span className="flex-1 text-xl font-bold">
-                        {look === "highlight" && <span className="sr-only">{t("Needs a look:")} </span>}
-                        {whatHappened(e, t)}
-                        {e.kind !== "nobody" && whereInRoom(e.zone) ? ` - ${whereInRoom(e.zone, t)}` : ""}
-                        {look === "quiet" && (
-                          <span className="block text-lg font-bold text-muted">{t("During quiet hours")}</span>
-                        )}
-                      </span>
-                      <span className="text-lg font-bold text-muted">{clock(e.created_at)}</span>
-                      {alertType(e) && (
-                        <div className="flex basis-full flex-wrap items-center gap-3">
-                          <ReadAloudButton text={spokenEvent(e, spokenClock(lang, clock), t)} />
-                          {canCheckOn(e) && (
-                            <CheckingOnIt
-                              names={checking.whoIsChecking(e.id)}
-                              mine={checking.isMine(e.id)}
-                              busy={checking.isBusy(e.id)}
-                              message={checking.messageFor(e.id)}
-                              onCheck={() => checking.check(e.id)}
-                            />
+          <div className={`grid gap-8 ${simple ? "" : "lg:grid-cols-2 lg:items-start"}`}>
+            <div className="flex min-w-0 flex-col gap-8">
+              {!simple && summary.timeline.length === 0 && circle && (
+                <section aria-labelledby="timeline-title" className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
+                  <h2 id="timeline-title" className="text-2xl font-extrabold">
+                    {t("Recent news")}
+                  </h2>
+                  <p className="mt-3 text-xl text-muted">{t("Nothing yet. News from the phone camera will appear here, newest first.")}</p>
+                </section>
+              )}
+              {!simple && summary.timeline.length > 0 && (
+                <section aria-labelledby="timeline-title">
+                  <h2 id="timeline-title" className="text-2xl font-extrabold">
+                    {t("Recent news")}
+                  </h2>
+                  <ol className="mt-4 flex flex-col gap-3">
+                    {summary.timeline.map((e) => {
+                      const look = highlightFor(e, alertSettings);
+                      return (
+                        <li
+                          key={e.id}
+                          className={`flex animate-slide-in flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl px-5 py-4 shadow-soft ${look === "highlight" ? "border-[3px] border-alert bg-peach" : "bg-surface"}`}
+                        >
+                          <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full ${dotColour(e.kind)}`} />
+                          <span className="flex-1 text-xl font-bold">
+                            {look === "highlight" && <span className="sr-only">{t("Needs a look:")} </span>}
+                            {whatHappened(e, t)}
+                            {e.kind !== "nobody" && whereInRoom(e.zone) ? ` - ${whereInRoom(e.zone, t)}` : ""}
+                            {look === "quiet" && (
+                              <span className="block text-lg font-bold text-muted">{t("During quiet hours")}</span>
+                            )}
+                          </span>
+                          <span className="text-lg font-bold text-muted">{clock(e.created_at)}</span>
+                          {alertType(e) && (
+                            <div className="flex basis-full flex-wrap items-center gap-3">
+                              <ReadAloudButton text={spokenEvent(e, spokenClock(lang, clock), t)} />
+                              {canCheckOn(e) && (
+                                <CheckingOnIt
+                                  names={checking.whoIsChecking(e.id)}
+                                  mine={checking.isMine(e.id)}
+                                  busy={checking.isBusy(e.id)}
+                                  message={checking.messageFor(e.id)}
+                                  onCheck={() => checking.check(e.id)}
+                                />
+                              )}
+                            </div>
                           )}
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            </section>
-          )}
-
-          {!simple && <AlertSettingsPanel settings={alertSettings} onChange={setAlertSettings} />}
-
-          {!simple && circle && circle.owner_id === userId && <AddFamily circleId={circle.id} />}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </section>
+              )}
+            </div>
+            <div className="flex min-w-0 flex-col gap-8">
+              <SpokenAlertsSwitch on={spokenOn} needsTap={spoken.needsTap} note={spoken.note} onChange={setSpokenOn} onWake={spoken.turnedOn} />
+              {!simple && <AlertSettingsPanel settings={alertSettings} onChange={setAlertSettings} />}
+              {!simple && circle && circle.owner_id === userId && <AddFamily circleId={circle.id} />}
+            </div>
+          </div>
         </div>
       </section>
     </SiteLayout>
@@ -569,12 +593,15 @@ function TodaySoFar({
   hasNews,
   fallLine,
   spoken,
+  picture,
 }: {
   lines: string[];
   hasNews: boolean;
   fallLine: string | null;
   /** The whole summary as one short spoken update. */
   spoken: string;
+  /** Today as stretches of time, for the coloured strip. */
+  picture: DayPicture;
 }) {
   const { t } = useLanguage();
   return (
@@ -582,6 +609,7 @@ function TodaySoFar({
       <h2 id="today-title" className="text-2xl font-extrabold">
         <Highlight text={t("Today so *far*")} />
       </h2>
+      {picture.hasData && <DayStrip picture={picture} />}
       {hasNews && (
         <div className="mt-4">
           <ReadAloudButton text={spoken} label="Play today's summary" stopLabel="Stop" />

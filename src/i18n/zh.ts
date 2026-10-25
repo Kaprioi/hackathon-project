@@ -645,6 +645,27 @@ const zh: Record<string, string> = {
   "Couldn't start live video. Check the internet and try again.": "无法开始实时视频。请检查网络后再试。",
   "Live video isn't switched on in the database yet (see README: Live video).": "数据库里还没有开启实时视频（见 README：Live video）。",
   "Couldn't connect for live video. Check the internet and try again.": "无法连接实时视频。请检查网络后再试。",
+  // Family page dashboard (src/components/DayPanels.tsx)
+  "Your Account": "您的账户",
+  "Today at a glance": "今天一览",
+  "Moving today": "今天活动时间",
+  "Last moved": "上次活动",
+  "Moving now": "正在活动",
+  "Not yet today": "今天还没有",
+  "Spent most time": "待得最久的地方",
+  "Alerts today": "今天的提醒",
+  "None": "没有",
+  "1 possible fall": "1 次可能摔倒",
+  "{n} possible falls": "{n} 次可能摔倒",
+  "Today: moving {moving}, still {still}, nobody in view {nobody}, camera off {off}.": "今天：活动 {moving}，静止 {still}，没有人 {nobody}，摄像头关闭 {off}。",
+  "Moving": "活动",
+  "Still": "静止",
+  "Now": "现在",
+  "under a minute": "不到一分钟",
+  "{m} min": "{m} 分钟",
+  "{h} h {m} min": "{h} 小时 {m} 分钟",
+  "The phone camera is on.": "手机摄像头已开启。",
+  "Nothing yet. News from the phone camera will appear here, newest first.": "还没有消息。手机摄像头的消息会显示在这里，最新的在最上面。",
 };
 
 export default zh;
