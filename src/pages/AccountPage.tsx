@@ -6,6 +6,7 @@ import { PasswordField, TextField } from "../components/FormFields";
 import Highlight from "../components/Highlight";
 import SiteLayout, { Blobs } from "../components/SiteLayout";
 import { useLanguage } from "../i18n/useLanguage";
+import { shownHomeName } from "../family/homeName";
 import { cleanDisplayName, displayNameProblem, passwordProblems } from "../lib/account";
 import { friendlyError } from "../lib/friendlyError";
 import { supabase } from "../lib/supabase";
@@ -322,7 +323,7 @@ function Circles({ userId }: { userId: string }) {
           <ul className="mt-4 flex flex-col gap-3">
             {rows.map((row, i) => (
               <li key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-cream px-5 py-4">
-                <span className="text-xl font-bold">{row.care_circles?.name ?? t("Care circle")}</span>
+                <span className="text-xl font-bold">{row.care_circles ? shownHomeName(row.care_circles.name, t) : t("Care circle")}</span>
                 <span className="rounded-full bg-lilac px-3 py-1 text-base font-bold text-ink">
                   {row.role === "owner" ? t("Your home") : t("Family member")}
                 </span>

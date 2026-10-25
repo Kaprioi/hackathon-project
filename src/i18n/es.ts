@@ -847,6 +847,13 @@ const es: Record<string, string> = {
   "Show less": "Ver menos",
   // Header link once signed in
   "Your Account": "Su cuenta",
+  // Family page: naming the home
+  "Name your home": "Ponga nombre a su hogar",
+  "Shown at the top of the Family page for everyone, like \"Grandma's home\".": "Se muestra arriba en la Página familiar para todos, por ejemplo \"Casa de la abuela\".",
+  "For example: Grandma's home": "Por ejemplo: Casa de la abuela",
+  "Please type a name for the home.": "Escriba un nombre para el hogar.",
+  "Saved. Everyone in the family sees the new name.": "Guardado. Toda la familia ve el nuevo nombre.",
+  "My care circle": "Mi círculo de cuidado",
 };
 
 export default es;

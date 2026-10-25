@@ -807,6 +807,13 @@ const zh: Record<string, string> = {
   "Show less": "收起",
   // Header link once signed in
   "Your Account": "您的账户",
+  // Family page: naming the home
+  "Name your home": "给您的家起个名字",
+  "Shown at the top of the Family page for everyone, like \"Grandma's home\".": "会显示在家人页面顶部，所有家人都能看到，例如“奶奶家”。",
+  "For example: Grandma's home": "例如：奶奶家",
+  "Please type a name for the home.": "请输入家的名字。",
+  "Saved. Everyone in the family sees the new name.": "已保存。所有家人都会看到新名字。",
+  "My care circle": "我的照护圈",
 };
 
 export default zh;
