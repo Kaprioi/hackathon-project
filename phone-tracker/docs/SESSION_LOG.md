@@ -2,6 +2,13 @@
 
 Newest entry at the top. Add one entry at the end of every session.
 
+## 2026-10-25 — Real emergency calls on the live site, number typed in Settings
+
+- **Found:** on carenest-eight-bay.vercel.app the alert only made a pretend call, and there was nowhere to type a number. The real Twilio call lived only on `tracker-live` (PR #43), never merged; `/api/emergency-call` answered 404 on the live site.
+- **Built (branch `tracker-real-call`, off main at #60):** brought over from `tracker-live` only the Twilio call, its sign-in check, the seizure false-alarm fix and Gemini's look at the picture (not live video or the new family dashboard, which stay in PR #43). New: Settings → Emergency alert → **Emergency contact's phone number** (saved on that phone; `(347) 555-0123` becomes `+13475550123`, 10 digits = US/Canada). The page sends it with each call; the server calls it, with `ALERT_CALL_TO` only as a fallback. Twilio's "unverified" refusal now says how to verify the number.
+- **Checked:** 368 tests pass (6 new), type check and build clean. Not checked in a browser (the Chrome extension wasn't connected).
+- **Still needed for real calls on the live site:** merge the PR, then Kris adds `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` (and `ALERT_PERSON_NAME`, `GEMINI_API_KEY`) in Vercel and redeploys. On the Twilio trial, each number must be verified in Twilio first.
+
 ## 2026-10-24 — Wall fix pushed, phone-friendly page
 
 - **Pushed** the wall-hiding fix to PR #6 with Apple's OK (commit `be55d86`).

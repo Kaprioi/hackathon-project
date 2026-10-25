@@ -137,7 +137,7 @@ test("Twilio refusing (an unverified number on a trial) comes back in words, wit
   const twilio = fakeTwilio(400, { message: "The number +1 555 222 4567 is unverified. Trial accounts cannot call unverified numbers." });
   const r = await handleEmergencyCall(post({ kind: "fall" }), ENV, { fetch: twilio.fetch });
   assert.equal(r.body.result, "failed");
-  assert.match(r.body.error, /unverified/);
+  assert.match(r.body.error, /verified in Twilio/);
   assert.doesNotMatch(r.body.error, /4567/);
   // A call that didn't go through doesn't count toward the 30-second gap: Try again works at once.
   const again = await handleEmergencyCall(post({ kind: "fall" }), ENV, { fetch: fakeTwilio().fetch });
@@ -153,7 +153,7 @@ test("GET tells how the last call went (for Settings), without any numbers", asy
   await handleEmergencyCall(post({ kind: "fall" }), ENV, { fetch: refusing.fetch, now: t0 + 100_000 });
   r = await handleEmergencyCall({ method: "GET" }, ENV, { now: t0 + 100_000 });
   assert.equal(r.body.last.ok, false);
-  assert.match(r.body.last.error, /unverified/);
+  assert.match(r.body.last.error, /verified in Twilio/);
   assert.doesNotMatch(r.body.last.error, /3626/);
 });
 
@@ -235,4 +235,35 @@ test("Twilio fetching the words needs no sign-in", async () => {
   const r = await handleEmergencyCall({ method: "POST", url: "/?say=fall", body: null }, { ...ENV, ...SUPA });
   assert.equal(r.status, 200);
   assert.match(r.xml, /may have fallen/);
+});
+
+test("the number typed on the phone (Settings) is the one called, before the server's own", async () => {
+  const twilio = fakeTwilio();
+  const r = await handleEmergencyCall(post({ kind: "fall", to: "+13475550123" }), ENV, { fetch: twilio.fetch });
+  assert.equal(r.body.result, "sent");
+  assert.equal(twilio.calls[0].form.get("To"), "+13475550123");
+});
+
+test("no ALERT_CALL_TO on the server: still ready, and calls need a number from the phone", async () => {
+  const { ALERT_CALL_TO, ...env } = ENV;
+  const get = await handleEmergencyCall({ method: "GET" }, env);
+  assert.deepEqual(get.body, { ready: true, to: null, problem: null, last: null });
+  const twilio = fakeTwilio();
+  const none = await handleEmergencyCall(post({ kind: "fall" }), env, { fetch: twilio.fetch });
+  assert.equal(none.body.result, "failed");
+  assert.match(none.body.error, /no number to call/i);
+  assert.equal(twilio.calls.length, 0);
+  const typed = await handleEmergencyCall(post({ kind: "test", to: "+13475550123" }), env, { fetch: twilio.fetch });
+  assert.equal(typed.body.result, "sent");
+  assert.equal(twilio.calls[0].form.get("To"), "+13475550123");
+});
+
+test("a number from the phone that isn't in + form: no call, and a clear error", async () => {
+  const twilio = fakeTwilio();
+  for (const to of ["347 555 0123", "+1", "call me", "+0123456789"]) {
+    const r = await handleEmergencyCall(post({ kind: "fall", to }), ENV, { fetch: twilio.fetch });
+    assert.equal(r.body.result, "failed", to);
+    assert.match(r.body.error, /doesn't look right/);
+  }
+  assert.equal(twilio.calls.length, 0);
 });

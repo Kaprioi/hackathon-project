@@ -1,9 +1,10 @@
 // The emergency call, server side. When the tracker page's alert goes off, it asks this to
 // phone the emergency contact; this asks Twilio to make the call. When the contact answers,
 // Twilio fetches what to say from this same address (?say=fall), which trial accounts allow
-// (they refuse the words sent inside the call request). The Twilio keys and the contact's
-// number are server settings (.env.local on the PC running the dev server, or the hosting's
-// environment variables), never in the page.
+// (they refuse the words sent inside the call request). The Twilio keys are server settings
+// (.env.local on the PC running the dev server, or the hosting's environment variables),
+// never in the page. The number to call comes from the page (Settings → Emergency alert, saved
+// on that phone); ALERT_CALL_TO on the server is only used when the page sends none.
 //
 // Runs in two places: Vercel serves this file at /api/emergency-call, and the dev server
 // (vite.config.ts) answers the same address with handleEmergencyCall below.
@@ -13,7 +14,7 @@
 // phone test link goes through Cloudflare, which swaps 502 and 504 answers for its own page.
 //
 // Only people signed in to CareNest can start a call (the page sends their Supabase login
-// token, checked with Supabase), so nobody who finds this address can ring the contact.
+// token, checked with Supabase), so nobody who finds this address can make calls with it.
 // Where the server has no Supabase settings (the PC test link), there are no accounts at
 // all, so calls are allowed there. Twilio fetching the words (?say=) needs no sign-in.
 
@@ -24,7 +25,10 @@ export interface CallEnv {
   TWILIO_AUTH_TOKEN?: string;
   /** The Twilio phone number that makes the call, like +15551234567. */
   TWILIO_FROM?: string;
-  /** Who to call (the emergency contact), like +15557654321. On a trial, it must be verified in Twilio. */
+  /**
+   * Optional: who to call when the page doesn't send a number, like +15557654321. On a Twilio
+   * trial, every number called must be verified in Twilio first.
+   */
   ALERT_CALL_TO?: string;
   /** Who's being watched, for the message ("Grandma"). */
   ALERT_PERSON_NAME?: string;
@@ -71,6 +75,7 @@ function isKind(k: unknown): k is CallKind {
   return k === "fall" || k === "seizure" || k === "test";
 }
 
+/** Ready = the Twilio keys and number are all there. The number to call can come from the page. */
 function isReady(env: CallEnv): boolean {
   return setupProblem(env) === null && !!env.TWILIO_ACCOUNT_SID;
 }
@@ -81,8 +86,18 @@ function setupProblem(env: CallEnv): string | null {
   if (!/^AC\w{32}$/.test(env.TWILIO_ACCOUNT_SID ?? "")) return "TWILIO_ACCOUNT_SID should start with AC and be 34 characters.";
   if (!env.TWILIO_AUTH_TOKEN) return "TWILIO_AUTH_TOKEN is missing.";
   if (!PHONE.test(env.TWILIO_FROM ?? "")) return "TWILIO_FROM should look like +15551234567 (no spaces).";
-  if (!PHONE.test(env.ALERT_CALL_TO ?? "")) return "ALERT_CALL_TO should look like +15551234567 (no spaces).";
+  if (env.ALERT_CALL_TO && !PHONE.test(env.ALERT_CALL_TO)) return "ALERT_CALL_TO should look like +15551234567 (no spaces).";
   return null;
+}
+
+/**
+ * Who this call rings: the number the page sent, or else the server's ALERT_CALL_TO. Null if
+ * there's none; "bad" if the page sent something that isn't a phone number in + form.
+ */
+function numberToCall(body: unknown, env: CallEnv): string | null | "bad" {
+  const sent = (body as { to?: unknown } | null)?.to;
+  if (typeof sent === "string" && sent.trim()) return PHONE.test(sent.trim()) ? sent.trim() : "bad";
+  return env.ALERT_CALL_TO || null;
 }
 
 /**
@@ -169,8 +184,9 @@ export function publicBase(req: CallRequest, env: CallEnv): string | null {
 }
 
 /**
- * GET: is calling set up (the last 4 digits of who it calls, how the last call went)? The
- * digits and the last call only for a signed-in page (`needsSignIn` says when it isn't).
+ * GET: is calling set up (the last 4 digits of the server's fallback number, if any, and how
+ * the last call went)? The digits and the last call only for a signed-in page (`needsSignIn`
+ * says when it isn't). POST's `to` (the number from the page's Settings) wins over the fallback.
  * POST {kind}: make the call (signed in only); the outcome is in `result`: "sent", "off" (not
  * set up: the page shows a pretend call) or "failed" (with `error`, in words).
  * GET or POST ?say=kind: the words for Twilio to say (it asks when the contact answers).
@@ -192,7 +208,8 @@ export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: 
       return { status: 200, body: { ready, to: null, problem: setupProblem(env), last: null, needsSignIn: true } };
     }
     const lastCall = last && { secondsAgo: Math.round((now - last.at) / 1000), kind: last.kind, ok: last.ok, error: last.error };
-    return { status: 200, body: { ready, to: ready ? env.ALERT_CALL_TO!.slice(-4) : null, problem: setupProblem(env), last: lastCall } };
+    const to = ready && env.ALERT_CALL_TO ? env.ALERT_CALL_TO.slice(-4) : null; // the server's fallback number, if any
+    return { status: 200, body: { ready, to, problem: setupProblem(env), last: lastCall } };
   }
   if (req.method !== "POST") return { status: 405, body: { error: "Use GET or POST." } };
 
@@ -200,6 +217,13 @@ export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: 
   if (!isKind(kind)) return { status: 400, body: { error: "Unknown alert kind." } };
   const note = cleanNote((req.body as { note?: unknown } | null)?.note);
   if (!ready) return { status: 200, body: { result: "off", problem: setupProblem(env) } };
+  const to = numberToCall(req.body, env);
+  if (to === "bad") {
+    return { status: 200, body: { result: "failed", error: "The emergency contact's number doesn't look right. Check it in Settings." } };
+  }
+  if (!to) {
+    return { status: 200, body: { result: "failed", error: "There's no number to call. Add the emergency contact's number in Settings." } };
+  }
 
   const signIn = await signInState(req, env, fetchFn);
   if (signIn === "no") {
@@ -210,7 +234,7 @@ export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: 
     return { status: 200, body: { result: "failed", error: "Couldn't check the sign-in with the database. Is the internet on?" } };
   }
 
-  const reply = await callTwilio(kind, note, env, publicBase(req, env), now, fetchFn);
+  const reply = await callTwilio(kind, note, to, env, publicBase(req, env), now, fetchFn);
   const ok = reply.result === "sent";
   last = { at: now, kind, ok, error: reply.error };
   console.log(`[emergency-call] ${kind}: ${ok ? "Twilio is calling" : `didn't go through: ${reply.error}`}`);
@@ -221,6 +245,7 @@ export async function handleEmergencyCall(req: CallRequest, env: CallEnv, opts: 
 async function callTwilio(
   kind: CallKind,
   note: string,
+  to: string,
   env: CallEnv,
   base: string | null,
   now: number,
@@ -250,7 +275,7 @@ async function callTwilio(
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        To: env.ALERT_CALL_TO!,
+        To: to,
         From: env.TWILIO_FROM!,
         // Gemini's sentence rides along in the address Twilio fetches the words from.
         Url: `${base}/api/emergency-call?say=${kind}${note ? `&note=${encodeURIComponent(note)}` : ""}`,
@@ -263,6 +288,13 @@ async function callTwilio(
       message = String(((await res.json()) as { message?: unknown }).message ?? "");
     } catch {
       // not JSON; use the status below
+    }
+    if (/unverified/i.test(message)) {
+      // A free Twilio trial only calls numbers verified in the Twilio console first.
+      return {
+        result: "failed",
+        error: "This number isn't verified in Twilio. On a free trial, add it first: Twilio console → Phone Numbers → Verified Caller IDs.",
+      };
     }
     return { result: "failed", error: hideNumbers(message) || `Twilio said no (status ${res.status}).` };
   } catch {

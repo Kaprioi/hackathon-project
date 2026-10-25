@@ -36,7 +36,7 @@ import { shouldSendInactive, startWatch, watchSaw } from "../family/noMovement.t
 import { unlockVoice } from "../family/voice";
 import { rememberWatching, takeReopened } from "./cameraPhone.ts";
 import type { CallOutcome, CallSetup } from "./call.ts";
-import { callSetup, requestCall } from "./call.ts";
+import { callSetup, phoneForCall, requestCall, showPhone } from "./call.ts";
 import { checkScene, sceneSetup, snapshot } from "./sceneCheck.ts";
 import type { SceneOutcome, SceneSetup } from "./sceneCheck.ts";
 import { Cloud } from "./cloud.ts";
@@ -992,7 +992,8 @@ export default function TrackerPage() {
   const placeCall = useCallback(
     (callStart: number, kind: EmergencyKind, note?: string) => {
       patchAlarm(callStart, { call: "sending", callError: undefined });
-      void loginToken().then((token) => requestCall(kind, token, 15000, note)).then((out: CallOutcome) => {
+      const to = settingsRef.current.contactPhone;
+      void loginToken().then((token) => requestCall(kind, token, 15000, note, to)).then((out: CallOutcome) => {
         if (alarmRef.current?.callStart !== callStart) return; // closed meanwhile
         if (out.result === "off") {
           patchAlarm(callStart, { call: "pretend" });
@@ -1997,7 +1998,13 @@ function SettingsPanel(props: {
       live = false;
     };
   }, []);
-  const callsReady = setup !== null && setup !== "checking" && setup.ready && !setup.needsSignIn;
+  // The number typed in Settings, tidied for Twilio (null if empty or not a phone number).
+  const typedPhone = s.contactPhone.trim();
+  const phone = phoneForCall(typedPhone);
+  const serverReady = setup !== null && setup !== "checking" && setup.ready && !setup.needsSignIn;
+  // Who a call would ring: the typed number, else the server's own one (if it has one).
+  const serverNumber = serverReady && setup.to ? setup.to : null;
+  const callsReady = serverReady && (phone !== null || (!typedPhone && serverNumber !== null));
   // The test buttons go by the screen. On a mirrored picture the screen's left is the camera's right.
   const side = mirrored ? -1 : 1;
 
@@ -2114,6 +2121,26 @@ function SettingsPanel(props: {
                 className="min-h-11 w-full rounded-xl bg-white/90 px-3 text-ink"
               />
             </label>
+            <label className="block space-y-1">
+              <span className="font-semibold">Emergency contact's phone number</span>
+              <input
+                type="tel"
+                inputMode="tel"
+                value={s.contactPhone}
+                maxLength={24}
+                placeholder="(555) 123-4567"
+                autoComplete="off"
+                onChange={(e) => update({ contactPhone: e.target.value })}
+                className="min-h-11 w-full rounded-xl bg-white/90 px-3 text-ink"
+              />
+              <span className="block text-base text-white/90">
+                {!typedPhone
+                  ? "US and Canada numbers as usual; other countries start with + and the country code."
+                  : phone
+                    ? `Calls ${showPhone(phone)}.`
+                    : "That doesn't look like a phone number. Use 10 digits, or + and the country code."}
+              </span>
+            </label>
             <p role="status" className="text-base font-semibold">
               {setup === "checking"
                 ? "Checking whether real calls are set up…"
@@ -2122,10 +2149,16 @@ function SettingsPanel(props: {
                   : setup.needsSignIn
                     ? "Sign in to CareNest on this phone to use real calls (only signed-in accounts can call)."
                     : setup.ready
-                    ? `Real calls are on: it calls the number ending ${setup.to}.`
-                    : setup.problem
-                      ? `Calling is half set up: ${setup.problem}`
-                      : "Real calls aren't set up, so the alert makes a pretend call."}
+                      ? phone
+                        ? `Real calls are on: it calls ${s.contactName.trim() || "the number above"}.`
+                        : typedPhone
+                          ? "Real calls are on, but fix the number above first."
+                          : serverNumber
+                            ? `Real calls are on: with no number above, it calls the site's own number, ending ${serverNumber}.`
+                            : "Real calls are on. Type the number to call above."
+                      : setup.problem
+                        ? `Calling is half set up: ${setup.problem}`
+                        : "Real calls aren't set up on this website yet, so the alert makes a pretend call."}
             </p>
             {setup !== null && setup !== "checking" && setup.last && (
               <p className="text-base text-white/90">
@@ -2137,7 +2170,9 @@ function SettingsPanel(props: {
               disabled={!callsReady || callTest === "sending"}
               onClick={() => {
                 setCallTest("sending");
-                void loginToken().then((token) => requestCall("test", token)).then(setCallTest);
+                void loginToken()
+                  .then((token) => requestCall("test", token, 15000, undefined, s.contactPhone))
+                  .then(setCallTest);
               }}
             >
               Test the call (rings them now)
@@ -2154,8 +2189,9 @@ function SettingsPanel(props: {
               </p>
             )}
             <p className="text-base text-white/90">
-              The number and the Twilio keys are set on the server (for the test link: the .env.local file on the PC
-              running it), never on this phone. "Test the alert" calls too, once its countdown ends.
+              The number is saved on this phone only. The Twilio keys that make the call are set on the website's server
+              (for the test link: the .env.local file on the PC running it). On a free Twilio trial, the number must be
+              verified in Twilio first. "Test the alert" calls too, once its countdown ends.
             </p>
           </fieldset>
 

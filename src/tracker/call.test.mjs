@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { callSetup, requestCall } from "./call.ts";
+import { callSetup, phoneForCall, requestCall, showPhone } from "./call.ts";
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -75,4 +75,36 @@ test("the login token goes along when signed in (the server only lets signed-in 
 test("a server that wants a sign-in says so", async (t) => {
   t.mock.method(globalThis, "fetch", async () => json({ ready: true, to: null, problem: null, last: null, needsSignIn: true }));
   assert.equal((await callSetup()).needsSignIn, true);
+});
+
+test("a typed phone number becomes Twilio's + form; 10 digits count as US/Canada", () => {
+  assert.equal(phoneForCall("(347) 555-0123"), "+13475550123");
+  assert.equal(phoneForCall("347.555.0123"), "+13475550123");
+  assert.equal(phoneForCall("1 347 555 0123"), "+13475550123");
+  assert.equal(phoneForCall(" +1 347-555-0123 "), "+13475550123");
+  assert.equal(phoneForCall("+44 7700 900123"), "+447700900123");
+  for (const bad of ["", "   ", "555-0123", "347 555 01234", "+0 123 456 789", "call 3475550123", "+1+3475550123", "+12"]) {
+    assert.equal(phoneForCall(bad), null, bad);
+  }
+  assert.equal(showPhone("+13475550123"), "+1 347 555 0123");
+  assert.equal(showPhone("+447700900123"), "+447700900123");
+});
+
+test("a call request sends the number typed in Settings, tidied; none typed = none sent", async (t) => {
+  const bodies = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    bodies.push(JSON.parse(init.body));
+    return json({ result: "sent" });
+  });
+  assert.deepEqual(await requestCall("fall", null, 15000, "A person is on the floor.", "(347) 555-0123"), { result: "sent" });
+  assert.deepEqual(await requestCall("test", null, 15000, undefined, ""), { result: "sent" });
+  assert.deepEqual(bodies, [{ kind: "fall", note: "A person is on the floor.", to: "+13475550123" }, { kind: "test" }]);
+});
+
+test("a typed number that isn't a phone number: failed at once, without asking the server", async (t) => {
+  const fetch = t.mock.method(globalThis, "fetch", async () => json({ result: "sent" }));
+  const out = await requestCall("fall", null, 15000, undefined, "555-01");
+  assert.equal(out.result, "failed");
+  assert.match(out.error, /doesn't look right/);
+  assert.equal(fetch.mock.callCount(), 0);
 });

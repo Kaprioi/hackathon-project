@@ -136,9 +136,14 @@ export interface Settings {
   cameraOnStand: "auto" | "yes" | "no";
   /**
    * Who the emergency alert calls, shown on screen (like "Sam"). Empty = "your emergency
-   * contact". Their number is a server setting (api/emergency-call.ts), not saved here.
+   * contact".
    */
   contactName: string;
+  /**
+   * Their phone number, as typed (call.ts phoneForCall tidies it). Sent to the server with each
+   * call. Empty = the server's own number (ALERT_CALL_TO), if it has one.
+   */
+  contactPhone: string;
   /**
    * When an alert's countdown runs out, send one still picture to Google Gemini (through the
    * server, api/scene-check.ts) and read its description out in the call. Off = no picture is
@@ -161,6 +166,7 @@ export const DEFAULT_SETTINGS: Settings = {
   emergency: true,
   cameraOnStand: "yes",
   contactName: "",
+  contactPhone: "",
   gemini: true,
 };
 
