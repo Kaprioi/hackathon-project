@@ -841,6 +841,12 @@ const es: Record<string, string> = {
   "Reminder: it's time for your medicine.": "Recordatorio: es la hora de su medicina.",
   "Reminder: it's time to eat.": "Recordatorio: es la hora de comer.",
   "Reminder: it's time for a drink of water.": "Recordatorio: es la hora de beber agua.",
+  // Family page: Settings section and Recent news
+  "Alerts and family": "Avisos y familia",
+  "Show {count} more": "Ver {count} más",
+  "Show less": "Ver menos",
+  // Header link once signed in
+  "Your Account": "Su cuenta",
 };
 
 export default es;

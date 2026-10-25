@@ -33,6 +33,10 @@ export default function PushAlerts({ circleId, userId, who }: { circleId: string
       "Notifications are blocked for this site. To get alerts, allow notifications for CareNest in your browser or phone settings, then reload this page.",
   };
 
+  // Not set up on this site yet (no notification key in Vercel): hide the card
+  // rather than show a feature that can't work. See README -> "Phone alerts".
+  if (state === "not-set-up") return null;
+
   return (
     <section aria-labelledby="push-title" className="rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
       <h2 id="push-title" className="text-2xl font-extrabold">

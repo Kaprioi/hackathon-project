@@ -28,6 +28,7 @@ import {
 import { spokenClock } from "../family/readAloud";
 import { useCheckingOnIt } from "../family/useCheckingOnIt";
 import { useSpokenAlerts } from "../family/useSpokenAlerts";
+import { VOICE_ON } from "../family/voice";
 import { cleanNoMovementSettings, noMovementLine, spokenNoMovement, type NoMovementSettings } from "../family/noMovement";
 import { useNoMovement } from "../family/useNoMovement";
 import NoMovementSettingsFields from "../components/NoMovementSettings";
@@ -45,6 +46,8 @@ import PushAlerts from "../components/PushAlerts";
 
 const EVENT_COLUMNS = "id, kind, zone, posture, created_at";
 const HOW_MANY = 50;
+// How many Recent news items show before "Show more".
+const NEWS_SHOWN = 5;
 // Today's news for "Today so far" (heartbeats left out, so this is a whole day).
 const TODAY_MAX = 1000;
 
@@ -155,6 +158,8 @@ function Family({
   const [problem, setProblem] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  // Recent news shows the newest few; "Show more" opens the rest.
+  const [allNews, setAllNews] = useState(false);
   // Simple view: only the big status and read aloud, in extra-large text.
   const [simple, setSimpleState] = useState(() => readSaved(SIMPLE_VIEW_KEY, (v) => v === true));
   const [alertSettings, setAlertSettingsState] = useState(() => readSaved(alertSettingsKey(userId), cleanAlertSettings));
@@ -170,7 +175,7 @@ function Family({
   // Spoken alerts: say new alerts out loud by themselves (off until switched on).
   const [spokenOn, setSpokenOnState] = useState(() => readSaved(SPOKEN_ALERTS_KEY, cleanSpokenAlerts));
   const spoken = useSpokenAlerts({
-    on: spokenOn,
+    on: spokenOn && VOICE_ON,
     settings: alertSettings,
     words: (e, again, lang, t) =>
       spokenAlert(e, whoToSpeakOf(savedName, t), spokenClock(lang, (iso) => localTime(Date.parse(iso), t)), t, again),
@@ -369,9 +374,6 @@ function Family({
               <Link to="/report" className={smallButton}>
                 {t("This week's report")}
               </Link>
-              <Link to="/help" className={smallButton}>
-                {t("Need help?")}
-              </Link>
               <Link to="/account" className={smallButton}>
                 {t("Your account")}
               </Link>
@@ -464,13 +466,6 @@ function Family({
             </p>
           </section>
 
-          <SpokenAlertsSwitch on={spokenOn} needsTap={spoken.needsTap} note={spoken.note} onChange={setSpokenOn} onWake={spoken.turnedOn} />
-
-          {/* Phone notifications, so family hear about a fall even with this page closed. */}
-          {!simple && circle && (
-            <PushAlerts circleId={circle.id} userId={userId} who={typeof savedName === "string" ? savedName.trim() : ""} />
-          )}
-
           {/* Call buttons stay in simple view too: they matter most. */}
           <CallCard userId={userId} />
 
@@ -484,7 +479,7 @@ function Family({
                 {t("Recent news")}
               </h2>
               <ol className="mt-4 flex flex-col gap-3">
-                {summary.timeline.map((e) => {
+                {summary.timeline.slice(0, allNews ? undefined : NEWS_SHOWN).map((e) => {
                   const look = highlightFor(e, alertSettings);
                   return (
                     <li
@@ -519,18 +514,42 @@ function Family({
                   );
                 })}
               </ol>
+              {summary.timeline.length > NEWS_SHOWN && (
+                <button type="button" onClick={() => setAllNews(!allNews)} className={`${smallButton} mt-4`}>
+                  {allNews ? t("Show less") : t("Show {count} more", { count: summary.timeline.length - NEWS_SHOWN })}
+                </button>
+              )}
             </section>
           )}
 
           {!simple && circle && <FamilyNotes circleId={circle.id} userId={userId} now={now} />}
 
+          {/* Everything you set once, folded away so the news stays at the top. */}
           {!simple && (
-            <AlertSettingsPanel settings={alertSettings} onChange={setAlertSettings}>
-              <NoMovementSettingsFields settings={noMovementSettings} onChange={setNoMovementSettings} />
-            </AlertSettingsPanel>
+            <details className="group rounded-[32px] bg-surface p-6 shadow-soft sm:p-8">
+              <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4">
+                <span>
+                  <span className="block text-2xl font-extrabold">{t("Settings")}</span>
+                  <span className="block text-lg font-bold text-muted">{t("Alerts and family")}</span>
+                </span>
+                <span aria-hidden="true" className="text-2xl text-brand transition-transform group-open:rotate-180">
+                  ▾
+                </span>
+              </summary>
+              {/* The cards inside sit flat in this one panel, split by thin lines. */}
+              <div className="mt-6 flex flex-col gap-8 border-t-[3px] border-lilac pt-6 [&>*+*]:border-t-[3px] [&>*+*]:border-lilac [&>*+*]:pt-8 [&>section]:rounded-none [&>section]:bg-transparent [&>section]:p-0 [&>section]:shadow-none sm:[&>section]:p-0">
+                <SpokenAlertsSwitch on={spokenOn} needsTap={spoken.needsTap} note={spoken.note} onChange={setSpokenOn} onWake={spoken.turnedOn} />
+                {/* Phone notifications, so family hear about a fall even with this page closed. */}
+                {circle && (
+                  <PushAlerts circleId={circle.id} userId={userId} who={typeof savedName === "string" ? savedName.trim() : ""} />
+                )}
+                <AlertSettingsPanel settings={alertSettings} onChange={setAlertSettings} plain>
+                  <NoMovementSettingsFields settings={noMovementSettings} onChange={setNoMovementSettings} />
+                </AlertSettingsPanel>
+                {circle && circle.owner_id === userId && <AddFamily circleId={circle.id} />}
+              </div>
+            </details>
           )}
-
-          {!simple && circle && circle.owner_id === userId && <AddFamily circleId={circle.id} />}
         </div>
       </section>
     </SiteLayout>

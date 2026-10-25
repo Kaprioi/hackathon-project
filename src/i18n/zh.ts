@@ -801,6 +801,12 @@ const zh: Record<string, string> = {
   "Reminder: it's time for your medicine.": "提醒：该吃药了。",
   "Reminder: it's time to eat.": "提醒：该吃饭了。",
   "Reminder: it's time for a drink of water.": "提醒：该喝水了。",
+  // Family page: Settings section and Recent news
+  "Alerts and family": "提醒和家人",
+  "Show {count} more": "再显示 {count} 条",
+  "Show less": "收起",
+  // Header link once signed in
+  "Your Account": "您的账户",
 };
 
 export default zh;

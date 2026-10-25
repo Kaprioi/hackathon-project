@@ -15,6 +15,7 @@ import {
   UpdatesIcon,
 } from "../components/illustrations";
 import { useLanguage } from "../i18n/useLanguage";
+import { useSession } from "../lib/useSession";
 import { motionIsReduced } from "../lib/displaySettings";
 import { checkInviteName, initial, MAX_NAME_LENGTH } from "../lib/inviteName";
 
@@ -22,19 +23,23 @@ import { checkInviteName, initial, MAX_NAME_LENGTH } from "../lib/inviteName";
 // "Get started" opens the login page on its "Create your account" form.
 const GET_STARTED = "/login?mode=sign-up";
 const LOG_IN = "/login";
+const FAMILY_PAGE = "/dashboard";
+const CAMERA = "/tracker";
 
 export default function HomePage() {
+  // Signed in: the buttons go into the app instead of "Get started" / "Sign in".
+  const signedIn = Boolean(useSession());
   return (
     <SiteLayout>
-      <Hero />
+      <Hero signedIn={signedIn} />
       <Ribbon />
       <HowItWorks />
       <Features />
       <Demo />
-      <Family />
+      <Family signedIn={signedIn} />
       <WhoWeAre />
       <Questions />
-      <CallToAction />
+      <CallToAction signedIn={signedIn} />
     </SiteLayout>
   );
 }
@@ -50,7 +55,7 @@ const heroCards = [
   { title: "Mum is resting", sub: "Sitting still" },
 ];
 
-function Hero() {
+function Hero({ signedIn }: { signedIn: boolean }) {
   const { t } = useLanguage();
   const [card, setCard] = useState(0);
   const [time, setTime] = useState("10:38");
@@ -89,7 +94,7 @@ function Hero() {
             </p>
           </Reveal>
           <Reveal delay={100}>
-            <h1 id="hero-title" className="mt-5 text-4xl font-extrabold leading-tight">
+            <h1 id="hero-title" className="mt-6 text-5xl font-black leading-[1.05] tracking-tight md:text-6xl">
               <Highlight
                 text={t("Stay close to the people you love, *even from far away*.")}
                 wrap={(part) => <mark className="highlight-sweep bg-transparent px-1 text-inherit">{part}</mark>}
@@ -97,7 +102,7 @@ function Hero() {
             </h1>
           </Reveal>
           <Reveal delay={200}>
-            <p className="mt-6 max-w-[36ch] text-xl text-muted">
+            <p className="mt-6 max-w-[42ch] text-xl leading-relaxed text-muted">
               {t(
                 "CareNest turns a spare phone on the table into a gentle helper. It notices movement in the room, and family can see on their own phone that all is well — so Grandma can stay independent at home.",
               )}
@@ -105,11 +110,11 @@ function Hero() {
           </Reveal>
           <Reveal delay={300}>
             <div className="mt-8 flex flex-wrap gap-4">
-              <ButtonLink to={GET_STARTED} arrow>
-                {t("Get started")}
+              <ButtonLink to={signedIn ? FAMILY_PAGE : GET_STARTED} arrow>
+                {signedIn ? t("Go to the Family page") : t("Get started")}
               </ButtonLink>
-              <ButtonLink to={LOG_IN} variant="outline">
-                {t("Sign in")}
+              <ButtonLink to={signedIn ? CAMERA : LOG_IN} variant="outline">
+                {signedIn ? t("Phone camera") : t("Sign in")}
               </ButtonLink>
             </div>
           </Reveal>
@@ -625,7 +630,7 @@ function Demo() {
 // The colours of the little circles, in turn: one for each person typed in.
 const circleColours = ["bg-coral text-ink", "bg-brand text-on-brand", "bg-leaf text-on-brand", "bg-sun text-ink"];
 
-function Family() {
+function Family({ signedIn }: { signedIn: boolean }) {
   const { t } = useLanguage();
   const id = useId();
   // Pretend only: these names stay on this page and are never sent anywhere.
@@ -750,8 +755,8 @@ function Family() {
             </div>
           </Reveal>
           <Reveal delay={200}>
-            <ButtonLink to={GET_STARTED} arrow className="mt-8">
-              {t("Get started")}
+            <ButtonLink to={signedIn ? FAMILY_PAGE : GET_STARTED} arrow className="mt-8">
+              {signedIn ? t("Go to the Family page") : t("Get started")}
             </ButtonLink>
           </Reveal>
         </div>
@@ -871,7 +876,7 @@ const risingHearts = [
   { left: "90%", delay: "-5.5s", size: 24 },
 ];
 
-function CallToAction() {
+function CallToAction({ signedIn }: { signedIn: boolean }) {
   const { t } = useLanguage();
   return (
     <section className="px-6 pb-20" aria-labelledby="cta-title">
@@ -897,11 +902,11 @@ function CallToAction() {
             </h2>
             <p className="mt-3 text-xl">{t("Make an account, stand a phone on the table and press “Start watching”.")}</p>
             <div className="mt-8 flex flex-wrap justify-center gap-4">
-              <ButtonLink to={GET_STARTED} variant="inverse" arrow>
-                {t("Get started")}
+              <ButtonLink to={signedIn ? FAMILY_PAGE : GET_STARTED} variant="inverse" arrow>
+                {signedIn ? t("Go to the Family page") : t("Get started")}
               </ButtonLink>
-              <ButtonLink to={LOG_IN} variant="inverse-outline">
-                {t("Sign in")}
+              <ButtonLink to={signedIn ? CAMERA : LOG_IN} variant="inverse-outline">
+                {signedIn ? t("Phone camera") : t("Sign in")}
               </ButtonLink>
             </div>
           </div>

@@ -131,6 +131,8 @@ The app is a [Vite](https://vite.dev) + React + TypeScript site styled with Tail
 
    Then open the address it prints (usually http://localhost:5173).
 
+   **Switched off for now:** the team stopped using ElevenLabs, so `VOICE_ON` in `src/family/voice.ts` is `false`. That hides the "Read aloud" buttons and the spoken alerts switch, and reminders on the camera phone only chime. Set it to `true` to bring them back.
+
    The "Read aloud" buttons and spoken alerts speak with our ElevenLabs voices through the small server function in `api/tts.ts`. It needs these Vercel environment variables (already set for production, preview and development): `ELEVENLABS_API_KEY` (secret, stays on the server), and the voice IDs `ELEVENLABS_VOICE_EN`, `ELEVENLABS_VOICE_ES` and `ELEVENLABS_VOICE_ZH`. It also reads the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as the site, because only logged-in people can use it (at most 30 readings every 10 minutes each, spoken alerts included). Everything said out loud uses an ElevenLabs voice (the browser's own voices are never used); if that voice can't be reached, the page just says "Read aloud isn't available right now". `npm run dev` doesn't run that function, so locally you'll see that note. To hear the ElevenLabs voices on your computer, run `vercel dev` (after `vercel link`) instead of `npm run dev`.
 
    Phone alerts ("Get alerts on this device" on the family page) need a few more Vercel environment variables; see "Phone alerts" below. Without them the button just says alerts aren't set up yet.
@@ -188,6 +190,8 @@ Linked from the family page ("This week's report") and the footer; like the fami
 The sums are in `src/family/weeklyReport.ts` and are tested by `npm test`.
 
 ## Phone alerts
+
+Until the notification keys below are added in Vercel, the family page hides this card completely.
 
 Family can press **Get alerts on this device** on the family page. After they allow notifications, that phone or computer gets a notification like "Possible fall at Mum's, 3:42 pm" whenever the phone camera sees a possible fall, even when the family page is closed. Tapping it opens the family page. They can also tick "Also tell me when the phone camera stops watching" and "Also tell me when nobody has moved for a while during the day" (the phone camera's "No movement for a while" news), and press **Send a test alert** to check it works.
 

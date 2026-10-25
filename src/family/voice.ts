@@ -7,6 +7,13 @@
 import type { Lang } from "../i18n/translate.ts";
 import { speechParts } from "./readAloud.ts";
 
+/**
+ * The ElevenLabs voice is switched off for now (the team stopped using it), so
+ * Read aloud buttons and the spoken alerts switch are hidden, and reminders on
+ * the camera phone only chime. Set to true to bring it all back.
+ */
+export const VOICE_ON = false;
+
 /** How a reading ended: it finished, someone stopped it, or the voice couldn't be reached or played. */
 export type Outcome = "ended" | "stopped" | "failed";
 
