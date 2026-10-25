@@ -6,7 +6,8 @@
 // Bluetooth can only do one thing at a time, so every write goes through one
 // queue. Moves are throttled to 20 per second and only the newest one is sent.
 
-import { BLE } from "./config.ts";
+import { BLE, RADAR } from "./config.ts";
+import type { RadarEnergy } from "./radarGuide.ts";
 
 // Just enough of the Web Bluetooth types for this file (TypeScript doesn't ship them).
 interface BleCharacteristic extends EventTarget {
@@ -42,9 +43,10 @@ function bluetooth(): BleBluetooth | undefined {
 
 export type StandStatus = "unsupported" | "disconnected" | "connecting" | "connected";
 
-const MOVE_EVERY_MS = 50; // at most 20 moves a second
+const MOVE_EVERY_MS = 25; // at most 40 moves a second (the page moves a walking person's aim on between camera frames)
 // While the camera is steering, repeat the aim this often even if it hasn't changed.
-// A two-radar (SightLine) stand lets its radars steer once these stop arriving.
+// (Older SightLine firmware let its radars steer once these stopped for 700 ms; the
+// current one holds still while the page is connected.)
 const MOVE_REPEAT_MS = 250;
 const MIST_REPEAT_MS = 1000; // repeat the mist setting every second; the firmware turns mist off after 3 s of silence
 
@@ -52,6 +54,8 @@ export class Stand {
   status: StandStatus = bluetooth() ? "disconnected" : "unsupported";
   /** Radar reading: true = someone there, false = nobody, null = unknown. */
   radar: boolean | null = null;
+  /** How loud the radar(s) hear someone (SightLine stand), or null if the stand only says yes/no. */
+  energy: RadarEnergy | null = null;
   /** Where the stand says it's pointing (only stands that report it, like SightLine), else null. */
   reported: { pan: number; tilt: number } | null = null;
   /** False if the connected firmware is too old to have the mist switch. */
@@ -60,6 +64,7 @@ export class Stand {
   onChange: () => void = () => {};
   lastError = "";
 
+  private shownEnergy: RadarEnergy | null = null;
   private device: BleDevice | null = null;
   private moveChar: BleCharacteristic | null = null;
   private mistChar: BleCharacteristic | null = null;
@@ -115,7 +120,7 @@ export class Stand {
     this.pump();
   }
 
-  /** Stop steering. The stand stays put, or (on a two-radar stand) its radars take over. */
+  /** Stop steering. The stand stays put (older SightLine firmware: its radars take over). */
   releaseControl(): void {
     this.wantMove = null;
   }
@@ -156,8 +161,9 @@ export class Stand {
   }
 
   /**
-   * Reads "1" or "0" (one-radar Phone Tracker stand), or
-   * "1,42,13,95.0,90.0" = presence, left and right radar strength, pan, tilt (two-radar SightLine stand).
+   * Reads "1" or "0" (old one-radar Phone Tracker stand), or
+   * "1,42,13,95.0,90.0" = presence, left and right radar loudness, pan, tilt (SightLine stand),
+   * maybe followed by ",1" or ",2": how many radars it has (else RADAR.count in config.ts).
    */
   private readRadar(v: DataView): void {
     const parts = new TextDecoder().decode(v).trim().split(",");
@@ -166,9 +172,19 @@ export class Stand {
       const pan = Number(parts[3]);
       const tilt = Number(parts[4]);
       if (Number.isFinite(pan) && Number.isFinite(tilt)) this.reported = { pan, tilt };
+      const left = Number(parts[1]);
+      const right = Number(parts[2]);
+      const radars = parts[5] === "1" || parts[5] === "2" ? (Number(parts[5]) as 1 | 2) : RADAR.count;
+      this.energy = Number.isFinite(left) && Number.isFinite(right) ? { left, right, radars } : null;
     }
-    if (present !== this.radar) {
+    // Tell the page when presence changes, or the loudness changes enough to show.
+    const e = this.energy;
+    const shown = this.shownEnergy;
+    const moved =
+      !!e !== !!shown || (!!e && !!shown && (Math.abs(e.left - shown.left) >= 5 || Math.abs(e.right - shown.right) >= 5));
+    if (present !== this.radar || moved) {
       this.radar = present;
+      this.shownEnergy = e;
       this.onChange();
     }
   }
@@ -177,6 +193,7 @@ export class Stand {
     this.moveChar = null;
     this.mistChar = null;
     this.radar = null;
+    this.energy = null;
     this.reported = null;
     if (this.userDisconnect || !this.device) {
       this.stopHeartbeat();
@@ -229,7 +246,7 @@ export class Stand {
 
     const m = this.wantMove;
     const changed =
-      m && (!this.sentMove || Math.abs(m.pan - this.sentMove.pan) > 0.3 || Math.abs(m.tilt - this.sentMove.tilt) > 0.3);
+      m && (!this.sentMove || Math.abs(m.pan - this.sentMove.pan) > 0.2 || Math.abs(m.tilt - this.sentMove.tilt) > 0.2);
     const repeatDue = m && now - this.lastMoveAt > MOVE_REPEAT_MS;
     if (m && (changed || repeatDue) && this.moveChar) {
       const wait = MOVE_EVERY_MS - (now - this.lastMoveAt);
