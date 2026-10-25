@@ -35,11 +35,10 @@ SBUHacks ends **Sunday Oct 25, 4 PM Eastern** (MLH lists 2026-10-25 20:00 UTC). 
    live site). Because Supabase is set, the test link asks for sign-in like the real site. Saving this file
    restarts the dev server for a moment.
 
-## Uncommitted right now (branch `live-video`)
+## Committed state
 
-- **Seizure false-alarm fix** (`src/tracker/emergency.ts`, `config.ts`, 5 new tests in `emergency.test.mjs`). See below.
-- **This handoff** and a `SESSION_LOG.md` entry.
-Apple was asked whether to commit them; check `git status` and ask if they're still uncommitted.
+Everything is committed and pushed on `live-video` (last commit: the seizure false-alarm fix + this handoff,
+`08aa9f3`). Nothing was left uncommitted. The seizure fix is live on the test link but not yet retested on the phone.
 
 ## Pull requests and branches
 
