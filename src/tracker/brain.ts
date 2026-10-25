@@ -447,14 +447,11 @@ export class Brain {
     // Flipped up/down by itself a moment ago, and now the camera sits at the end of the up/down
     // range with them clearly further from the middle of the picture than at the flip (where
     // it last saw them)? That flip was wrong (tiltCheck.ts): take it back.
-    if (
-      this.cameraOnHead &&
-      this.mode === "tracking" &&
-      this.lastBox &&
-      this.tiltPinned(frameIn.camera) &&
-      this.tiltCheck.pinned(frameIn.t, aimPointY(this.lastBox, this.settings.aimHeight))
-    ) {
-      this.flipTilt("Up and down is back the way it was: flipping it sent the stand as far up or down as it goes, away from you.");
+    if (this.cameraOnHead && this.mode === "tracking" && this.lastBox && this.tiltPinned(frameIn.camera)) {
+      if (this.tiltCheck.pinned(frameIn.t, aimPointY(this.lastBox, this.settings.aimHeight)))
+        this.flipTilt("Up and down is back the way it was: flipping it sent the stand as far up or down as it goes, away from you.");
+    } else {
+      this.tiltCheck.notPinned();
     }
     // After a long pause (page hidden, phone locked) people may have moved: don't carry notes over.
     if (frameIn.t - this.prevT > TUNING.longGapMs) {

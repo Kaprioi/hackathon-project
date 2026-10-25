@@ -14,7 +14,7 @@
 // a wrong flip there used to stay for good (and was saved). So now:
 //   - no check once the camera has tilted all the way to an aim at the end of the range;
 //   - a flip is taken back only when the camera then sits at an aim at the end of the range
-//     and, for UNDO_EVIDENCE_MS, you're clearly further from the middle of the picture
+//     and, for UNDO_EVIDENCE_MS in a row, you're clearly further from the middle of the picture
 //     (up/down) than when it flipped (going by where it last saw you): a wrong flip sends the
 //     stand running away from you to the end and keeps it there. Otherwise (you're as close
 //     to the middle or closer, or it can't tell within UNDO_MS) the flip stays: a motor
@@ -42,7 +42,7 @@ const STAND_AGREE = 1 / 3;
 /** A flip can only be taken back within this long (ms) after it. */
 const UNDO_MS = 3000;
 /** Taken back after this long (ms) at the end of the range with you further from the middle all along. */
-const UNDO_EVIDENCE_MS = 1000;
+const UNDO_EVIDENCE_MS = 330;
 /** "Further from the middle": by at least this much of the picture's height. */
 const UNDO_MARGIN = 0.05;
 
@@ -103,8 +103,9 @@ export class TiltCheck {
    * One camera frame while tracking with the camera at an aim at the end of the up/down range.
    * `y`: where the target's aim point was last seen in the picture, as in update() (someone
    * who ran out of the picture is still as far out as when last seen). Returns true when the
-   * flip from the last UNDO_MS should be taken back: for UNDO_EVIDENCE_MS, every such frame had
-   * the target clearly further from the middle than at the flip. Anything less: the flip stays.
+   * flip from the last UNDO_MS should be taken back: for UNDO_EVIDENCE_MS of such frames in a
+   * row (notPinned() in between starts over), every one had the target clearly further from
+   * the middle than at the flip. Anything less: the flip stays.
    */
   pinned(t: number, y: number): boolean {
     if (this.flippedAt === null) return false;
@@ -122,6 +123,11 @@ export class TiltCheck {
     this.start = null;
     this.strikes = 0;
     return true;
+  }
+
+  /** One frame without the camera at the end of the range while tracking: the evidence for pinned() starts over. */
+  notPinned(): void {
+    this.furtherSince = null;
   }
 
   /** Starts the check over (a new target). A flip from the last UNDO_MS can still be taken back. */
