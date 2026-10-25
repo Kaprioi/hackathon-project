@@ -183,8 +183,10 @@ export function towardTilt(tilt: number, goal: number, ms: number): number {
  * than TILT.holdMs in a row, it eases back to neutral, then stays at neutral for
  * TILT.cooldownMs so it doesn't bounce straight back (easing along with it if neutral moves,
  * say to level when the person leaves). After that it stays at neutral until the tilt the
- * brain wants changes, so it never goes back to the same out-of-date aim (with a big dead
- * zone, the brain's aim can stay put while the person sits a little off it).
+ * brain wants changes or agrees with neutral again (at most TILT.afterHoldMs), so it doesn't
+ * go back to the same out-of-date aim (with a big dead zone, the brain's aim can stay put
+ * while the person sits a little off it). After a hold, neutral is followed through the same
+ * dead zone as the brain's aim, so detector jitter doesn't make the motor fidget.
  * Only the tilt: left and right never change.
  */
 export class TiltHold {
@@ -192,19 +194,22 @@ export class TiltHold {
   private awaySince: number | null = null;
   /** Away too long: easing back to neutral. */
   private returning = false;
-  /** Back at neutral after a hold: since when (null = no cooldown). */
+  /** Back at neutral after a hold: since when (null = not after a hold). */
   private backAt: number | null = null;
   /** The tilt the brain wanted when it was away too long: not followed again until it changes (null = none). */
   private staleWant: number | null = null;
-  /** True when this frame's tilt isn't the wanted one (easing back, or waiting out the cooldown). */
+  /** After a hold: the neutral being followed, moved only when neutral moves more than the dead zone. */
+  private followed: number = TILT.level;
+  /** True when this frame's tilt isn't the wanted one (easing back, or after a hold). */
   holding = false;
 
   /**
    * One frame. `want`: the tilt the brain would like (already limited to TILT.range);
    * `told`: the tilt the stand was told last frame; `neutral`: looking straight at the person
-   * (or level); `t`: now; `ms`: since the last frame. Returns the tilt to tell the stand now.
+   * (or level); `t`: now; `ms`: since the last frame; `deadZone`: the brain's dead zone
+   * (degrees, Settings.deadZoneDeg). Returns the tilt to tell the stand now.
    */
-  update(want: number, told: number, neutral: number, t: number, ms: number): number {
+  update(want: number, told: number, neutral: number, t: number, ms: number, deadZone: number = 0): number {
     if (!this.returning && this.awaySince !== null && t - this.awaySince > TILT.holdMs) {
       this.returning = true;
       this.staleWant = want;
@@ -216,14 +221,23 @@ export class TiltHold {
       if (out === neutral) {
         this.returning = false;
         this.backAt = t;
+        this.followed = neutral;
       }
     } else if (this.backAt !== null) {
-      if (t - this.backAt >= TILT.cooldownMs) this.backAt = null;
-      else out = towardTilt(told, neutral, ms);
+      // The brain's aim agrees with neutral again, or it's waited long enough: back to normal.
+      if (this.staleWant !== null && (Math.abs(want - neutral) <= TILT.levelBand || t - this.backAt > TILT.afterHoldMs)) {
+        this.staleWant = null;
+      }
+      if (t - this.backAt < TILT.cooldownMs || this.staleWant !== null) {
+        if (Math.abs(neutral - this.followed) > deadZone) this.followed = neutral;
+        out = towardTilt(told, this.followed, ms);
+      } else {
+        this.backAt = null;
+      }
     }
-    if (!this.returning && this.backAt === null && this.staleWant !== null) out = towardTilt(told, neutral, ms);
     this.holding = out !== want;
-    if (Math.abs(out - neutral) <= TILT.levelBand) this.awaySince = null;
+    const goal = this.backAt !== null ? this.followed : neutral;
+    if (Math.abs(out - goal) <= TILT.levelBand) this.awaySince = null;
     else this.awaySince ??= t;
     return out;
   }
@@ -504,7 +518,7 @@ export class Brain {
     const ms = Math.min(f.t - this.prevT, 1000);
     const want = tracking && this.aim ? this.aim.tilt : towardLevel(this.outTilt, ms);
     const neutral = tracking ? (this.facingTilt ?? TILT.level) : TILT.level;
-    this.outTilt = this.tiltHold.update(want, this.outTilt, neutral, f.t, ms);
+    this.outTilt = this.tiltHold.update(want, this.outTilt, neutral, f.t, ms, this.settings.deadZoneDeg);
     const followsTilt = tracking && !this.tiltHold.holding;
     const aim = this.aim && this.aim.tilt !== this.outTilt ? { ...this.aim, tilt: this.outTilt } : this.aim;
 

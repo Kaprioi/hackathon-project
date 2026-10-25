@@ -47,6 +47,11 @@ export const TILT = {
   holdMs: 4000,
   /** Then stay at neutral for this long (ms), so it doesn't bounce straight back. */
   cooldownMs: 1500,
+  /**
+   * After that, wait at most this long (ms) for the brain's own aim to catch up with neutral
+   * (a big dead zone can leave it a little off the person) before following it again.
+   */
+  afterHoldMs: 20000,
 };
 
 /**

@@ -631,6 +631,28 @@ test(`looking away from you for more than ${TILT.holdMs / 1000} s (a big dead zo
   assertPanUnchanged(withHold, without, "big dead zone");
 });
 
+test("after a hold, sitting still with a jittery picture: the tilt holds still (the dead zone applies)", () => {
+  // Real detector boxes wobble a little from frame to frame (here up to about 0.7°).
+  const jitter = (k) => 0.012 * Math.sin(k * 1.7) + 0.006 * Math.sin(k * 0.37);
+  const story = () => {
+    const sim = fixedCamera(UP_A_LITTLE, { deadZoneDeg: 8 });
+    sim.show(UP_A_LITTLE, 1000);
+    sim.glide(UP_A_LITTLE, HIGHER, 300);
+    for (let k = 0; k < 230; k++) sim.show({ ...HIGHER, y: HIGHER.y + jitter(k) }, FRAME_MS); // 15 s
+    return sim.outs;
+  };
+  const { withHold, without } = withAndWithoutHold(story);
+  assert.ok(withHold.every((o) => o.mode === "tracking"), "kept following you");
+  const before = withHold[0].aim.tilt;
+  const back = withHold.findIndex((o, i) => i > 0 && o.aim.tilt < before - TILT.levelBand && o.aim.tilt === withHold[i - 1].aim.tilt);
+  assert.ok(back > 0, "eased back toward you after the hold");
+  const after = withHold.slice(back).map((o) => o.aim.tilt);
+  assert.ok(withHold.at(-1).t - withHold[back].t > TILT.cooldownMs + 5000, "watched long enough after it");
+  assert.ok(Math.max(...after) - Math.min(...after) < 0.01, `the tilt fidgeted after the hold: ${Math.min(...after)}-${Math.max(...after)}°`);
+  assert.ok(Math.abs(after.at(-1) - before) > TILT.levelBand, "and it's still looking at you, not back at the old aim");
+  assertPanUnchanged(withHold, without, "jittery picture");
+});
+
 test("you leave during the cooldown: the tilt eases back to level, it doesn't jump", () => {
   // A big dead zone leaves the stand looking below you; after the hold it eases back to you...
   const you = (() => {
@@ -781,6 +803,32 @@ test("tilt hold piece: back to neutral (not level) after holdMs away from it, th
   assert.equal(hold.holding, false);
   hold.reset();
   assert.equal(step(70, 90), 70, "after reset it follows straight away");
+  // After a hold, neutral is followed through the dead zone, and the wait for the brain ends
+  // when its aim agrees with neutral again, or after afterHoldMs.
+  const after = (deadZone) => {
+    const h = new TiltHold();
+    let out = TILT.level;
+    let now = 0;
+    const go = (want, neutral) => {
+      now += FRAME_MS;
+      out = h.update(want, out, neutral, now, FRAME_MS, deadZone);
+      return out;
+    };
+    while (go(75, 80) === 75);
+    while (out !== 80) go(75, 80);
+    return { go, get now() { return now; } };
+  };
+  const dz = after(5);
+  assert.equal(dz.go(75, 83), 80, "neutral moving less than the dead zone: holds still");
+  assert.equal(dz.go(75, 77), 80, "either way");
+  assert.equal(dz.go(75, 86), 80 + (TILT.returnSpeed * FRAME_MS) / 1000, "more than the dead zone: eases after it");
+  const agrees = after(5);
+  for (let k = 0; k < 40; k++) agrees.go(75, 80);
+  assert.equal(agrees.go(75, 76), 75, "the brain's aim agrees with neutral again: back to normal");
+  const bounded = after(5);
+  const from = bounded.now;
+  while (bounded.go(75, 80) === 80) assert.ok(bounded.now - from <= TILT.afterHoldMs + FRAME_MS, "waited too long");
+  assert.ok(bounded.now - from > TILT.afterHoldMs, `back to normal after ${bounded.now - from} ms`);
   assert.equal(towardTilt(80, 90, 100), 82);
   assert.equal(towardTilt(80, 81, 100), 81);
 });
