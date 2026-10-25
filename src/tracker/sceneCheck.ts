@@ -1,7 +1,12 @@
-// Gemini's second opinion on an emergency alert, page side. When the "Are you OK?" countdown
-// runs out, the page takes one still picture (the upright copy the person detector just used),
-// asks the server (api/scene-check.ts) what Gemini sees in it, and the call reads that out.
-// Nothing is sent if the person pressed I'm OK, or if the setting is off.
+// Gemini's second opinion on an emergency alert, page side. The page takes one still picture
+// (the upright copy the person detector just used) and asks the server (api/scene-check.ts)
+// what Gemini sees in it:
+//   - A possible fall: BEFORE the alert. If Gemini clearly sees the person isn't on the floor
+//     (geminiClears), there's no alert. Otherwise the alert goes off, and the call reads
+//     Gemini's sentence out. No answer (no internet, too slow, setting off) = alert as usual.
+//   - A possible seizure: when the countdown runs out (a still picture can't show shaking, so
+//     Gemini never decides a seizure), and the call reads its sentence out.
+// Nothing is sent if the setting is off.
 
 export type SceneKind = "fall" | "seizure" | "test";
 
@@ -57,6 +62,17 @@ export function snapshot(canvas: HTMLCanvasElement | null, maxSide = 640, qualit
   } catch {
     return null;
   }
+}
+
+/**
+ * Before a possible fall's alert: does Gemini's look clearly show it isn't one? Only when it
+ * answered, sees the person, they're not on the floor (a bed, sofa or chair doesn't count as
+ * the floor) and they don't look hurt. Anything else, including no answer, means the alert goes
+ * off: a false alarm costs one tap on I'm OK, a missed fall is far worse. Seizures are never
+ * cleared, because one still picture can't show shaking.
+ */
+export function geminiClears(kind: SceneKind, scene: SceneOutcome): boolean {
+  return kind === "fall" && scene.result === "ok" && scene.personVisible && !scene.onFloor && scene.looksHurt !== "yes";
 }
 
 /** Asks Gemini (through the server) what it sees. Gives up after `timeoutMs`, so the call is never held up long. */

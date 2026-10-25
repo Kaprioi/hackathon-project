@@ -28,7 +28,7 @@ Finds people with the phone's camera, follows the one you tap, and drives the st
 | `cameraPhone.test.mjs` | Tests for `cameraPhone.ts`. |
 | `savedSettings.ts` | The settings the page starts with: saved ones plus this phone's defaults. Face recognition starts off on iPhones (to save memory), even with older saved settings, until someone switches it in Settings. Up/down only counts when chosen by hand (Flip up/down): the page's own up/down flips are never saved. |
 | `savedSettings.test.mjs` | Tests for `savedSettings.ts`. |
-| `sceneCheck.ts` | Gemini's look at the picture: when an alert's countdown runs out, sends one still picture to the server (`api/scene-check.ts`), which asks Google Gemini to describe it in one sentence for the call and the alert screen. Never cancels an alert or call. |
+| `sceneCheck.ts` | Gemini's look at the picture: before a possible fall's alert, sends one still picture to the server (`api/scene-check.ts`), which asks Google Gemini what it sees. `geminiClears` drops the alert only when Gemini clearly sees the person off the floor and unhurt (still lying down 30 s later = alert anyway); no answer = alert. Its sentence shows on the alert screen and is read out in the call. Seizures are described when the countdown runs out, never dropped. |
 | `sceneCheck.test.mjs` | Tests for `api/scene-check.ts` and the call reading Gemini's sentence out, with a stand-in Gemini and Twilio. |
 | `call.ts` | The emergency call, page side: asks the server (`api/emergency-call.ts`) to phone the number typed in Settings through Twilio, and tidies typed numbers into Twilio's + form. Not set up on the server = a pretend call. |
 | `call.test.mjs`, `callServer.test.mjs` | Tests for `call.ts` and `api/emergency-call.ts`, with a stand-in Twilio. |

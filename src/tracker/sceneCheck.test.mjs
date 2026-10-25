@@ -15,6 +15,7 @@ import {
   resetSceneLimits,
 } from "../../api/scene-check.ts";
 import { callMessage, cleanNote, handleEmergencyCall, resetCallLimits } from "../../api/emergency-call.ts";
+import { geminiClears } from "./sceneCheck.ts";
 
 const KEY = "test-gemini-key";
 const IMAGE = "/9j/4AAQSkZJRgABAQAAAQABAAD="; // a few bytes of JPEG header, as base64
@@ -200,4 +201,20 @@ test("the call reads Gemini's sentence out, and stays the same without one", asy
 
   const words = await handleEmergencyCall({ method: "POST", url: `${url.pathname}${url.search}` }, env);
   assert.match(words.xml, /What the camera sees: A person is lying on the floor next to a chair\./);
+});
+
+test("before a fall's alert: Gemini only stops it when it clearly sees the person off the floor and unhurt", () => {
+  const seen = (onFloor, looksHurt = "no", personVisible = true) => ({ result: "ok", summary: "A person.", personVisible, onFloor, looksHurt });
+  // On a bed or sofa, fine: no alert.
+  assert.equal(geminiClears("fall", seen(false)), true);
+  assert.equal(geminiClears("fall", seen(false, "unsure")), true);
+  // On the floor, looking hurt, or not in the picture: the alert goes off.
+  assert.equal(geminiClears("fall", seen(true)), false);
+  assert.equal(geminiClears("fall", seen(false, "yes")), false);
+  assert.equal(geminiClears("fall", seen(false, "no", false)), false);
+  // No answer (too slow, no internet, no key): the alert goes off.
+  assert.equal(geminiClears("fall", { result: "failed", error: "Gemini took too long." }), false);
+  assert.equal(geminiClears("fall", { result: "off" }), false);
+  // A seizure is never stopped: one still picture can't show shaking.
+  assert.equal(geminiClears("seizure", seen(false)), false);
 });

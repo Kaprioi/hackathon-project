@@ -406,8 +406,17 @@ export const EMERGENCY = {
   rearmMs: 3000,
   /** "Are you OK?" countdown before the emergency call (seconds). */
   countdownS: 15,
-  /** Once the countdown runs out, the call waits at most this long for Gemini's description (sceneCheck.ts). */
+  /**
+   * Gemini's look at the picture (sceneCheck.ts) gets at most this long (ms): before a possible
+   * fall's alert, and when the countdown runs out (only if it couldn't look before).
+   */
   geminiWaitMs: 6000,
+  /**
+   * Gemini looked at a possible fall before the alert and saw the person wasn't on the floor, so
+   * there was no alert. If they're still lying down this long (ms) afterwards (without standing
+   * up in between), the alert goes off anyway, without asking Gemini again.
+   */
+  stillDownMs: 30_000,
 };
 
 /** Long side of the small copy of each frame used for colours and the cover tracker. */

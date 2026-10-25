@@ -39,7 +39,7 @@ import { unlockVoice } from "../family/voice";
 import { rememberWatching, takeReopened } from "./cameraPhone.ts";
 import type { CallOutcome, CallSetup } from "./call.ts";
 import { callSetup, phoneForCall, requestCall, showPhone } from "./call.ts";
-import { checkScene, sceneSetup, snapshot } from "./sceneCheck.ts";
+import { checkScene, geminiClears, sceneSetup, snapshot } from "./sceneCheck.ts";
 import type { SceneOutcome, SceneSetup } from "./sceneCheck.ts";
 import { Cloud } from "./cloud.ts";
 import type { Detection, PersonDetector } from "./detector.ts";
@@ -98,6 +98,8 @@ interface Alarm {
   call: "pretend" | "sending" | "sent" | "failed";
   /** Why the call failed, in words (from Twilio or the server). */
   callError?: string;
+  /** Gemini's look at the picture before the alert went off (a possible fall). Unset = not asked. */
+  checked?: SceneOutcome;
   /** Gemini's look at the picture once the countdown ran out: still asking, or its answer. Unset = not asked. */
   scene?: "checking" | SceneOutcome;
   /** Gemini's sentence, read out in the call (kept for "Try again"). */
@@ -638,6 +640,11 @@ function EmergencyScreen(props: {
         <p className="px-4 text-lg">
           Calling {contact} in {left} s unless you press I'm OK.
         </p>
+        {alarm.checked?.result === "ok" && (
+          <p role="status" className="max-w-md rounded-2xl bg-white/15 px-4 py-2 text-lg font-semibold">
+            Gemini checked: {alarm.checked.summary}
+          </p>
+        )}
         <button
           onClick={onOk}
           className="min-h-16 w-full max-w-sm rounded-2xl bg-white px-8 text-3xl font-extrabold text-red-700 transition-transform active:scale-95"
@@ -698,6 +705,41 @@ function EmergencyScreen(props: {
       >
         {real ? "Close" : "End call"}
       </button>
+    </div>
+  );
+}
+
+/** Gemini's look at a possible fall before any alert: still checking, or it saw no fall. */
+type GeminiCheck = { kind: EmergencyKind; phase: "checking" } | { kind: EmergencyKind; phase: "cleared"; summary: string };
+
+/** The banner while Gemini checks a possible fall, and after it saw no fall (with "Alert now", in case it's wrong). */
+function GeminiCheckBanner(props: { check: GeminiCheck; onAlertNow: () => void; onDismiss: () => void }) {
+  const { check, onAlertNow, onDismiss } = props;
+  if (check.phase === "checking") {
+    return (
+      <div role="status" className="pointer-events-auto max-w-xl rounded-2xl bg-sun px-4 py-3 text-center text-lg font-extrabold text-ink">
+        Possible fall: Gemini is checking the picture…
+      </div>
+    );
+  }
+  return (
+    <div
+      role="status"
+      className="pointer-events-auto flex max-w-xl flex-col items-center gap-2 rounded-2xl bg-ink/95 px-4 py-3 text-center text-white"
+    >
+      <p className="text-lg font-extrabold">Gemini checked a possible fall: no alert.</p>
+      <p className="text-base">“{check.summary}”</p>
+      <p className="text-sm text-white/80">
+        Still lying down in {Math.round(EMERGENCY.stillDownMs / 1000)} s? Then the alert goes off anyway.
+      </p>
+      <div className="flex flex-wrap justify-center gap-2">
+        <button onClick={onAlertNow} className="min-h-11 rounded-xl bg-red-600 px-4 font-bold text-white">
+          Alert now
+        </button>
+        <button onClick={onDismiss} className="min-h-11 rounded-xl px-4 font-bold underline">
+          Dismiss
+        </button>
+      </div>
     </div>
   );
 }
@@ -1025,6 +1067,11 @@ export default function TrackerPage() {
   const ringRef = useRef<(() => void) | null>(null); // stops the ringing
   const alarmRef = useRef<Alarm | null>(null);
   const [alarm, setAlarm] = useState<Alarm | null>(null);
+  // Gemini's look at a possible fall before any alert: which check is under way (0 = none), the
+  // banner, and when it saw no fall (to raise the alert anyway if they stay down).
+  const checkIdRef = useRef(0);
+  const [geminiCheck, setGeminiCheck] = useState<GeminiCheck | null>(null);
+  const clearedRef = useRef<{ kind: EmergencyKind; at: number } | null>(null);
   const [, setTick] = useState(0); // redraws the countdown
   /** The upright picture the person detector saw last (the main loop's canvas), for Gemini's look. */
   const frameRef = useRef<HTMLCanvasElement | null>(null);
@@ -1039,14 +1086,56 @@ export default function TrackerPage() {
     }
   }, []);
 
-  const raiseAlarm = useCallback((kind: EmergencyKind) => {
+  /** Shows "Are you OK?" now. `checked`: what Gemini saw before the alert (a possible fall), if it looked. */
+  const raiseAlarm = useCallback((kind: EmergencyKind, checked?: SceneOutcome) => {
     if (alarmRef.current) return;
-    const a: Alarm = { kind, phase: "ask", endsAt: Date.now() + EMERGENCY.countdownS * 1000, callStart: 0, call: "pretend" };
+    checkIdRef.current = 0; // an alert is up: forget any Gemini check still under way
+    clearedRef.current = null;
+    setGeminiCheck(null);
+    const a: Alarm = { kind, phase: "ask", endsAt: Date.now() + EMERGENCY.countdownS * 1000, callStart: 0, call: "pretend", checked };
     alarmRef.current = a;
     setAlarm(a);
     navigator.vibrate?.([400, 200, 400]);
     beep(audioRef.current);
   }, []);
+
+  /**
+   * A possible fall or seizure spotted by the camera. A fall goes to Gemini first (one still
+   * picture): if it clearly sees the person isn't on the floor, there's no alert (geminiClears).
+   * Anything else raises the alert, including no answer within EMERGENCY.geminiWaitMs. A seizure
+   * raises the alert at once: one still picture can't show shaking.
+   */
+  const checkThenAlarm = useCallback(
+    (kind: EmergencyKind) => {
+      if (alarmRef.current || checkIdRef.current) return;
+      const image = kind === "fall" && settingsRef.current.gemini ? snapshot(frameRef.current) : null;
+      if (!image) {
+        raiseAlarm(kind);
+        return;
+      }
+      const id = Date.now();
+      checkIdRef.current = id;
+      clearedRef.current = null;
+      setGeminiCheck({ kind, phase: "checking" });
+      void loginToken()
+        .then((token) => checkScene(kind, image, token, EMERGENCY.geminiWaitMs))
+        .then((scene) => {
+          if (checkIdRef.current !== id) return; // stopped watching, or an alert went off meanwhile
+          checkIdRef.current = 0;
+          if (!watchingRef.current) {
+            setGeminiCheck(null);
+            return;
+          }
+          if (scene.result === "ok" && geminiClears(kind, scene)) {
+            clearedRef.current = { kind, at: Date.now() };
+            setGeminiCheck({ kind, phase: "cleared", summary: scene.summary });
+            return;
+          }
+          raiseAlarm(kind, scene);
+        });
+    },
+    [raiseAlarm],
+  );
 
   /** Changes the alert on screen, if it's still the same one (not closed or replaced meanwhile). */
   const patchAlarm = useCallback((callStart: number, patch: Partial<Alarm>) => {
@@ -1083,15 +1172,24 @@ export default function TrackerPage() {
   );
 
   /**
-   * The call (once per alert), and the alert on the family page. With the Gemini setting on,
-   * one still picture goes to Gemini first (only now, after nobody pressed I'm OK); the call
-   * waits for its description at most `EMERGENCY.geminiWaitMs`, then goes ahead either way.
+   * The call (once per alert), and the alert on the family page. If Gemini already described
+   * the picture before the alert (a possible fall), the call reads that out straight away.
+   * Otherwise, with the Gemini setting on, one still picture goes to Gemini now; the call waits
+   * for its description at most `EMERGENCY.geminiWaitMs`, then goes ahead either way.
    */
   const startCall = useCallback(() => {
     const a = alarmRef.current;
     if (!a || a.phase === "calling") return;
-    const image = settingsRef.current.gemini ? snapshot(frameRef.current) : null;
-    const next: Alarm = { ...a, phase: "calling", callStart: Date.now(), call: "sending", scene: image ? "checking" : undefined };
+    const before = a.checked?.result === "ok" ? a.checked : null;
+    const image = !before && settingsRef.current.gemini ? snapshot(frameRef.current) : null;
+    const next: Alarm = {
+      ...a,
+      phase: "calling",
+      callStart: Date.now(),
+      call: "sending",
+      scene: before ?? (image ? "checking" : undefined),
+      note: before?.summary,
+    };
     alarmRef.current = next;
     setAlarm(next);
     ringRef.current?.();
@@ -1099,7 +1197,7 @@ export default function TrackerPage() {
     // The family page only knows "fall" so far; a seizure shows there as "Possible fall".
     report({ kind: "fall", zone: null, posture: "lying" });
     if (!image) {
-      placeCall(next.callStart, next.kind);
+      placeCall(next.callStart, next.kind, before?.summary);
       return;
     }
     const { callStart, kind } = next;
@@ -1298,6 +1396,9 @@ export default function TrackerPage() {
     (note: string, tellFamily: boolean) => {
       if (!watchingRef.current) return;
       watchingRef.current = false;
+      checkIdRef.current = 0; // forget a Gemini check of a possible fall
+      clearedRef.current = null;
+      setGeminiCheck(null);
       if (tellFamily) report(reporterRef.current.stop());
       cameraRequestRef.current++; // cancel a camera start that's still under way
       stopCamera();
@@ -1591,10 +1692,17 @@ export default function TrackerPage() {
         emergencyRef.current.reset();
       }
 
-      // Emergency: a fall or seizure of the person being followed raises the alert.
+      // Emergency: a fall (checked by Gemini first) or seizure of the person being followed
+      // raises the alert.
       if (s.emergency) {
         const kind = emergencyRef.current.update(t, out.mode === "tracking" ? out.target : null, uw / uh);
-        if (kind) raiseAlarm(kind);
+        if (kind) checkThenAlarm(kind);
+        // Gemini saw no fall: if they're still lying down EMERGENCY.stillDownMs later (without
+        // standing up in between), raise the alert anyway, in case Gemini was wrong.
+        const cleared = clearedRef.current;
+        const posture = emergencyRef.current.posture;
+        if (cleared && posture === "standing") clearedRef.current = null;
+        else if (cleared && posture === "lying" && Date.now() - cleared.at >= EMERGENCY.stillDownMs) raiseAlarm(cleared.kind);
       }
 
       // Faces: once the face AI is ready, the watcher reads one face now and then in the background.
@@ -1673,7 +1781,14 @@ export default function TrackerPage() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [running, report, loadFaces, faceWatcher, raiseAlarm, updateSettings]);
+  }, [running, report, loadFaces, faceWatcher, raiseAlarm, checkThenAlarm, updateSettings]);
+
+  // Gemini saw no fall: the banner goes away by itself once the "still down" watch is over.
+  useEffect(() => {
+    if (geminiCheck?.phase !== "cleared") return;
+    const id = window.setTimeout(() => setGeminiCheck(null), EMERGENCY.stillDownMs);
+    return () => window.clearTimeout(id);
+  }, [geminiCheck]);
 
   // Tapping a person. Only a quick, still touch counts: a thumb resting on the edge
   // while you hold the phone, a drag, or a pinch is ignored.
@@ -2051,6 +2166,15 @@ export default function TrackerPage() {
           </div>
         </div>
       )}
+      {geminiCheck && !alarm && (
+        <div className="pointer-events-none absolute inset-x-0 top-20 z-30 flex justify-center px-4">
+          <GeminiCheckBanner
+            check={geminiCheck}
+            onAlertNow={() => raiseAlarm(geminiCheck.kind)}
+            onDismiss={() => setGeminiCheck(null)}
+          />
+        </div>
+      )}
       {alarm && (
         <EmergencyScreen
           alarm={alarm}
@@ -2233,8 +2357,9 @@ function SettingsPanel(props: {
             <Button onClick={testAlarm}>Test the alert</Button>
             <p className="text-base text-white/90">
               Watches the person you follow for a fall (on the floor and not getting up) or a seizure (shaking while lying
-              down). Then it asks "Are you OK?" for {EMERGENCY.countdownS} seconds before calling the emergency contact
-              below. If real calls aren't set up, it's a pretend call. A rough guess from the camera, not a medical device.
+              down). A possible fall is checked by Gemini first (below), when that's on. Then it asks "Are you OK?" for{" "}
+              {EMERGENCY.countdownS} seconds before calling the emergency contact below. If real calls aren't set up, it's a
+              pretend call. A rough guess from the camera, not a medical device.
             </p>
             <label className="block space-y-1">
               <span className="font-semibold">Emergency contact's name</span>
@@ -2334,10 +2459,14 @@ function SettingsPanel(props: {
               onChange={(v) => update({ gemini: v === "on" })}
             />
             <p className="text-base text-white/90">
-              Only when an alert's countdown runs out (nobody pressed I'm OK), this phone sends one still picture to Google
-              Gemini, which describes what it sees ("A person is lying on the kitchen floor next to a chair."). The call
-              reads that sentence out and this screen shows it. It never cancels an alert or a call. Nothing is sent
-              otherwise. On Gemini's free tier Google may keep and review what it's sent, so real use needs the paid tier.
+              When the camera spots a possible fall, this phone first sends one still picture to Google Gemini. If Gemini
+              clearly sees the person isn't on the floor (on a bed or sofa, say), there's no alert; if they're still lying
+              down {Math.round(EMERGENCY.stillDownMs / 1000)} seconds later, the alert goes off anyway. Otherwise, including
+              when Gemini doesn't answer within {EMERGENCY.geminiWaitMs / 1000} seconds, the alert goes off as usual, and the
+              call reads out what Gemini saw ("A person is lying on the kitchen floor next to a chair."). A possible seizure
+              always raises the alert (one picture can't show shaking); Gemini describes it when the countdown runs out.
+              Nothing is sent otherwise. On Gemini's free tier Google may keep and review what it's sent, so real use needs
+              the paid tier.
             </p>
             <p role="status" className="text-base font-semibold">
               {gemini === "checking"
