@@ -40,7 +40,7 @@ import type { Detection, PersonDetector } from "./detector.ts";
 import { createPersonDetector, isIPhone, preferredDelegate } from "./detector.ts";
 import type { FaceLabel, FaceReader, ReadMiss } from "./faces.ts";
 import { FaceWatcher, createFaceReader, cropHead } from "./faces.ts";
-import type { EmergencyKind } from "./emergency.ts";
+import type { EmergencyKind, Posture } from "./emergency.ts";
 import { EmergencyWatch } from "./emergency.ts";
 import type { MovementEvent } from "./events.ts";
 import { Reporter } from "./events.ts";
@@ -72,7 +72,7 @@ interface Snapshot {
   /** How long the person detector takes per picture (milliseconds, smoothed). */
   aiMs: number;
   /** What the tracked person seems to be doing (for the emergency alert), or null. */
-  posture: "standing" | "sitting" | "lying" | null;
+  posture: Posture | null;
   /** Why no face was read lately: none where the head should be, or too far away. */
   faceMiss: ReadMiss | null;
   /** Where the target is believed to be while out of view, in words ("Out of view - to your left"). */
@@ -1341,7 +1341,10 @@ export default function TrackerPage() {
 
       // Emergency: a fall or seizure of the person being followed raises the alert.
       if (s.emergency) {
-        const kind = emergencyRef.current.update(t, out.mode === "tracking" ? out.target : null, uw / uh);
+        // How far the picture slid up because the camera looks down (0 when level).
+        const bs = brainRef.current.settings;
+        const tiltShift = (camera.tilt - TILT.level) / (bs.tiltSign * bs.fovV);
+        const kind = emergencyRef.current.update(t, out.mode === "tracking" ? out.target : null, uw / uh, tiltShift);
         if (kind) raiseAlarm(kind);
       }
 
@@ -1605,7 +1608,9 @@ export default function TrackerPage() {
                         : "Looking for a face"}
             </Chip>
           )}
-          {running && settings.emergency && snap.mode === "tracking" && snap.posture && <Chip>Posture: {snap.posture}</Chip>}
+          {running && settings.emergency && snap.mode === "tracking" && snap.posture && (
+            <Chip>Posture: {snap.posture === "cut off" ? "can't tell (partly out of view)" : snap.posture}</Chip>
+          )}
           {connected && (
             <Chip tone={radar ? "good" : "plain"}>
               {radar === null ? "Radar: -" : radar ? "Radar: someone" : "Radar: empty"}
