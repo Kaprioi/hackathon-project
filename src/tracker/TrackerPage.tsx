@@ -69,6 +69,8 @@ interface Snapshot {
   match: number | null;
   aim: Angles | null;
   fps: number;
+  /** The camera's picture size, like "1280×720" (the front camera often sends a smaller one). */
+  size: string;
   people: number;
   portrait: boolean;
   /** How far the camera picture is being turned for the AI (degrees counterclockwise). */
@@ -853,6 +855,7 @@ export default function TrackerPage() {
     match: null,
     aim: null,
     fps: 0,
+    size: "",
     people: 0,
     portrait: false,
     turn: 0,
@@ -1771,6 +1774,7 @@ export default function TrackerPage() {
           match: out.match,
           aim: lastAimRef.current,
           fps,
+          size: `${vw}×${vh}`,
           people: people.length,
           portrait,
           turn,
@@ -1968,6 +1972,7 @@ export default function TrackerPage() {
           {running && (
             <Chip>
               {snap.fps.toFixed(0)} fps{delegate ? ` · ${delegate}` : ""}{snap.aiMs ? ` · AI ${snap.aiMs.toFixed(0)} ms` : ""}
+              {snap.size ? ` · ${snap.size}` : ""}
             </Chip>
           )}
           {running && settings.faces && (snap.mode !== "idle" || faceStatus === "loading" || faceStatus === "failed") && (
