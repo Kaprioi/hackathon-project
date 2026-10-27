@@ -1,4 +1,4 @@
-# hackathon-project
+# CareNest
 
 **CareNest**: a phone standing on a table watches the room with its camera (all on the phone), and family see in plain words how their loved one is doing. Family can also press **Watch live** to see and hear the room and talk through the phone; the video goes straight to them and is never recorded.
 
